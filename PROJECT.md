@@ -21,6 +21,8 @@ The complete agreed scope is in [docs/requirements.md](docs/requirements.md).
 
 Not production-ready: there is **no authentication**. Run it only on a trusted network ([docs/security.md](docs/security.md)).
 
+**Deployed (2026-11-08):** live mode on `503-web-ubuntu` at `http://10.0.0.171:8088`, delivered by deployctl from `main`. Only allowlisted client addresses are served ([docs/deployment.md](docs/deployment.md)).
+
 ## Documentation
 
 | Document | Content |
