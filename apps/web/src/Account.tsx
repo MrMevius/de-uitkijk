@@ -228,6 +228,7 @@ export function AdminPage() {
         <a href="/">Dashboard</a> · <a href="/archief">Highlights</a> · <button onClick={() => void logout()}>Uitloggen</button>
       </p>
       {error && <p className="account__error">{error}</p>}
+      {me?.role === 'admin' && <AiStatusLine />}
       {me?.role === 'admin' && (
         <>
           {link && (
@@ -279,5 +280,31 @@ export function AdminPage() {
         </>
       )}
     </Page>
+  );
+}
+
+interface AiStatus {
+  enabled: boolean;
+  callsToday?: number;
+  dailyCap?: number;
+  lastSuccessAt?: number | null;
+  lastError?: string | null;
+  pending?: number;
+}
+
+/** One line about AI descriptions for highlights. */
+function AiStatusLine() {
+  const [ai, setAi] = useState<AiStatus | null>(null);
+  useEffect(() => {
+    api<AiStatus>('GET', '/api/admin/ai').then(setAi, () => {});
+  }, []);
+  if (!ai) return null;
+  if (!ai.enabled) return <p className="account__note">AI-beschrijvingen: uit.</p>;
+  const last = ai.lastSuccessAt ? new Date(ai.lastSuccessAt * 1000).toLocaleString('nl-NL', { timeZone: 'Europe/Amsterdam' }) : 'nog niet';
+  return (
+    <p className="account__note">
+      AI-beschrijvingen (Codex): vandaag {ai.callsToday} van max. {ai.dailyCap}, laatste gelukt: {last}, wachtend: {ai.pending}
+      {ai.lastError && <span className="account__error"> · laatste fout: {ai.lastError}</span>}
+    </p>
   );
 }

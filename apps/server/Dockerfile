@@ -1,7 +1,9 @@
 # Backend: Node.js runs the TypeScript sources directly (type stripping), no build step.
 FROM node:24-alpine
 # ffmpeg re-wraps highlight clips for browsers (stream copy, no transcoding).
-RUN apk add --no-cache ffmpeg
+# Codex CLI (pinned) writes AI descriptions with the owner's ChatGPT sign-in; its login lives in /data/codex.
+RUN apk add --no-cache ffmpeg && npm install -g @openai/codex@0.167.0 && npm cache clean --force
+ENV CODEX_HOME=/data/codex
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY packages/shared/package.json packages/shared/

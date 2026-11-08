@@ -105,7 +105,7 @@ Consolidated specification for De Uitkijk. Each requirement has a phase:
 | HL-3 | Prefer unusual events while retaining useful daily variety. No fixed camera weighting. | Done (2026-11-08, rule-based) |
 | HL-4 | Select 0–15 highlights from a rolling 24-hour window. Never add uninteresting filler. | Done (2026-11-08) |
 | HL-5 | Variable clip length, generally 5–30 s. Aim for availability within five minutes of an event. | Done (2026-11-08) |
-| HL-6 | Show camera, timestamp and a short Dutch AI description. | Partly (2026-11-08): rule-based Dutch description; AI description in phase 5 |
+| HL-6 | Show camera, timestamp and a short Dutch AI description. | Done (2026-11-08): AI description via Codex, rule-based fallback |
 | HL-7 | Rotate highlights automatically, prioritising important/new events. Hide during active alerts; continue with the next highlight after the interruption. | Done (2026-11-08) |
 | HL-8 | Without highlights, live cameras use all available space. | Done |
 | HL-9 | Store metadata and one optimised thumbnail per selected highlight indefinitely. Never permanently duplicate Frigate recordings. | Done (2026-11-08) |
@@ -118,13 +118,13 @@ Consolidated specification for De Uitkijk. Each requirement has a phase:
 
 | ID | Requirement | Phase |
 | --- | --- | --- |
-| AI-1 | Rule-based preselection before external vision analysis; selected original snapshots may be used as input. | Later |
-| AI-2 | Same AI eligibility rules for all cameras. | Later |
-| AI-3 | Prefer officially supported OpenAI "Sign in with ChatGPT" subscription usage. Claude subscription integration only through an officially permitted method. Otherwise rule-based selection only. | Later |
-| AI-4 | Explicit owner authorisation required for background processing. | Later |
-| AI-5 | Never use another application's session cookies or undocumented endpoints. | Later |
-| AI-6 | No automatic paid API fallback or unapproved credit consumption. | Later |
-| AI-7 | AI failure never stops live viewing. Provider integration isolated from core logic. | Later |
+| AI-1 | Rule-based preselection before external vision analysis; selected original snapshots may be used as input. | Done (2026-11-08) |
+| AI-2 | Same AI eligibility rules for all cameras. | Done (2026-11-08) |
+| AI-3 | Prefer officially supported OpenAI "Sign in with ChatGPT" subscription usage. Claude subscription integration only through an officially permitted method. Otherwise rule-based selection only. | Done (2026-11-08): Codex CLI with ChatGPT sign-in; Claude route (Max API credits) needs a different plan |
+| AI-4 | Explicit owner authorisation required for background processing. | Done (2026-11-08): UITKIJK_AI=codex plus owner sign-in |
+| AI-5 | Never use another application's session cookies or undocumented endpoints. | Done (2026-11-08) |
+| AI-6 | No automatic paid API fallback or unapproved credit consumption. | Done (2026-11-08) |
+| AI-7 | AI failure never stops live viewing. Provider integration isolated from core logic. | Done (2026-11-08) |
 
 ## 10. Users and security
 

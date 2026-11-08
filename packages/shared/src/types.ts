@@ -87,8 +87,12 @@ export interface HighlightSummary {
   endTime: number;
   /** Seconds. */
   clipDuration: number;
-  /** Short Dutch description. */
+  /** Short Dutch description: the AI description when available, otherwise the rule-based one. */
   description: string;
+  ruleDescription: string;
+  aiDescribed: boolean;
+  /** The AI judged the still to show no real event; such highlights leave the rotation. */
+  aiNoise: boolean;
   score: number;
   reasons: string[];
   /** Administrator feedback: 1 good selection, -1 bad selection. */

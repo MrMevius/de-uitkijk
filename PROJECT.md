@@ -33,6 +33,7 @@ The complete agreed scope is in [docs/requirements.md](docs/requirements.md).
 | [docs/frigate-integration.md](docs/frigate-integration.md) | Verified Frigate 0.17.2 API behaviour and alert derivation |
 | [docs/streaming.md](docs/streaming.md) | Streaming evaluation, measurements, real-camera test procedure |
 | [docs/highlights.md](docs/highlights.md) | Highlight selection, rotation, archive, storage |
+| [docs/ai.md](docs/ai.md) | AI descriptions: provider, confinement, operations |
 | [docs/security.md](docs/security.md) | Current boundary; production auth, TV pairing, 4-hour outage design |
 | [docs/development.md](docs/development.md) | Running mock and live mode, configuration |
 | [docs/deployment.md](docs/deployment.md) | Placement on `503-web-ubuntu`, deployctl, LAN and public access, administration |
@@ -46,7 +47,7 @@ The complete agreed scope is in [docs/requirements.md](docs/requirements.md).
 | 2 | Real-camera streaming measurements; hosting benchmark and placement decision (independent of the Frigate host); kiosk client (Intel NUC) with HEVC verification; display profiles per device. |
 | 3 | Done 2026-11-08: SQLite accounts and roles, one-time links, one public address with login everywhere, local DNS, video reconnects during backend outages through a cached login check. TV pairing and stream tickets are superseded. Zabbix watches the three containers (503-web required-running list). |
 | 4 | Done 2026-11-08: rule-based highlights from Frigate alerts, grouping across cameras, clips, thumbnails, rotation in an extra dashboard tile, archive (`/archief`) with feedback, deletion and downloads ([docs/highlights.md](docs/highlights.md)). |
-| 5 | AI descriptions via an officially permitted subscription method, with owner authorisation; administrative UI; downloads. |
+| 5 | Done 2026-11-08: AI descriptions and noise filtering via the Codex CLI with the owner's ChatGPT sign-in ([docs/ai.md](docs/ai.md)); administrative pages `/beheer` and `/archief`; downloads. Later: Claude route when the plan allows. |
 
 ## Open technical dependencies
 
@@ -63,4 +64,4 @@ The complete agreed scope is in [docs/requirements.md](docs/requirements.md).
 | Frigate API authentication | The backend uses Frigate's unauthenticated internal API (read-only, server-side). | Optionally switch to the authenticated API with a dedicated user. |
 | Frigate push events | Could lower alert latency below the 2 s poll. | Verify the `/ws` `reviews` topic with a real alert. |
 | Highlight semantics | Grouping, clip extraction and catch-up depend on Frigate event/recording APIs. | Verify against 0.17.2 before design. |
-| AI provider | Must use an officially permitted subscription method without paid fallback. | Re-evaluate availability when phase 5 starts. |
+| AI provider | Codex with ChatGPT sign-in is in use; Claude needs Max/Ultra/Team for the permitted API-credit route. | Revisit Claude when the plan changes. |

@@ -44,6 +44,10 @@ interface Row {
   feedback: number | null;
   deleted: number;
   has_thumbnail: number;
+  ai_description: string | null;
+  ai_real: number | null;
+  ai_status: string | null;
+  ai_attempts: number;
 }
 
 export interface StoredCandidate extends CandidateRecord {
@@ -51,10 +55,15 @@ export interface StoredCandidate extends CandidateRecord {
   feedback: -1 | 1 | null;
   deleted: boolean;
   hasThumbnail: boolean;
+  aiDescription: string | null;
+  /** AI verdict: true real event, false noise, null not (yet) assessed. */
+  aiRealEvent: boolean | null;
+  aiStatus: 'done' | 'failed' | null;
+  aiAttempts: number;
 }
 
 const COLUMNS =
-  'id, start_time, end_time, cameras, camera, frigate_camera, rep_event, clip_start, clip_end, event_start, event_end, labels, sub_labels, score, reasons, description, selected, feedback, deleted, thumbnail IS NOT NULL AS has_thumbnail';
+  'id, start_time, end_time, cameras, camera, frigate_camera, rep_event, clip_start, clip_end, event_start, event_end, labels, sub_labels, score, reasons, description, selected, feedback, deleted, thumbnail IS NOT NULL AS has_thumbnail, ai_description, ai_real, ai_status, ai_attempts';
 
 const fromRow = (r: Row): StoredCandidate => ({
   id: r.id,
@@ -77,6 +86,10 @@ const fromRow = (r: Row): StoredCandidate => ({
   feedback: r.feedback === 1 || r.feedback === -1 ? r.feedback : null,
   deleted: r.deleted === 1,
   hasThumbnail: Number(r.has_thumbnail) === 1,
+  aiDescription: r.ai_description,
+  aiRealEvent: r.ai_real === null ? null : r.ai_real === 1,
+  aiStatus: r.ai_status === 'done' || r.ai_status === 'failed' ? r.ai_status : null,
+  aiAttempts: Number(r.ai_attempts),
 });
 
 export const toSummary = (c: StoredCandidate): HighlightSummary => ({
@@ -86,7 +99,10 @@ export const toSummary = (c: StoredCandidate): HighlightSummary => ({
   startTime: c.startTime,
   endTime: c.endTime,
   clipDuration: Math.round(c.clipEnd - c.clipStart),
-  description: c.description,
+  description: c.aiDescription ?? c.description,
+  ruleDescription: c.description,
+  aiDescribed: c.aiDescription !== null,
+  aiNoise: c.aiRealEvent === false,
   score: c.score,
   reasons: c.reasons,
   feedback: c.feedback,
@@ -143,6 +159,17 @@ export class HighlightStore {
         candidate_id TEXT NOT NULL
       );
     `);
+    // Added in 0.5.0 (AI descriptions).
+    const columns = new Set((this.db.prepare('PRAGMA table_info(candidates)').all() as { name: string }[]).map((c) => c.name));
+    for (const [name, type] of [
+      ['ai_description', 'TEXT'],
+      ['ai_real', 'INTEGER'],
+      ['ai_status', 'TEXT'],
+      ['ai_attempts', 'INTEGER NOT NULL DEFAULT 0'],
+      ['ai_updated', 'REAL'],
+    ] as const) {
+      if (!columns.has(name)) this.db.exec(`ALTER TABLE candidates ADD COLUMN ${name} ${type}`);
+    }
   }
 
   close(): void {
@@ -222,11 +249,37 @@ export class HighlightStore {
     this.db.prepare('UPDATE candidates SET deleted = 1, selected = 0, thumbnail = NULL WHERE id = ?').run(id);
   }
 
-  /** Highlights for the dashboard: selected in the window, best first. */
+  /** Highlights waiting for an AI description, oldest first. */
+  aiPending(since: number, maxAttempts: number): StoredCandidate[] {
+    return (
+      this.db
+        .prepare(
+          `SELECT ${COLUMNS} FROM candidates WHERE selected = 1 AND deleted = 0 AND thumbnail IS NOT NULL AND start_time >= ?
+             AND ai_status IS NULL AND ai_attempts < ? ORDER BY start_time`,
+        )
+        .all(since, maxAttempts) as unknown as Row[]
+    ).map(fromRow);
+  }
+
+  setAiResult(id: string, description: string, realEvent: boolean, at: number): void {
+    this.db
+      .prepare("UPDATE candidates SET ai_description = ?, ai_real = ?, ai_status = 'done', ai_updated = ? WHERE id = ?")
+      .run(description, realEvent ? 1 : 0, at, id);
+  }
+
+  setAiFailure(id: string, maxAttempts: number, at: number): void {
+    this.db
+      .prepare(
+        "UPDATE candidates SET ai_attempts = ai_attempts + 1, ai_updated = ?, ai_status = CASE WHEN ai_attempts + 1 >= ? THEN 'failed' ELSE NULL END WHERE id = ?",
+      )
+      .run(at, maxAttempts, id);
+  }
+
+  /** Highlights for the dashboard: selected in the window, not judged noise by the AI, best first. */
   rotation(since: number, limit: number): StoredCandidate[] {
     return (
       this.db
-        .prepare(`SELECT ${COLUMNS} FROM candidates WHERE selected = 1 AND deleted = 0 AND start_time >= ? ORDER BY score DESC, start_time DESC LIMIT ?`)
+        .prepare(`SELECT ${COLUMNS} FROM candidates WHERE selected = 1 AND deleted = 0 AND (ai_real IS NULL OR ai_real = 1) AND start_time >= ? ORDER BY score DESC, start_time DESC LIMIT ?`)
         .all(since, limit) as unknown as Row[]
     ).map(fromRow);
   }

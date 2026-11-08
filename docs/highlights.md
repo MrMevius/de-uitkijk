@@ -4,7 +4,7 @@ Short clips of the most interesting events of the last 24 hours. They rotate on 
 
 - the highlight gets an extra tile next to the live cameras;
 - recognised household members count, but low;
-- descriptions are rule-based for now (Frigate's own GenAI would use the paid OpenAI API, which requirement AI-6 rules out; AI descriptions are phase 5).
+- descriptions are rule-based first and are replaced by AI descriptions when enabled ([ai.md](ai.md)); Frigate's own GenAI stays off because it would use the paid OpenAI API.
 
 ## Data flow
 

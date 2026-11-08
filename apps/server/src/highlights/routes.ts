@@ -9,6 +9,8 @@ export interface HighlightRouteOptions {
   frigateUrl: string;
   /** Epoch seconds. */
   now?: () => number;
+  /** AI description status for administrators, when AI is enabled. */
+  aiStatus?: () => unknown;
 }
 
 const num = (v: unknown) => (typeof v === 'string' && v !== '' && Number.isFinite(Number(v)) ? Number(v) : undefined);
@@ -17,7 +19,7 @@ const num = (v: unknown) => (typeof v === 'string' && v !== '' && Number.isFinit
  * Highlight API. Viewing needs a session (auth hook); feedback and deletion need the admin role
  * (`/api/admin/`). Video is fetched from Frigate on demand; nothing is copied permanently.
  */
-export function registerHighlights(app: FastifyInstance, { store, clips, frigateUrl, now = () => Date.now() / 1000 }: HighlightRouteOptions): void {
+export function registerHighlights(app: FastifyInstance, { store, clips, frigateUrl, now = () => Date.now() / 1000, aiStatus }: HighlightRouteOptions): void {
   const frigate = frigateUrl.replace(/\/$/, '');
 
   app.get('/api/highlights/rotation', async () =>
@@ -64,6 +66,8 @@ export function registerHighlights(app: FastifyInstance, { store, clips, frigate
 
   app.get<{ Params: { id: string }; Querystring: { download?: string } }>('/api/highlights/:id/clip.mp4', video('clip'));
   app.get<{ Params: { id: string }; Querystring: { download?: string } }>('/api/highlights/:id/event.mp4', video('event'));
+
+  app.get('/api/admin/ai', async () => (aiStatus ? aiStatus() : { enabled: false }));
 
   app.post<{ Params: { id: string }; Body: { value?: unknown } }>('/api/admin/highlights/:id/feedback', async (request, reply) => {
     const value = request.body?.value;

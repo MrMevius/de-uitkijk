@@ -1,6 +1,9 @@
+import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { buildApp } from './app.ts';
 import { AuthStore } from './auth/store.ts';
+import { codexDescriber } from './ai/codex.ts';
+import { AiWorker } from './ai/worker.ts';
 import { ClipCache } from './highlights/clips.ts';
 import { HighlightImporter } from './highlights/importer.ts';
 import { HighlightStore } from './highlights/store.ts';
@@ -26,11 +29,22 @@ const purge = setInterval(() => store?.purgeExpired(), 3600_000);
 // Highlights need Frigate (live mode) and a login (they show recorded video).
 const highlightStore = config.frigate && store ? new HighlightStore(join(config.dataDir, 'uitkijk.db')) : undefined;
 const clips = highlightStore ? new ClipCache(join(config.dataDir, 'clip-cache'), config.clipCacheBytes) : undefined;
+// Codex keeps its ChatGPT login here; created up front so an administrator can sign in before enabling AI.
+if (highlightStore) mkdirSync(join(config.dataDir, 'codex'), { recursive: true, mode: 0o700 });
+// AI descriptions (AI-4: only when the owner enabled them; AI-7: isolated, failures never affect the rest).
+const ai =
+  highlightStore && config.ai === 'codex'
+    ? new AiWorker(highlightStore, codexDescriber({ codexHome: join(config.dataDir, 'codex') }), {
+        cameras: config.cameras,
+        // `app` exists by the time the worker logs (it starts after the app is built).
+        log: (msg) => app.log.warn(msg),
+      })
+    : undefined;
 const app = buildApp({
   hub,
   ...(config.devApi && mock ? { mock } : {}),
   ...(store ? { auth: { store, publicUrl: config.publicUrl } } : {}),
-  ...(highlightStore && clips && config.frigate ? { highlights: { store: highlightStore, clips, frigateUrl: config.frigate.url } } : {}),
+  ...(highlightStore && clips && config.frigate ? { highlights: { store: highlightStore, clips, frigateUrl: config.frigate.url, ...(ai ? { aiStatus: () => ai.status() } : {}) } } : {}),
   logger: true,
 });
 const importer =
@@ -42,6 +56,7 @@ const importer =
       })
     : undefined;
 importer?.start();
+ai?.start();
 
 mock?.start(config.mockScenario);
 const frigate = config.frigate
@@ -55,7 +70,7 @@ const probe = config.go2rtcUrl
 probe?.start();
 
 app.log.info(
-  { mode: config.mode, cameras: config.cameras.map((c) => c.id), go2rtcProbe: Boolean(probe), login: Boolean(store), highlights: Boolean(importer) },
+  { mode: config.mode, cameras: config.cameras.map((c) => c.id), go2rtcProbe: Boolean(probe), login: Boolean(store), highlights: Boolean(importer), ai: config.ai },
   'De Uitkijk server starting',
 );
 
@@ -64,6 +79,7 @@ const shutdown = async () => {
   frigate?.stop();
   probe?.stop();
   importer?.stop();
+  ai?.stop();
   hub.stop();
   clearInterval(purge);
   await app.close();
