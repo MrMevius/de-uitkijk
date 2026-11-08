@@ -58,10 +58,10 @@ The complete agreed scope is in [docs/requirements.md](docs/requirements.md).
 | Camera clocks | Resolved 2026-11-08 (operator-approved): the hardware NVR and all four cameras now use NTP on the LAN gateway with CET/CEST and matched real time to the second. | Re-check after a day (homelab backlog). |
 | Camera RTSP session limit | go2rtc adds one session per camera per watched stream type, next to Frigate and the NVR (measured). | Check the ANNKE maximum. |
 | Real latency and resources | Startup, bitrate, sessions and go2rtc resources were measured on 2026-11-08; end-to-end latency was not. | Stopwatch latency test on the TV client. |
-| Hosting location for go2rtc + edge | Decided 2026-11-08: `503-web-ubuntu`, deployed with deployctl, open to the home LAN until phase 3 ([docs/deployment.md](docs/deployment.md)). | Install the NUC kiosk. |
+| Hosting location for go2rtc + edge | Decided 2026-11-08: `503-web-ubuntu`, deployed with deployctl; one address `https://uitkijk.mrmevius.nl` with login ([docs/deployment.md](docs/deployment.md)). | Install the NUC kiosk (own viewer account, AdGuard DNS). |
 | Camera account | Operator decision (2026-11-08): go2rtc uses the existing camera administrator account. Accepted trade-off: the credential stays server-side (`.env`, mode 600, go2rtc only). | None. |
 | Frigate alert timing | Frigate keeps alerts open for `cutoff_time` (40 s) after activity; focus lasts about 40 s + 15 s. | Decide whether that is acceptable or adjust Frigate (production change). |
 | Frigate API authentication | The backend uses Frigate's unauthenticated internal API (read-only, server-side). | Optionally switch to the authenticated API with a dedicated user. |
 | Frigate push events | Could lower alert latency below the 2 s poll. | Verify the `/ws` `reviews` topic with a real alert. |
-| Highlight semantics | Grouping, clip extraction and catch-up depend on Frigate event/recording APIs. | Verify against 0.17.2 before design. |
+| Highlight tuning | Selection is rule-based; administrator 👍/👎 feedback is stored but not used yet. | Use the feedback to adjust weights once enough has been collected. |
 | AI provider | Codex with ChatGPT sign-in is in use; Claude needs Max/Ultra/Team for the permitted API-credit route. | Revisit Claude when the plan changes. |
