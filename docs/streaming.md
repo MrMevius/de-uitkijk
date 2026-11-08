@@ -68,6 +68,14 @@ Decision (operator, 2026-11-08): the existing Intel NUC gets Windows 11 with a C
 3. **Acceptance before buying a second unit:** `MediaSource.isTypeSupported('video/mp4; codecs="hvc1.1.6.L153.B0"')` returns `true`; four substreams play without dropped frames; stopwatch latency is recorded; main-stream decoding in a focused tile is tested.
 4. **Fallback** if HEVC fails: a Linux kiosk with WebKit and GStreamer, which played the real H.265 streams in this repository's test, or per-stream H.264 transcoding of the substream in go2rtc.
 
+### Windows 11 + Chrome result (2026-11-08)
+
+Operator's Windows 11 PC (remote, not in front of the cameras), Chrome, live dashboard against the four real cameras (substreams, H.265 passthrough):
+
+- `chrome://gpu` reports hardware decoding for `hevc main` and `hevc main 10` up to 8192x8192.
+- All four tiles played live with smooth motion; go2rtc held exactly one RTSP session per camera. go2rtc does not transcode, so Chrome decoded H.265 itself.
+- Not yet measured on this client: end-to-end latency (needs the operator on site), exact dropped-frame counts and main-stream playback in a focused tile. These remain acceptance steps on the NUC itself.
+
 ## Design targets (not yet measured with cameras)
 
 - Local end-to-end latency 1–2 s.
