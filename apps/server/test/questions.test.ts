@@ -117,7 +117,7 @@ describe('answering questions', () => {
     const facts = new FactStore(':memory:');
     const auth = new AuthStore(':memory:');
     const hub = new StateHub('live', cameras, 15_000);
-    const app = buildApp({ hub, auth: { store: auth, publicUrl: 'https://u.example' }, questions: { questions: t.questions, highlights: t.highlights, facts, now: () => NOW } });
+    const app = buildApp({ hub, auth: { store: auth, publicUrl: 'https://u.example' }, questions: { questions: t.questions, highlights: t.highlights, facts, autoFacts: true, now: () => NOW } });
     cleanup.push(() => app.close(), () => hub.stop(), () => auth.close(), () => facts.close());
     const user = auth.createUser('mark', 'admin');
     auth.redeemLink(auth.createLink(user.id, 'activate'), await hashPassword('correct horse battery'));
@@ -136,13 +136,15 @@ describe('answering questions', () => {
     const vehicle = qs.find((q) => q.kind === 'vehicle')!;
 
     expect((await t.answer(person.id, { category: 'iets' })).statusCode).toBe(400);
-    expect((await t.answer(person.id, { category: 'bezorger', name: 'PostNL\n<b>' })).json()).toEqual({ answer: 'PostNL (bezorger of dienstverlener)' });
+    expect((await t.answer(person.id, { category: 'bezorger', name: 'PostNL\n<b>' })).json()).toEqual({ answer: 'PostNL (bezorger of dienstverlener)', fact: 'pending' });
+    expect(t.questions.get(person.id)!.factStatus).toBe('pending');
     expect(t.highlights.get(p)!.annotation).toBe('PostNL (bezorger of dienstverlener)');
     expect((await t.answer(person.id, { category: 'bewoner' })).statusCode).toBe(404);
 
     const res = await t.answer(vehicle.id, { owner: 'Tini', vehicle: 'zwarte Volkswagen up!, kenteken XX-123-Y' });
-    expect(res.json()).toMatchObject({ answer: 'Zwarte Volkswagen up!, kenteken XX-123-Y is van Tini', fact: true });
-    expect(t.facts.list().map((f) => f.text)).toEqual(['Zwarte Volkswagen up!, kenteken XX-123-Y is van Tini']);
+    expect(res.json()).toMatchObject({ answer: 'Zwarte Volkswagen up!, kenteken XX-123-Y is van Tini', fact: 'done' });
+    expect(t.facts.list()).toMatchObject([{ text: 'Zwarte Volkswagen up!, kenteken XX-123-Y is van Tini', createdBy: `mark (vraag ${vehicle.id})` }]);
+    expect(t.questions.get(vehicle.id)).toMatchObject({ factStatus: 'done', fact: 'Zwarte Volkswagen up!, kenteken XX-123-Y is van Tini' });
     expect(t.highlights.get(v)!.annotation).toBe('auto van Tini');
   });
 
@@ -160,5 +162,45 @@ describe('answering questions', () => {
     expect((await t.answer(nq.id, {})).statusCode).toBe(400);
     expect((await t.app.inject({ method: 'POST', url: `/api/admin/questions/${nq.id}/dismiss`, headers: t.headers })).statusCode).toBe(204);
     expect(t.questions.get(nq.id)!.status).toBe('dismissed');
+  });
+});
+
+describe('facts from answers about people', () => {
+  it('lets the AI write a fact from the still and the answer, or none, and retries failures', async () => {
+    const { FactWorker } = await import('../src/questions/fact-worker.ts');
+    const t = setup();
+    const facts = new FactStore(':memory:');
+    cleanup.push(() => facts.close());
+    for (let i = 0; i < 3; i++) t.add({ ai: { real: true } });
+    t.generator().runOnce();
+    const qs = t.questions.list('open');
+    for (const q of qs) {
+      t.questions.resolve(q.id, 'answered', 'PostNL (bezorger of dienstverlener)', 'mark', NOW);
+      t.questions.setFact(q.id, 'pending');
+    }
+    const answers = ['De PostNL-bezorger komt met een oranje-witte PostNL-bestelbus.', null, 'fail'];
+    const seen: { size: number; answer: string }[] = [];
+    const worker = new FactWorker(t.questions, t.highlights, facts, async (img, ctx) => {
+      seen.push({ size: img.length, answer: ctx.answer });
+      const a = answers.shift();
+      if (a === 'fail') throw new Error('codex exited 1');
+      return a ?? null;
+    }, { cameras, now: () => NOW, toJpeg: async (b) => b, still: async () => new Uint8Array(99), maxAttempts: 1 });
+    await worker.runOnce();
+    await worker.runOnce();
+    await worker.runOnce();
+    expect(await worker.runOnce()).toBe(false);
+    expect(seen.every((s) => s.size === 99 && s.answer === 'PostNL (bezorger of dienstverlener)')).toBe(true);
+    expect(facts.list()).toMatchObject([{ text: 'De PostNL-bezorger komt met een oranje-witte PostNL-bestelbus.', createdBy: expect.stringMatching(/^AI \(vraag \d+\)$/) }]);
+    expect(t.questions.list('all').map((q) => q.factStatus).sort()).toEqual(['done', 'failed', 'none']);
+  });
+
+  it('asks the AI only for visible, stable features and never for faces or clothing of private people', async () => {
+    const { buildFactPrompt, parseFact } = await import('../src/ai/fact-writer.ts');
+    const prompt = buildFactPrompt({ question: 'Wie is dit?', answer: 'Oma (bezoeker)', cameraName: 'Voordeur' });
+    expect(prompt).toContain('Antwoord van de bewoner: Oma (bezoeker)');
+    expect(prompt).toContain('Nooit gebruiken: gezicht, haar, lichaamsbouw, leeftijd of gewone kleding van privépersonen');
+    expect(parseFact('{"fact":""}')).toBeNull();
+    expect(parseFact('{"fact":"Oma komt met een <i>grijze</i> Toyota Yaris.\\n"}')).toBe('Oma komt met een grijze Toyota Yaris.');
   });
 });

@@ -3,12 +3,14 @@ import { join } from 'node:path';
 import { buildApp } from './app.ts';
 import { CameraVideoProbe } from './camera-probe.ts';
 import { AuthStore } from './auth/store.ts';
-import { codexDescriber } from './ai/codex.ts';
+import { codexDescriber, codexImageCall } from './ai/codex.ts';
+import { codexFactWriter } from './ai/fact-writer.ts';
 import { FactStore } from './ai/facts.ts';
-import { AiWorker } from './ai/worker.ts';
+import { AiWorker, ffmpegToJpeg } from './ai/worker.ts';
 import { ClipCache } from './highlights/clips.ts';
 import { HighlightImporter } from './highlights/importer.ts';
-import { HighlightStore } from './highlights/store.ts';
+import { HighlightStore, type StoredCandidate } from './highlights/store.ts';
+import { FactWorker } from './questions/fact-worker.ts';
 import { QuestionGenerator } from './questions/generator.ts';
 import { QuestionStore } from './questions/store.ts';
 import { loadConfig } from './config.ts';
@@ -39,27 +41,29 @@ const highlightStore = config.frigate && store ? new HighlightStore(join(config.
 const clips = highlightStore ? new ClipCache(join(config.dataDir, 'clip-cache'), config.clipCacheBytes, undefined, frigateHttp) : undefined;
 // Codex keeps its ChatGPT login here; created up front so an administrator can sign in before enabling AI.
 if (highlightStore) mkdirSync(join(config.dataDir, 'codex'), { recursive: true, mode: 0o700 });
+// Full-resolution (4K) frame from Frigate's recording (operator decision) for the AI: plates and vehicles are far
+// more legible than in the 640x360 detection snapshot.
+const highlightStill = async (c: StoredCandidate): Promise<Uint8Array | undefined> => {
+  if (!frigateHttp || !config.frigate || !c.frameTime) return undefined;
+  const res = await frigateHttp(
+    `${config.frigate.url}/api/${encodeURIComponent(c.frigateCamera)}/recordings/${c.frameTime.toFixed(2)}/snapshot.jpg`,
+    { signal: AbortSignal.timeout(30_000) },
+  );
+  if (!res.ok) return undefined;
+  const jpeg = new Uint8Array(await res.arrayBuffer());
+  return jpeg[0] === 0xff && jpeg[1] === 0xd8 ? jpeg : undefined;
+};
 const facts = highlightStore ? new FactStore(join(config.dataDir, 'uitkijk.db')) : undefined;
 const questionStore = highlightStore ? new QuestionStore(join(config.dataDir, 'uitkijk.db')) : undefined;
 // AI descriptions (AI-4: only when the owner enabled them; AI-7: isolated, failures never affect the rest).
+const codexOptions = { codexHome: join(config.dataDir, 'codex'), model: config.aiModel };
 const ai =
   highlightStore && config.ai === 'codex'
-    ? new AiWorker(highlightStore, codexDescriber({ codexHome: join(config.dataDir, 'codex'), model: config.aiModel }), {
+    ? new AiWorker(highlightStore, codexDescriber(codexOptions), {
         cameras: config.cameras,
         model: config.aiModel,
         facts: () => facts?.list().map((f) => f.text) ?? [],
-        // Full-resolution (4K) frame from Frigate's recording (operator decision): plates and vehicles are far
-        // more legible than in the 640x360 detection snapshot.
-        still: async (c) => {
-          if (!frigateHttp || !config.frigate || !c.frameTime) return undefined;
-          const res = await frigateHttp(
-            `${config.frigate.url}/api/${encodeURIComponent(c.frigateCamera)}/recordings/${c.frameTime.toFixed(2)}/snapshot.jpg`,
-            { signal: AbortSignal.timeout(30_000) },
-          );
-          if (!res.ok) return undefined;
-          const jpeg = new Uint8Array(await res.arrayBuffer());
-          return jpeg[0] === 0xff && jpeg[1] === 0xd8 ? jpeg : undefined;
-        },
+        still: highlightStill,
         // `app` exists by the time the worker logs (it starts after the app is built).
         log: (msg) => app.log.warn(msg),
       })
@@ -77,7 +81,7 @@ const version = (() => {
 const app = buildApp({
   hub,
   ...(version ? { version } : {}),
-  ...(questionStore && highlightStore ? { questions: { questions: questionStore, highlights: highlightStore, ...(facts ? { facts } : {}) } } : {}),
+  ...(questionStore && highlightStore ? { questions: { questions: questionStore, highlights: highlightStore, autoFacts: Boolean(ai), ...(facts ? { facts } : {}) } } : {}),
   detail: () => ({
     cameras: cameraProbe?.snapshot() ?? [],
     highlights: importer ? { enabled: true, lastOkAt: importer.lastOkAt, lastError: importer.lastError } : { enabled: false },
@@ -107,6 +111,17 @@ const questionGenerator =
       })
     : undefined;
 questionGenerator?.start();
+// Facts from answers about people (only with AI enabled; vehicle answers become facts directly).
+const factWorker =
+  ai && questionStore && highlightStore && facts
+    ? new FactWorker(questionStore, highlightStore, facts, codexFactWriter(codexImageCall(codexOptions)), {
+        cameras: config.cameras,
+        still: highlightStill,
+        toJpeg: ffmpegToJpeg,
+        log: (msg) => app.log.warn(msg),
+      })
+    : undefined;
+factWorker?.start();
 cameraProbe?.start();
 ai?.start();
 
@@ -138,6 +153,7 @@ const shutdown = async () => {
   probe?.stop();
   importer?.stop();
   questionGenerator?.stop();
+  factWorker?.stop();
   cameraProbe?.stop();
   ai?.stop();
   hub.stop();

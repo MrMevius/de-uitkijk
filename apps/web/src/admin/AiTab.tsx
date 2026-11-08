@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../api.ts';
 
 interface AiStatus {
@@ -25,7 +25,6 @@ const when = (epochS: number | null | undefined) =>
 export function AiTab() {
   const [ai, setAi] = useState<AiStatus | null>(null);
   const [facts, setFacts] = useState<Fact[] | null>(null);
-  const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   const loadFacts = () => api<Fact[]>('GET', '/api/admin/facts').then(setFacts, () => setFacts(null));
@@ -41,15 +40,6 @@ export function AiTab() {
     } catch (err) {
       setError((err as Error).message);
     }
-  };
-
-  const add = (e: FormEvent) => {
-    e.preventDefault();
-    void run(async () => {
-      await api('POST', '/api/admin/facts', { text });
-      setText('');
-      await loadFacts();
-    });
   };
 
   const remove = (f: Fact) =>
@@ -92,12 +82,13 @@ export function AiTab() {
 
       {facts && (
         <section className="admin__card admin__card--ok">
-          <h3>Feiten voor de AI</h3>
+          <h3>Feiten voor de AI ({facts.length})</h3>
           <p className="admin__muted">
-            Korte feiten die de AI mag gebruiken, bijvoorbeeld "Rode Tesla Model 3 met kenteken XX-123-Y is van Jasper". De AI
-            noemt een naam alleen als het beeld het feit duidelijk laat zien (leesbaar kenteken, precies dezelfde auto) of als
-            Frigate het gezicht herkende. Merk, model en kleur werken het best; kentekens zijn alleen dichtbij leesbaar. Deze
-            feiten gaan bij elke beschrijving naar OpenAI (Codex). Ze gelden voor nieuwe beschrijvingen.
+            De feiten ontstaan vanzelf uit je antwoorden op het tabblad <a href="#vragen">Vragen</a>: een antwoord over een
+            auto wordt direct een feit; bij een antwoord over een persoon schrijft de AI een feit op basis van zichtbare, vaste
+            kenmerken (auto, bus, logo, uniform), of niets als er niets bruikbaars te zien is. De AI noemt een naam alleen als
+            het beeld zo'n feit duidelijk laat zien. Feiten gaan bij elke beschrijving naar OpenAI (Codex). Klopt een feit
+            niet, verwijder het dan.
           </p>
           <ul className="admin__factlist">
             {facts.map((f) => (
@@ -107,20 +98,8 @@ export function AiTab() {
                 <button onClick={() => void remove(f)}>Verwijderen</button>
               </li>
             ))}
-            {facts.length === 0 && <li className="admin__muted">Nog geen feiten.</li>}
+            {facts.length === 0 && <li className="admin__muted">Nog geen feiten. Beantwoord vragen om ze op te bouwen.</li>}
           </ul>
-          <form className="admin__row" onSubmit={add}>
-            <input
-              className="admin__grow"
-              placeholder="Nieuw feit, bijv. Blauwe VW up! is van Tini"
-              maxLength={200}
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              required
-            />
-            <button>Toevoegen</button>
-          </form>
-          <p className="admin__muted">{facts.length} van max. 50</p>
         </section>
       )}
       {error && <p className="account__error">{error}</p>}

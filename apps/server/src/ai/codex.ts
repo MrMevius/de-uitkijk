@@ -105,38 +105,47 @@ function run(command: string, args: string[], env: NodeJS.ProcessEnv, cwd: strin
   });
 }
 
+/** One confined Codex run with one image, a prompt and a JSON schema; returns the final JSON text. */
+export type CodexImageCall = (jpeg: Uint8Array, prompt: string, schema: object) => Promise<string>;
+
 /**
- * Describes a still through the official Codex CLI, signed in with the owner's ChatGPT account
- * (operator decision 2026-11-08; no API key, no paid fallback).
+ * Runs the official Codex CLI, signed in with the owner's ChatGPT account (operator decision 2026-11-08;
+ * no API key, no paid fallback).
  *
  * Codex is an agent with a shell tool that cannot be switched off, so each run is confined: an empty
  * temporary working directory, the read-only sandbox (no writes, no network for commands), no user
  * config, extra tool features off, and a strict JSON output schema.
  */
-export function codexDescriber({ codexHome, timeoutMs = 180_000, model, command = 'codex' }: CodexOptions): Describer {
-  return async (jpeg, context) => {
+export function codexImageCall({ codexHome, timeoutMs = 180_000, model, command = 'codex' }: CodexOptions): CodexImageCall {
+  return async (jpeg, prompt, outputSchema) => {
     const dir = await mkdtemp(join(tmpdir(), 'uitkijk-ai-'));
     try {
       const image = join(dir, 'frame.jpg');
       const schema = join(dir, 'schema.json');
       const answer = join(dir, 'answer.json');
       await writeFile(image, jpeg);
-      await writeFile(schema, JSON.stringify(SCHEMA));
+      await writeFile(schema, JSON.stringify(outputSchema));
       const args = ['exec', '--skip-git-repo-check', '--ephemeral', '--ignore-user-config', '--ignore-rules'];
       args.push('--sandbox', 'read-only', '--cd', dir, '--color', 'never');
       for (const f of DISABLED_FEATURES) args.push('--disable', f);
       if (model) args.push('--model', model);
       args.push('-c', 'model_reasoning_effort="low"');
-      args.push('--image', image, '--output-schema', schema, '--output-last-message', answer, buildPrompt(context));
+      args.push('--image', image, '--output-schema', schema, '--output-last-message', answer, prompt);
       // Only what Codex needs: no application environment.
       const env = { PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin', HOME: dir, CODEX_HOME: codexHome, LANG: 'C.UTF-8' };
       const { code, stderr } = await run(command, args, env, dir, timeoutMs);
       if (code !== 0) throw new Error(`codex exited ${code}: ${stderr.trim().split('\n').at(-1) ?? ''}`.slice(0, 300));
-      return parseVerdict(await readFile(answer, 'utf8'));
+      return await readFile(answer, 'utf8');
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
   };
+}
+
+/** Describes a highlight still. */
+export function codexDescriber(options: CodexOptions): Describer {
+  const call = codexImageCall(options);
+  return async (jpeg, context) => parseVerdict(await call(jpeg, buildPrompt(context), SCHEMA));
 }
 
 /** True when Codex has a stored login. */

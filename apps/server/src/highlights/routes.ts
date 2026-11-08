@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { factProblem, type FactStore } from '../ai/facts.ts';
+import type { FactStore } from '../ai/facts.ts';
 import { SELECTION } from './selection.ts';
 import { sendFileWithRanges, type ClipCache } from './clips.ts';
 import { toSummary, type HighlightStore } from './store.ts';
@@ -81,17 +81,6 @@ export function registerHighlights(app: FastifyInstance, { store, clips, frigate
 
   if (facts) {
     app.get('/api/admin/facts', async () => facts.list());
-    app.post<{ Body: { text?: unknown } }>('/api/admin/facts', async (request, reply) => {
-      const problem = factProblem(request.body?.text);
-      if (problem) return reply.code(400).send({ error: problem });
-      try {
-        const fact = facts.add(request.body!.text as string, request.user?.username ?? 'onbekend', now());
-        request.log.info({ by: request.user?.username, id: fact.id }, 'AI fact added');
-        return reply.code(201).send(fact);
-      } catch (err) {
-        return reply.code(400).send({ error: (err as Error).message });
-      }
-    });
     app.delete<{ Params: { id: string } }>('/api/admin/facts/:id', async (request, reply) => {
       if (!facts.remove(Number(request.params.id))) return reply.code(404).send({ error: 'Feit niet gevonden' });
       request.log.info({ by: request.user?.username, id: request.params.id }, 'AI fact removed');

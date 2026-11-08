@@ -4,20 +4,22 @@ import { DatabaseSync } from 'node:sqlite';
 export interface Fact {
   id: number;
   text: string;
+  /** Who or what produced it, e.g. "mark (vraag 12)" or "AI (vraag 14)". */
   createdBy: string;
   createdAt: number;
 }
 
-export const MAX_FACTS = 50;
 export const MAX_FACT_LENGTH = 200;
 
-export function factProblem(text: unknown): string | undefined {
-  if (typeof text !== 'string' || text.trim().length < 3) return 'Een feit heeft minimaal 3 tekens';
-  if (text.trim().length > MAX_FACT_LENGTH) return `Een feit heeft maximaal ${MAX_FACT_LENGTH} tekens`;
-  return undefined;
+/** Dutch-style plate ("XX-123-Y") in a fact, used to replace an older fact about the same vehicle. */
+export function plateOf(text: string): string | null {
+  const m = /\b([A-Z0-9]{1,3})-([A-Z0-9]{1,3})-([A-Z0-9]{1,3})\b/i.exec(text);
+  return m ? `${m[1]}-${m[2]}-${m[3]}`.toUpperCase() : null;
 }
 
-/** Facts entered by administrators; stored in the application database, sent to the AI with each description. */
+const normalize = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+/** Facts derived from answered questions; stored in the application database, sent to the AI with each description. */
 export class FactStore {
   private readonly db: DatabaseSync;
 
@@ -49,10 +51,22 @@ export class FactStore {
     ).map((r) => ({ id: Number(r.id), text: r.text, createdBy: r.created_by, createdAt: r.created_at }));
   }
 
+  /**
+   * Adds a fact. An identical fact is not added twice; a fact with the same plate replaces the older one
+   * (the newest answer about a vehicle wins). No upper limit on the number of facts.
+   */
   add(text: string, createdBy: string, at: number = Date.now() / 1000): Fact {
-    if (this.list().length >= MAX_FACTS) throw new Error(`Maximaal ${MAX_FACTS} feiten`);
     // One plain line: no line breaks, so a fact cannot break out of its place in the prompt.
-    const clean = text.replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim();
+    const clean = text.replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, MAX_FACT_LENGTH);
+    const existing = this.list();
+    const same = existing.find((f) => normalize(f.text) === normalize(clean));
+    if (same) return same;
+    const plate = plateOf(clean);
+    const samePlate = plate ? existing.find((f) => plateOf(f.text) === plate) : undefined;
+    if (samePlate) {
+      this.db.prepare('UPDATE ai_facts SET text = ?, created_by = ?, created_at = ? WHERE id = ?').run(clean, createdBy, at, samePlate.id);
+      return this.list().find((f) => f.id === samePlate.id)!;
+    }
     const { lastInsertRowid } = this.db.prepare('INSERT INTO ai_facts (text, created_by, created_at) VALUES (?, ?, ?)').run(clean, createdBy, at);
     return this.list().find((f) => f.id === Number(lastInsertRowid))!;
   }

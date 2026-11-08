@@ -7,6 +7,8 @@ export interface QuestionRouteOptions {
   questions: QuestionStore;
   highlights: HighlightStore;
   facts?: FactStore;
+  /** When true, answers about people are queued for the AI to write a fact. */
+  autoFacts?: boolean;
   /** Epoch seconds. */
   now?: () => number;
 }
@@ -17,7 +19,7 @@ const clean = (v: unknown, max: number) =>
   typeof v === 'string' ? v.replace(/<[^>]*>/g, ' ').replace(/[\r\n\t<>]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max) : '';
 
 /** Questions for administrators (`/api/admin/`, admin role). Answers feed back into highlights and facts. */
-export function registerQuestions(app: FastifyInstance, { questions, highlights, facts, now = () => Date.now() / 1000 }: QuestionRouteOptions): void {
+export function registerQuestions(app: FastifyInstance, { questions, highlights, facts, autoFacts = false, now = () => Date.now() / 1000 }: QuestionRouteOptions): void {
   app.get<{ Querystring: { status?: string } }>('/api/admin/questions', async (request) => {
     const status = request.query.status === 'all' ? 'all' : 'open';
     return questions.list(status, status === 'all' ? 200 : 100).map((q) => {
@@ -42,12 +44,16 @@ export function registerQuestions(app: FastifyInstance, { questions, highlights,
       const label = name ? `${name} (${PERSON_CATEGORIES[category]})` : PERSON_CATEGORIES[category];
       if (h) highlights.setAnnotation(h.id, label);
       questions.resolve(q.id, 'answered', label, by, now());
-      return { answer: label };
+      // The AI writes a fact from the still and this answer (nothing to learn from "onbekend" without a name).
+      const learn = autoFacts && h && (name || category !== 'onbekend');
+      questions.setFact(q.id, learn ? 'pending' : 'none');
+      return { answer: label, fact: learn ? 'pending' : 'none' };
     }
 
     if (q.kind === 'vehicle') {
       if (body.category === 'onbekend') {
         questions.resolve(q.id, 'answered', 'onbekende auto', by, now());
+        questions.setFact(q.id, 'none');
         if (h) highlights.setAnnotation(h.id, 'onbekende auto');
         return { answer: 'onbekende auto' };
       }
@@ -55,16 +61,12 @@ export function registerQuestions(app: FastifyInstance, { questions, highlights,
       const vehicle = clean(body.vehicle, 120) || clean(q.data.vehicle, 120);
       if (owner.length < 2 || vehicle.length < 3) return reply.code(400).send({ error: 'Vul de eigenaar en de omschrijving in' });
       const text = `${vehicle.charAt(0).toUpperCase()}${vehicle.slice(1)} is van ${owner}`.slice(0, 200);
-      if (facts) {
-        try {
-          facts.add(text, by, now());
-        } catch (err) {
-          return reply.code(400).send({ error: (err as Error).message });
-        }
-      }
+      // The owner's own words are the most reliable fact: stored directly, no AI step.
+      const stored = facts?.add(text, `${by} (vraag ${q.id})`, now());
       if (h) highlights.setAnnotation(h.id, `auto van ${owner}`);
       questions.resolve(q.id, 'answered', text, by, now());
-      return { answer: text, fact: Boolean(facts) };
+      questions.setFact(q.id, stored ? 'done' : 'none', stored?.text ?? null);
+      return { answer: text, fact: stored ? 'done' : 'none' };
     }
 
     if (q.kind === 'highlight') {

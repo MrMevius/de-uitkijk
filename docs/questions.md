@@ -4,7 +4,7 @@ The admin page has a **Vragen** tab, with a counter on the tab. The system asks 
 
 | Kind | When | Answer | Effect |
 | --- | --- | --- | --- |
-| Persoon ("Wie is dit?") | Highlight of the last 7 days with a person, no face recognised by Frigate, judged a real event by the AI, not labelled yet; best first; at most 3 open | Bewoner / bezoeker / bezorger of dienst / onbekend, optional name | Label on the highlight ("Volgens beheer: …" in the archive) |
+| Persoon ("Wie is dit?") | Highlight of the last 7 days with a person, no face recognised by Frigate, judged a real event by the AI, not labelled yet; best first; at most 3 open | Bewoner / bezoeker / bezorger of dienst / onbekend, optional name | Label on the highlight ("Volgens beheer: …" in the archive); the AI writes a fact from the still and the answer, if something visible and stable fits (see [ai.md](ai.md#household-facts-since-080-automatic-since-0110)) |
 | Auto ("Van wie is deze auto?") | The AI described a vehicle in a highlight (colour, make, model, plate if legible) that matches no fact; one question per distinct vehicle; at most 3 open | Owner, with an editable description; or "onbekende auto" | New AI fact "<description> is van <owner>", label on the highlight |
 | Highlight ("Was dit een goede highlight?") | Highlight of the last 3 days with a borderline score (2.0–2.6) and no feedback; at most 2 open | 👍 / 👎 | Feedback, which the selection learns from |
 | Suggestie | At least 5 highlights the AI judged as noise for one camera and time of day in a week | Gezien | — (hint: lens, insects, IR reflection, alarm zone) |

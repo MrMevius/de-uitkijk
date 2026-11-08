@@ -13,6 +13,8 @@ interface Question {
   answeredBy: string | null;
   createdAt: number;
   answeredAt: number | null;
+  factStatus: 'pending' | 'done' | 'none' | 'failed' | null;
+  fact: string | null;
   highlight: { id: string; hasThumbnail: boolean } | null;
 }
 
@@ -148,9 +150,9 @@ export function QuestionsTab({ onCountChange }: { onCountChange?: (open: number)
   return (
     <div className="admin__stack">
       <p className="admin__muted">
-        Het systeem stelt hier vragen over wat het nog niet weet, en doet suggesties. Antwoorden over auto's worden feiten
-        voor de AI; antwoorden over personen komen bij de highlight te staan; een oordeel over een highlight stuurt de
-        selectie bij. Nieuwe vragen verschijnen vanzelf, hooguit een paar tegelijk.
+        Het systeem stelt hier vragen over wat het nog niet weet, en doet suggesties. Uit je antwoorden bouwt het zelf de
+        feiten voor de AI op (zie het tabblad AI); antwoorden over personen komen ook bij de highlight te staan; een oordeel
+        over een highlight stuurt de selectie bij. Nieuwe vragen verschijnen vanzelf, hooguit een paar tegelijk.
       </p>
       {open.length === 0 && <p>Geen open vragen. 🎉</p>}
       {open.map((q) => (
@@ -167,6 +169,9 @@ export function QuestionsTab({ onCountChange }: { onCountChange?: (open: number)
                 <td className="admin__muted">{q.answeredAt ? highlightTime(q.answeredAt) : ''}</td>
                 <td>{q.title}</td>
                 <td>{q.status === 'answered' ? q.answer : <span className="admin__muted">overgeslagen</span>}</td>
+                <td className="admin__muted">
+                  {q.factStatus === 'done' ? `Feit: ${q.fact}` : q.factStatus === 'pending' ? 'AI schrijft een feit…' : q.factStatus === 'failed' ? 'Feit mislukt' : ''}
+                </td>
                 <td className="admin__muted">{q.answeredBy}</td>
               </tr>
             ))}

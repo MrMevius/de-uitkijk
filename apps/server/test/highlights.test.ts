@@ -286,7 +286,7 @@ describe('feedback learning', () => {
 });
 
 describe('facts API', () => {
-  it('lets only administrators list, add and remove facts', async () => {
+  it('lets only administrators list and remove facts', async () => {
     const { FactStore } = await import('../src/ai/facts.ts');
     const auth = new AuthStore(':memory:');
     const store = new HighlightStore(':memory:');
@@ -303,11 +303,11 @@ describe('facts API', () => {
     const adminFresh = await login('beheer', 'admin');
     const viewerFresh = await login('kijker', 'viewer');
     expect((await app.inject({ url: '/api/admin/facts', headers: viewerFresh })).statusCode).toBe(403);
-    const added = await app.inject({ method: 'POST', url: '/api/admin/facts', headers: adminFresh, payload: { text: 'Blauwe VW up! is van Tini' } });
-    expect(added.statusCode).toBe(201);
-    expect(added.json()).toMatchObject({ text: 'Blauwe VW up! is van Tini', createdBy: 'beheer' });
-    expect((await app.inject({ method: 'POST', url: '/api/admin/facts', headers: adminFresh, payload: { text: 'x' } })).statusCode).toBe(400);
-    expect((await app.inject({ url: '/api/admin/facts', headers: adminFresh })).json()).toHaveLength(1);
-    expect((await app.inject({ method: 'DELETE', url: `/api/admin/facts/${added.json().id}`, headers: adminFresh })).statusCode).toBe(204);
+    const fact = facts.add('Blauwe VW up! is van Tini', 'mark (vraag 1)');
+    expect((await app.inject({ url: '/api/admin/facts', headers: adminFresh })).json()).toMatchObject([{ text: 'Blauwe VW up! is van Tini', createdBy: 'mark (vraag 1)' }]);
+    // Facts come from answered questions only; there is no manual entry any more.
+    expect((await app.inject({ method: 'POST', url: '/api/admin/facts', headers: adminFresh, payload: { text: 'x' } })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'DELETE', url: `/api/admin/facts/${fact.id}`, headers: viewerFresh })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'DELETE', url: `/api/admin/facts/${fact.id}`, headers: adminFresh })).statusCode).toBe(204);
   });
 });

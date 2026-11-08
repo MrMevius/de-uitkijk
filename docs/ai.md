@@ -22,10 +22,14 @@ Highlights get a short Dutch description written by an AI from one still image. 
 
 The same rules apply to every camera (AI-2). The worker runs only when `UITKIJK_AI=codex` is set in the runtime environment (AI-4: explicit owner authorisation). There is no use of another application's session cookies or undocumented endpoints (AI-5); the only interface is the published `codex` binary.
 
-## Household facts (since 0.8.0)
+## Household facts (since 0.8.0; automatic since 0.11.0)
 
-Administrators keep a short list of facts on `/beheer`, for example "Rode Tesla Model 3 met kenteken XX-123-Y is van Jasper". It holds at most 50 facts of up to 200 characters each, stored in the application database as plain single lines.
+Facts such as "Rode Tesla Model 3 met kenteken XX-123-Y is van Jasper" are built automatically from the answers on the *Vragen* tab ([questions.md](questions.md)); there is no manual entry. There is no upper limit; each fact is at most 200 characters, one plain line.
 
+- **Vehicle answers** become a fact directly, in the administrator's own words ("<AI's vehicle description, as corrected> is van <owner>").
+- **Answers about people** go to a fact writer. Codex looks at the highlight's 4K still together with the answer and writes one fact based only on visible, stable features: a vehicle, a company van, a logo or uniform. Examples: "De PostNL-bezorger komt met een oranje-witte PostNL-bestelbus" or "Oma komt met een grijze Toyota Yaris". The prompt forbids faces, hair, build, age and ordinary clothing of private people. When nothing usable is visible, no fact is written. This is one call per answer, at most 30 a day, with three attempts.
+- **Merging.** An identical fact is not stored twice. A fact with the same plate replaces the older one, so the newest answer wins.
+- **Source.** Each fact records where it came from ("mark (vraag 12)" or "AI (vraag 14)"). Wrong facts can be deleted on the AI tab.
 - **Prompt.** Every description request includes the facts, plus names from Frigate's face recognition for that event.
 - **Naming rule.** The prompt allows a name only when it follows from face recognition, or from a fact that visibly matches the picture (a legible plate, or a vehicle that matches exactly). It forbids guessing who someone is from appearance or clothing, and asks for a neutral description when in doubt.
 - **Input image.** The AI receives the full-resolution (3840×2160) still from Frigate's recording at the alert's best frame (`/api/<camera>/recordings/<time>/snapshot.jpg`, about 1 MB) instead of the 640×360 detection snapshot. 0.8.0 used 1080p; 0.8.1 switched to 4K by operator decision, accepting more plan usage per description. On 2026-11-08 the nearest plate on *Achter het huis 1* measured about 58×29 pixels in 4K (about 29×14 in 1080p, about 10×5 in the detection stream). If Frigate cannot deliver the still, the stored snapshot is used.

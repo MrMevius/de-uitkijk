@@ -18,6 +18,9 @@ export interface Question {
   answeredBy: string | null;
   createdAt: number;
   answeredAt: number | null;
+  /** Fact derived from the answer: pending (AI to write), done, none (nothing usable), failed. */
+  factStatus: 'pending' | 'done' | 'none' | 'failed' | null;
+  fact: string | null;
 }
 
 interface Row {
@@ -33,6 +36,9 @@ interface Row {
   answered_by: string | null;
   created_at: number;
   answered_at: number | null;
+  fact_status: Question['factStatus'];
+  fact: string | null;
+  fact_attempts: number;
 }
 
 const fromRow = (r: Row): Question => ({
@@ -48,6 +54,8 @@ const fromRow = (r: Row): Question => ({
   answeredBy: r.answered_by,
   createdAt: r.created_at,
   answeredAt: r.answered_at,
+  factStatus: r.fact_status ?? null,
+  fact: r.fact ?? null,
 });
 
 /** Questions and suggestions for administrators, with their answers (kept as history). */
@@ -73,6 +81,30 @@ export class QuestionStore {
         answered_at REAL
       );
     `);
+    // Added in 0.11.0 (facts derived from answers).
+    const columns = new Set((this.db.prepare('PRAGMA table_info(questions)').all() as { name: string }[]).map((c) => c.name));
+    for (const [name, type] of [['fact_status', 'TEXT'], ['fact', 'TEXT'], ['fact_attempts', 'INTEGER NOT NULL DEFAULT 0']] as const) {
+      if (!columns.has(name)) this.db.exec(`ALTER TABLE questions ADD COLUMN ${name} ${type}`);
+    }
+  }
+
+  setFact(id: number, status: 'pending' | 'done' | 'none' | 'failed', fact: string | null = null): void {
+    this.db.prepare('UPDATE questions SET fact_status = ?, fact = ? WHERE id = ?').run(status, fact, id);
+  }
+
+  /** Answered questions whose fact still has to be written, oldest first. */
+  factPending(maxAttempts: number): Question[] {
+    return (
+      this.db
+        .prepare("SELECT * FROM questions WHERE fact_status = 'pending' AND fact_attempts < ? ORDER BY answered_at")
+        .all(maxAttempts) as unknown as Row[]
+    ).map(fromRow);
+  }
+
+  factFailure(id: number, maxAttempts: number): void {
+    this.db
+      .prepare("UPDATE questions SET fact_attempts = fact_attempts + 1, fact_status = CASE WHEN fact_attempts + 1 >= ? THEN 'failed' ELSE fact_status END WHERE id = ?")
+      .run(maxAttempts, id);
   }
 
   close(): void {
