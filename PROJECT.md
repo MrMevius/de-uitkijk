@@ -49,7 +49,7 @@ Not production-ready: there is **no authentication**. Run it only on a trusted n
 | --- | --- | --- |
 | HEVC decoding on the TV client | Determines whether H.265 can be passed through or must be transcoded. Real H.265 passthrough already plays in WebKit GTK; headless Chromium cannot. The operator will configure the TV PC as advised. | Recommended: Intel-iGPU mini PC with Windows 11 and Chrome in kiosk mode (most reliable HEVC-over-MSE path); verify with `MediaSource.isTypeSupported` and the stopwatch latency test before buying the second unit ([docs/streaming.md](docs/streaming.md#tv-client-recommendation)). |
 | Achter het huis 1 network link | 160 ms average RTT (others 1–2 ms) and a 7 s main-stream start. | Investigate the camera's link (outside this project). |
-| Camera clocks | Fixed 2026-11-08 (operator-approved): all cameras use NTP on the LAN gateway with CET/CEST. Whether the hardware NVR pushes its own time back is unverified. | Recheck camera time after a day. |
+| Camera clocks | Cameras were set to NTP on the LAN gateway with CET/CEST (2026-11-08, operator-approved), but the hardware NVR overwrites their time with its own clock, ~51 minutes fast. | Correct the NVR clock (homelab backlog; needs approval). |
 | Camera RTSP session limit | go2rtc adds one session per camera per watched stream type, next to Frigate and the NVR (measured). | Check the ANNKE maximum. |
 | Real latency and resources | Startup, bitrate, sessions and go2rtc resources were measured on 2026-11-08; end-to-end latency was not. | Stopwatch latency test on the TV client. |
 | Hosting location for go2rtc + edge | Must not depend on the Frigate host; hardware acceleration available only where a GPU is passed through. | Benchmark, then decide. |

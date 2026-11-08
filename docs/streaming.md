@@ -48,7 +48,7 @@ Environment: development VM on the LAN; go2rtc 1.9.15 in Docker connecting direc
 | Achter het huis 1 network path | Ping from the development VM: average 160 ms RTT, maximum 566 ms, while the other cameras answer in 1–2 ms. This camera's network link explains its slow start; the cause (wireless/cabling/switch port) is not yet investigated. |
 | Browser playback (WebKit GTK, HEVC via GStreamer) | Page navigation → all four substreams playing in 2.2 s. After ~12 s: 69–74 decoded frames per tile, 0–1 dropped. |
 | Buffer ahead of playback position | 0.54–0.72 s per tile. |
-| End-to-end latency | **Not measured.** The camera OSD clocks were ~51 minutes ahead of real time at the time (fixed later the same day, see PROJECT.md), and the test browsers could not provide a comparable display clock. Use the stopwatch method in the procedure below. |
+| End-to-end latency | **Not measured.** The camera OSD clocks were ~51 minutes ahead of real time at the time (set by the hardware NVR, see PROJECT.md), and the test browsers could not provide a comparable display clock. Use the stopwatch method in the procedure below. |
 | Upstream camera connections | One RTSP session per camera per watched stream type, with 1 or 2 consumers per stream (8 consumers on 4 substreams → 4 sessions). Zero sessions when nobody watches; sessions close immediately when the last viewer leaves. |
 | go2rtc resources | 4 substreams with 8 consumers: ~1 % CPU, 24 MiB RAM. 4 main streams: ~5.5 % CPU, 27 MiB RAM (development VM). Backend 38 MiB, edge 4 MiB. |
 | Effect on Frigate | Frigate camera FPS 5.0/5.0/5.0/5.0 during the test, identical to the baseline before it. |
