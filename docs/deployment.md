@@ -8,7 +8,11 @@ Accepted trade-off: if `server503` or the VM is down, the dashboards have no vid
 
 ## Access until phase 3 (operator decision, 2026-11-08)
 
-There is no login yet and the LAN is flat. The edge therefore only serves clients listed in `UITKIJK_ALLOW_FROM` (space-separated addresses or CIDRs): the TV kiosk(s) with a DHCP reservation and the management VM. Other clients get `403`. `/api/health` stays open; it returns status only. Accounts, TV pairing and stream tickets (phase 3, [security.md](security.md)) replace this allowlist. Do not route the dashboard through SWAG before then.
+The dashboard is open to every client on the home LAN, including phones on Wi-Fi: viewing on a phone is wanted. There is no login yet; accounts, TV pairing and stream tickets follow in phase 3 ([security.md](security.md)). Do not route the dashboard through SWAG or otherwise expose it outside the LAN before then.
+
+Phones: iPhones need iOS 17.1 or later (the player falls back to Safari's `ManagedMediaSource`, untested on a real device so far); Android phones depend on the device's H.265 decoding in Chrome. The layout is made for a 16:9 screen, so a phone works best in landscape.
+
+The edge still supports an optional client allowlist (`UITKIJK_ALLOW_FROM`, space-separated addresses or CIDRs; empty allows everyone). It was used briefly on 2026-11-08 and is now empty.
 
 ## Delivery
 
@@ -31,7 +35,7 @@ UITKIJK_MODE=live
 UITKIJK_CAMERA_FILE=cameras.json
 UITKIJK_BIND=10.0.0.171
 UITKIJK_PORT=8088
-UITKIJK_ALLOW_FROM=<kiosk address> 10.0.0.172
+UITKIJK_ALLOW_FROM=
 FRIGATE_URL=http://10.0.0.161:5000
 GO2RTC_CONFIG_PATH=/etc/de-uitkijk/go2rtc.yaml
 ```
@@ -39,7 +43,8 @@ GO2RTC_CONFIG_PATH=/etc/de-uitkijk/go2rtc.yaml
 ## Operations
 
 - Status: `deployctl status`, or `curl http://10.0.0.171:8088/api/health`.
-- Add a kiosk: give it a DHCP reservation, add its address to `UITKIJK_ALLOW_FROM`, then recreate the web container from the current release (`cd /srv/de_uitkijk/current` and run the deployctl-generated compose command, or let the next deployment pick it up).
+- Add a kiosk: point Chrome in kiosk mode at `http://10.0.0.171:8088/?profile=shop` (or `bedroom`). A DHCP reservation is useful but not required.
+- Changes to `runtime.env` take effect with the next deployment (deployctl recreates the containers).
 - Change camera credentials: edit `/etc/de-uitkijk/go2rtc.yaml` and restart the go2rtc container.
 - Rollback: deployctl rolls back automatically on a failed health check. Manual removal: stop and remove the timer and the three containers; nothing else on the host depends on De Uitkijk.
 - Backup: the application has no state of its own. The two files under `/etc/de-uitkijk/` are covered by the VM backup.

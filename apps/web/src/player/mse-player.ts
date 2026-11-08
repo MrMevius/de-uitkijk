@@ -4,6 +4,8 @@ export type PlayerStatus = 'connecting' | 'live' | 'retrying' | 'unsupported';
 
 export interface PlayerDeps {
   MediaSource?: typeof MediaSource;
+  /** True for Safari's ManagedMediaSource (iPhone), which is attached via srcObject. */
+  managed?: boolean;
   WebSocket: typeof WebSocket;
   createObjectURL: (ms: MediaSource) => string;
   revokeObjectURL: (url: string) => void;
@@ -24,8 +26,12 @@ export interface PlayerOptions {
 /** Codecs offered to go2rtc. Video only: the dashboard never plays audio. */
 const CANDIDATE_CODECS = ['avc1.640029', 'avc1.64002A', 'avc1.640033', 'hvc1.1.6.L153.B0', 'hev1.1.6.L153.B0'];
 
+// iPhone Safari (iOS 17.1+) has no MediaSource, only ManagedMediaSource.
+const managedMediaSource = (globalThis as { ManagedMediaSource?: typeof MediaSource }).ManagedMediaSource;
+
 const defaultDeps = (): PlayerDeps => ({
-  MediaSource: globalThis.MediaSource,
+  MediaSource: globalThis.MediaSource ?? managedMediaSource,
+  managed: !globalThis.MediaSource && !!managedMediaSource,
   WebSocket: globalThis.WebSocket,
   createObjectURL: (ms) => URL.createObjectURL(ms),
   revokeObjectURL: (url) => URL.revokeObjectURL(url),
@@ -50,6 +56,7 @@ export class MsePlayer {
   private ms: MediaSource | undefined;
   private sb: SourceBuffer | undefined;
   private objectUrl: string | undefined;
+  private attached = false;
   private queue: ArrayBuffer[] = [];
   private attempt = 0;
   private retryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -110,8 +117,15 @@ export class MsePlayer {
     this.setStatus('connecting');
     const ms = new MS();
     this.ms = ms;
-    this.objectUrl = this.deps.createObjectURL(ms);
-    this.video.src = this.objectUrl;
+    if (this.deps.managed) {
+      // ManagedMediaSource only opens with remote playback disabled.
+      this.video.disableRemotePlayback = true;
+      this.video.srcObject = ms as unknown as MediaProvider;
+    } else {
+      this.objectUrl = this.deps.createObjectURL(ms);
+      this.video.src = this.objectUrl;
+    }
+    this.attached = true;
     this.connectedAt = Date.now();
     this.lastTime = -1;
     this.lastProgressAt = Date.now();
@@ -225,7 +239,11 @@ export class MsePlayer {
     if (this.objectUrl) {
       this.deps.revokeObjectURL(this.objectUrl);
       this.objectUrl = undefined;
+    }
+    if (this.attached) {
+      this.attached = false;
       // Drop the last decoded frame: an unavailable stream must not look live.
+      if (this.video.srcObject) this.video.srcObject = null;
       this.video.removeAttribute('src');
       this.video.load();
     }

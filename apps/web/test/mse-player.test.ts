@@ -167,4 +167,27 @@ describe('MsePlayer', () => {
     expect(statuses.at(-1)).toEqual(['retrying', 'mse: streams: codecs not matched: video:H265 => video:H264']);
     player.stop();
   });
+
+  it('attaches a ManagedMediaSource (iPhone) via srcObject and clears it on failure', () => {
+    const video = document.createElement('video');
+    video.load = () => {};
+    const createObjectURL = vi.fn(() => 'blob:fake');
+    const deps: Partial<PlayerDeps> = {
+      managed: true,
+      WebSocket: FakeWebSocket as unknown as typeof WebSocket,
+      createObjectURL,
+      revokeObjectURL: () => {},
+      random: () => 0.5,
+    };
+    trackMediaSources(deps);
+    const player = new MsePlayer(video, 'ws://x', () => {}, deps, { startTimeoutMs: 5_000 });
+    player.start();
+    expect(video.disableRemotePlayback).toBe(true);
+    expect(video.srcObject).toBe(mediaSources[0]);
+    expect(createObjectURL).not.toHaveBeenCalled();
+    mediaSources[0]!.dispatchEvent(new Event('sourceopen'));
+    vi.advanceTimersByTime(6_000);
+    expect(video.srcObject).toBeNull();
+    player.stop();
+  });
 });
