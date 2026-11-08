@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { parseCameraConfig } from '@uitkijk/shared';
 import { buildApp } from '../src/app.ts';
 import { hashPassword, verifyPassword } from '../src/auth/passwords.ts';
-import { AuthStore, LINK_TTL_MS, SESSION_TTL_MS } from '../src/auth/store.ts';
+import { AuthStore, LINK_TTL_MS } from '../src/auth/store.ts';
 import { StateHub } from '../src/hub.ts';
 
 const cameras = parseCameraConfig(
@@ -24,7 +24,7 @@ function setup() {
   const hub = new StateHub('live', cameras, 15_000);
   const app = buildApp({ hub, auth: { store, publicUrl: ORIGIN, now } });
   cleanup.push(() => app.close(), () => hub.stop(), () => store.close());
-  const pub = { 'x-uitkijk-access': 'public', 'x-uitkijk-client': '203.0.113.7' };
+  const pub = { 'x-uitkijk-client': '203.0.113.7' };
   return {
     app,
     store,
@@ -61,24 +61,14 @@ describe('passwords', () => {
 });
 
 describe('access policy', () => {
-  it('keeps the LAN open but closes login and administration there', async () => {
+  it('requires a session for everything but health, login and one-time links', async () => {
     const { app } = setup();
-    const local = { 'x-uitkijk-access': 'local' };
-    expect((await app.inject({ url: '/api/state', headers: local })).statusCode).toBe(200);
-    expect((await app.inject({ url: '/api/admin/users', headers: local })).statusCode).toBe(403);
-    expect((await app.inject({ method: 'POST', url: '/api/auth/login', headers: local, payload: {} })).statusCode).toBe(
-      403,
-    );
-  });
-
-  it('requires a session for everything but health on the public side, and fails closed without the header', async () => {
-    const { app, pub } = setup();
-    expect((await app.inject({ url: '/api/health', headers: pub })).statusCode).toBe(200);
+    expect((await app.inject({ url: '/api/health' })).statusCode).toBe(200);
     for (const url of ['/api/state', '/api/events', '/api/auth/check', '/api/auth/me', '/api/admin/users']) {
-      expect((await app.inject({ url, headers: pub })).statusCode, url).toBe(401);
+      expect((await app.inject({ url })).statusCode, url).toBe(401);
     }
-    expect((await app.inject({ url: '/api/state' })).statusCode).toBe(401);
-    expect((await app.inject({ url: '/api/state', headers: { 'x-uitkijk-access': 'LOCAL' } })).statusCode).toBe(401);
+    // The old LAN marker grants nothing any more.
+    expect((await app.inject({ url: '/api/state', headers: { 'x-uitkijk-access': 'local' } })).statusCode).toBe(401);
   });
 
   it('logs in with a secure cookie, opens the API and logs out', async () => {
@@ -90,23 +80,22 @@ describe('access policy', () => {
     expect(String(res.headers['set-cookie'])).toMatch(/HttpOnly; Secure; SameSite=Strict/);
     const headers = { ...t.pub, cookie };
     expect((await t.app.inject({ url: '/api/state', headers })).statusCode).toBe(200);
-    expect((await t.app.inject({ url: '/api/auth/check', headers })).statusCode).toBe(204);
+    expect((await t.app.inject({ url: '/api/auth/check', headers })).statusCode).toBe(200);
     expect((await t.app.inject({ url: '/api/admin/users', headers })).statusCode).toBe(403);
     await t.app.inject({ method: 'POST', url: '/api/auth/logout', headers: { ...headers, origin: ORIGIN } });
     expect((await t.app.inject({ url: '/api/state', headers })).statusCode).toBe(401);
   });
 
-  it('expires idle sessions after 30 days and slides active ones', async () => {
+  it('keeps sessions indefinitely and renews the cookie when the dashboard checks in', async () => {
     const t = setup();
     await t.activeUser('mark', 'viewer');
     const { cookie } = await t.login('mark');
     const headers = { ...t.pub, cookie };
-    t.advance(SESSION_TTL_MS - 3600_000);
-    expect((await t.app.inject({ url: '/api/auth/check', headers })).statusCode).toBe(204);
-    t.advance(SESSION_TTL_MS - 3600_000);
-    expect((await t.app.inject({ url: '/api/auth/check', headers })).statusCode).toBe(204);
-    t.advance(SESSION_TTL_MS + 1);
-    expect((await t.app.inject({ url: '/api/auth/check', headers })).statusCode).toBe(401);
+    t.advance(5 * 365 * 24 * 3600_000);
+    expect((await t.app.inject({ url: '/api/auth/check', headers })).statusCode).toBe(200);
+    const me = await t.app.inject({ url: '/api/auth/me', headers });
+    expect(me.statusCode).toBe(200);
+    expect(String(me.headers['set-cookie'])).toMatch(/^uitkijk_session=[^;]+; Path=\/; Max-Age=34560000; HttpOnly; Secure; SameSite=Strict$/);
   });
 
   it('rejects writes from a foreign origin', async () => {

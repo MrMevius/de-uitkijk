@@ -6,12 +6,13 @@ De Uitkijk runs on `503-web-ubuntu` (`10.0.0.171`, Proxmox node `server503`), ne
 
 Accepted trade-off: if `server503` or the VM is down, the dashboards have no video. The hardware NVR keeps recording independently.
 
-## Access (operator decisions, 2026-11-08)
+## Access (operator decision, 2026-11-08)
 
-- **Home LAN:** `http://10.0.0.171:8088`, open to every client including phones, without login.
-- **Outside the home:** `https://uitkijk.mrmevius.nl` through SWAG (`uitkijk.subdomain.conf` → `de-uitkijk:8081` on `swag_default`), with login.
+One address for everybody: `https://uitkijk.mrmevius.nl`, through SWAG (`uitkijk.subdomain.conf` → `de-uitkijk:8081` on `swag_default`), with login everywhere. At home, both AdGuard Home instances rewrite the name to `10.0.0.171`, so it works without internet. `http://10.0.0.171:8088` remains only for deployctl's health check; it applies the same login rules. Details are in [security.md](security.md).
 
-Details are in [security.md](security.md). The SWAG vhost must disable response buffering (`proxy_buffering off`): otherwise the dashboard's server-sent events never arrive and the page stays on "Verbinden met De Uitkijk…". The edge also passes the backend's `X-Accel-Buffering: no` on.
+The SWAG vhost must disable response buffering (`proxy_buffering off`). Otherwise the dashboard's server-sent events never arrive and the page stays on "Verbinden met De Uitkijk…". The edge also passes the backend's `X-Accel-Buffering: no` on.
+
+TVs: log in once in the kiosk browser. The session does not expire, and the dashboard renews the cookie daily.
 
 Phones: iPhones need iOS 17.1 or later (the player falls back to Safari's `ManagedMediaSource`). Android phones depend on the device's H.265 decoding in Chrome. The layout is made for a 16:9 screen, so a phone works best in landscape.
 
@@ -48,7 +49,7 @@ GO2RTC_CONFIG_PATH=/etc/de-uitkijk/go2rtc.yaml
 ## Operations
 
 - Status: `deployctl status`, or `curl http://10.0.0.171:8088/api/health`.
-- Add a kiosk: point Chrome in kiosk mode at `http://10.0.0.171:8088/?profile=shop` (or `bedroom`). A DHCP reservation is useful but not required.
+- Add a kiosk: point Chrome in kiosk mode at `https://uitkijk.mrmevius.nl/?profile=shop` (or `bedroom`) and log in once, preferably with a dedicated viewer account per TV, so it can be removed separately.
 - Changes to `runtime.env` take effect with the next deployment (deployctl recreates the containers).
 - Change camera credentials: edit `/etc/de-uitkijk/go2rtc.yaml` and restart the go2rtc container.
 - Rollback: deployctl rolls back automatically on a failed health check. Manual removal: stop and remove the timer and the three containers; nothing else on the host depends on De Uitkijk.

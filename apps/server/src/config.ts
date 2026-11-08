@@ -17,8 +17,10 @@ export interface ServerConfig {
     pollMs: number;
     maxAlertAgeMs: number;
   };
-  /** Directory for the SQLite database (accounts and sessions). Enables login for public access. */
-  dataDir?: string;
+  /** Directory for the SQLite database (accounts and sessions). */
+  dataDir: string;
+  /** Login required: always in live mode; in mock mode only with UITKIJK_LOGIN=on. */
+  login: boolean;
   /** External HTTPS base URL for one-time links and the Origin check. */
   publicUrl: string;
   /** Internal go2rtc base URL used only for the backend health probe; never sent to browsers. */
@@ -40,7 +42,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     holdMs: int(env.UITKIJK_HOLD_MS, DEFAULT_HOLD_MS),
     mockScenario: env.UITKIJK_MOCK_SCENARIO ?? 'demo',
     devApi: mode === 'mock' && env.UITKIJK_DEV_API !== 'false',
-    ...(env.UITKIJK_DATA_DIR ? { dataDir: env.UITKIJK_DATA_DIR } : {}),
+    dataDir: env.UITKIJK_DATA_DIR || 'data',
+    login: mode === 'live' || env.UITKIJK_LOGIN === 'on',
     publicUrl: new URL(env.UITKIJK_PUBLIC_URL || 'http://127.0.0.1:8080').origin,
     ...(env.GO2RTC_URL ? { go2rtcUrl: env.GO2RTC_URL.replace(/\/$/, '') } : {}),
   };

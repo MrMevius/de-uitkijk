@@ -1,12 +1,12 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { hashPassword, passwordProblem, verifyPassword } from './passwords.ts';
-import { SESSION_TTL_MS, usernameProblem, type AuthStore, type Role, type User } from './store.ts';
+import { usernameProblem, type AuthStore, type Role, type User } from './store.ts';
 
 export const SESSION_COOKIE = 'uitkijk_session';
+/** Sessions never expire (operator decision); the cookie lives as long as browsers allow and is renewed on use. */
+const COOKIE_MAX_AGE_S = 400 * 24 * 3600;
 
-/** Header set by the edge: `local` on the LAN listener, `public` on the listener behind SWAG. */
-export const ACCESS_HEADER = 'x-uitkijk-access';
-/** Header set by the edge on the public listener: the client address as seen by SWAG. */
+/** Header set by the edge: the client address (as seen by SWAG on the public listener). */
 export const CLIENT_HEADER = 'x-uitkijk-client';
 
 export interface AuthOptions {
@@ -16,7 +16,7 @@ export interface AuthOptions {
   now?: () => number;
 }
 
-/** Routes that work without a session on the public side. */
+/** Routes that work without a session. */
 const OPEN = new Set(['/api/health', '/api/auth/login', '/api/auth/logout', '/api/auth/link', '/api/auth/activate']);
 
 const WINDOW_MS = 15 * 60_000;
@@ -55,8 +55,6 @@ class FailureCounter {
   }
 }
 
-export const isLocal = (request: FastifyRequest) => request.headers[ACCESS_HEADER] === 'local';
-
 function cookieValue(request: FastifyRequest, name: string): string | undefined {
   for (const part of (request.headers.cookie ?? '').split(';')) {
     const [k, ...v] = part.trim().split('=');
@@ -68,7 +66,7 @@ function cookieValue(request: FastifyRequest, name: string): string | undefined 
 function setSessionCookie(reply: FastifyReply, token: string): void {
   reply.header(
     'set-cookie',
-    `${SESSION_COOKIE}=${token}; Path=/; Max-Age=${SESSION_TTL_MS / 1000}; HttpOnly; Secure; SameSite=Strict`,
+    `${SESSION_COOKIE}=${token}; Path=/; Max-Age=${COOKIE_MAX_AGE_S}; HttpOnly; Secure; SameSite=Strict`,
   );
 }
 
@@ -79,11 +77,10 @@ function clearSessionCookie(reply: FastifyReply): void {
 const publicUser = (u: User) => ({ id: u.id, username: u.username, role: u.role, active: u.active });
 
 /**
- * Login for access from outside the home LAN.
+ * Login for every viewer (operator decision: one public address, login everywhere).
  *
- * - On the LAN listener everything except login and administration is open (operator decision).
- * - On the public listener every API route needs a session, administration needs the admin role.
- * - Requests without the access header are treated as public, so a misconfigured proxy fails closed.
+ * Every API route except health, login, logout and the one-time-link routes needs a session;
+ * administration needs the admin role. Video is checked by the edge through `/api/auth/check`.
  */
 export function registerAuth(app: FastifyInstance, { store, publicUrl, now = Date.now }: AuthOptions): void {
   const origin = new URL(publicUrl).origin;
@@ -93,11 +90,6 @@ export function registerAuth(app: FastifyInstance, { store, publicUrl, now = Dat
   app.addHook('onRequest', async (request, reply) => {
     const path = request.url.split('?')[0]!;
     if (!path.startsWith('/api/')) return;
-    const authPath = path.startsWith('/api/auth/') || path.startsWith('/api/admin/');
-    if (isLocal(request)) {
-      if (authPath) return reply.code(403).send({ error: 'Inloggen en beheer gaan via de externe HTTPS-pagina' });
-      return;
-    }
     // Cross-site writes: SameSite=Strict already blocks the cookie; also reject foreign origins outright.
     const requestOrigin = request.headers.origin;
     if (request.method !== 'GET' && request.method !== 'HEAD' && requestOrigin && requestOrigin !== origin) {
@@ -145,10 +137,15 @@ export function registerAuth(app: FastifyInstance, { store, publicUrl, now = Dat
     return reply.code(204).send();
   });
 
-  app.get('/api/auth/me', async (request) => publicUser(request.user!));
+  /** The dashboard calls this on load and daily; it renews the cookie so a TV stays logged in. */
+  app.get('/api/auth/me', async (request, reply) => {
+    const token = cookieValue(request, SESSION_COOKIE);
+    if (token) setSessionCookie(reply, token);
+    return publicUser(request.user!);
+  });
 
-  /** Used by the edge (`auth_request`) before it proxies a public video stream. */
-  app.get('/api/auth/check', async (_request, reply) => reply.code(204).send());
+  /** Used by the edge (`auth_request`, cached there) before it proxies a video stream. 200 so nginx can cache it. */
+  app.get('/api/auth/check', async () => 'ok');
 
   app.post<{ Body: { token?: unknown } }>('/api/auth/link', async (request, reply) => {
     const link = typeof request.body?.token === 'string' ? store.peekLink(request.body.token) : undefined;

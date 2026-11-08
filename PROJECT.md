@@ -21,8 +21,8 @@ The complete agreed scope is in [docs/requirements.md](docs/requirements.md).
 
 **Deployed (2026-11-08):** live mode on `503-web-ubuntu`, delivered by deployctl from `main` ([docs/deployment.md](docs/deployment.md)).
 
-- Home LAN, phones included: `http://10.0.0.171:8088`, no login.
-- Outside the home: `https://uitkijk.mrmevius.nl` through SWAG, with own accounts (administrator and viewer roles, one-time activation links) ([docs/security.md](docs/security.md)).
+- One address for everybody, at home and away: `https://uitkijk.mrmevius.nl` through SWAG, with local DNS at home.
+- Login everywhere with own accounts (administrator and viewer roles, one-time activation links); sessions do not expire ([docs/security.md](docs/security.md)).
 
 ## Documentation
 
@@ -43,7 +43,7 @@ The complete agreed scope is in [docs/requirements.md](docs/requirements.md).
 | --- | --- |
 | 1 (done) | Foundation, mock/live alert integration, streaming proof of concept, automatic dashboard, focus, resilience, tests. |
 | 2 | Real-camera streaming measurements; hosting benchmark and placement decision (independent of the Frigate host); kiosk client (Intel NUC) with HEVC verification; display profiles per device. |
-| 3 | Done 2026-11-08: SQLite accounts and roles, one-time links, login for public access through SWAG/HTTPS. TV pairing and stream tickets are superseded by open LAN access. Zabbix watches the three containers (503-web required-running list). Remaining: optional local DNS name. |
+| 3 | Done 2026-11-08: SQLite accounts and roles, one-time links, one public address with login everywhere, local DNS, video reconnects during backend outages through a cached login check. TV pairing and stream tickets are superseded. Zabbix watches the three containers (503-web required-running list). |
 | 4 | Highlights: candidate selection, grouping across cameras, clip selection, thumbnails, rotation on the dashboard, archive, feedback/deletion with tombstones, catch-up after outages. |
 | 5 | AI descriptions via an officially permitted subscription method, with owner authorisation; administrative UI; downloads. |
 

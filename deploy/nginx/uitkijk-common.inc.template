@@ -1,4 +1,4 @@
-# Shared by both listeners (included from default.conf). $uitkijk_access and $uitkijk_client are set per server.
+# Shared by both listeners (included from default.conf). $uitkijk_client is set per server.
 server_tokens off;
 root /usr/share/nginx/html;
 
@@ -18,10 +18,38 @@ location /api/ {
     proxy_pass http://${API_UPSTREAM};
     proxy_http_version 1.1;
     proxy_set_header Connection "";
-    proxy_set_header X-Uitkijk-Access $uitkijk_access;
     proxy_set_header X-Uitkijk-Client $uitkijk_client;
     # Server-sent events: no buffering, long-lived. Pass the backend's X-Accel-Buffering: no on to SWAG too.
     proxy_buffering off;
     proxy_pass_header X-Accel-Buffering;
     proxy_read_timeout 1h;
+}
+
+location = /stream/ws {
+    if ($arg_src !~ "^[a-z0-9_]{1,64}$") {
+        return 400;
+    }
+    auth_request /_auth;
+    # Rewrite (query string kept) instead of variables in proxy_pass, which would need a resolver.
+    rewrite ^ /api/ws break;
+    proxy_pass http://${GO2RTC_UPSTREAM};
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+    # go2rtc compares the WebSocket Origin with Host.
+    proxy_set_header Host $http_host;
+    proxy_read_timeout 1h;
+    proxy_buffering off;
+}
+
+location = /_auth {
+    internal;
+    proxy_pass http://${API_UPSTREAM}/api/auth/check;
+    proxy_pass_request_body off;
+    proxy_set_header Content-Length "";
+    proxy_set_header X-Uitkijk-Client $uitkijk_client;
+    proxy_cache uitkijk_auth;
+    proxy_cache_key $cookie_uitkijk_session;
+    proxy_cache_valid 200 1m;
+    proxy_cache_use_stale error timeout http_500 http_502 http_503 http_504;
 }

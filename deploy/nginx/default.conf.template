@@ -1,12 +1,10 @@
 # Edge proxy for De Uitkijk.
-# - Serves the dashboard and forwards /api/ to the backend.
-# - Exposes exactly one go2rtc endpoint: the MSE WebSocket, for validated stream names only.
-#   The go2rtc management API, RTSP, and source URLs are never reachable through this proxy.
-# - Two listeners:
-#     8080  home LAN: no login (operator decision); login and administration are refused by the backend.
-#     8081  public, only for SWAG (not published on the host): every API call and video stream needs a session.
-#   The edge tells the backend which listener a request came in on (X-Uitkijk-Access), overwriting
-#   whatever the client sent.
+# - Serves the dashboard and forwards /api/ to the backend (which requires a login in live mode).
+# - Exposes exactly one go2rtc endpoint: the MSE WebSocket, for validated stream names and logged-in
+#   users only. The go2rtc management API, RTSP, and source URLs are never reachable through this proxy.
+# - Two listeners with the same rules:
+#     8080  on the host (deployment health check; not meant for viewing)
+#     8081  for SWAG (https://uitkijk.mrmevius.nl, the one address for viewers)
 # ${API_UPSTREAM} and ${GO2RTC_UPSTREAM} are filled in by the nginx image's envsubst at start-up.
 
 map $http_upgrade $connection_upgrade {
@@ -14,41 +12,19 @@ map $http_upgrade $connection_upgrade {
     ''      close;
 }
 
+# Successful video login checks, per session cookie. Fresh for one minute; while the backend is down a
+# previous success stays usable for up to four hours, so TVs can reconnect during a backend outage.
+proxy_cache_path /var/cache/nginx/uitkijk-auth levels=1 keys_zone=uitkijk_auth:1m max_size=10m inactive=4h use_temp_path=off;
+
 server {
     listen 8080;
-    set $uitkijk_access local;
     set $uitkijk_client $remote_addr;
     include /etc/nginx/conf.d/uitkijk-common.inc;
-
-    location = /stream/ws {
-        if ($arg_src !~ "^[a-z0-9_]{1,64}$") {
-            return 400;
-        }
-        include /etc/nginx/conf.d/uitkijk-stream.inc;
-    }
 }
 
 server {
     listen 8081;
-    # SWAG is the only client; it passes the real client address for login throttling.
-    set $uitkijk_access public;
+    # SWAG is the only client here; it passes the real client address for login throttling.
     set $uitkijk_client $http_x_real_ip;
     include /etc/nginx/conf.d/uitkijk-common.inc;
-
-    location = /stream/ws {
-        if ($arg_src !~ "^[a-z0-9_]{1,64}$") {
-            return 400;
-        }
-        auth_request /_auth;
-        include /etc/nginx/conf.d/uitkijk-stream.inc;
-    }
-
-    location = /_auth {
-        internal;
-        proxy_pass http://${API_UPSTREAM}/api/auth/check;
-        proxy_pass_request_body off;
-        proxy_set_header Content-Length "";
-        proxy_set_header X-Uitkijk-Access public;
-        proxy_set_header X-Uitkijk-Client $uitkijk_client;
-    }
 }

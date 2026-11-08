@@ -17,7 +17,7 @@ CI (`.github/workflows/ci.yml`) runs typecheck, tests, the web build and the Doc
 | Configuration, backoff, formatting, health | `packages/shared/test/misc.test.ts` | Four locations in order; nine-camera fixture keeps the same first four; more than nine rejected; invalid ids, stream names and duplicate Frigate mappings rejected; backoff growth, cap and floor; Dutch date and 24-hour clock in winter and summer time; health messages. |
 | Scenarios | `apps/server/test/scenarios.test.ts` | Every fixture driven with fake timers: single alert, multiple alerts, expiration/reactivation, looping, camera disconnect/reconnect, alert source unavailable, streaming unavailable, nine cameras, unknown cameras ignored, scenario switching. |
 | Frigate source | `apps/server/test/frigate.test.ts` | Review query (severity, window, cameras); open alert → focus; close → 15 s hold from observation; availability from `camera_fps`; down after three failures with alert release; bounded poll backoff; discovery mismatch logging; live configuration validation. |
-| Login and access policy | `apps/server/test/auth.test.ts` | scrypt hashing; LAN open but login/administration refused; public side requires a session for everything but health and fails closed without the access header; secure cookie; 30-day sliding sessions; foreign Origin rejected; throttling per username (5) and client (10); invitation, single-use 72-hour links, password reset ends sessions; last-admin and self-delete protection; username/role validation. |
+| Login and access policy | `apps/server/test/auth.test.ts` | scrypt hashing; every API route except health, login and one-time links requires a session (an old LAN marker header grants nothing); secure cookie; sessions without expiry and cookie renewal; foreign Origin rejected; throttling per username (5) and client (10); invitation, single-use 72-hour links, password reset ends sessions; last-admin and self-delete protection; username/role validation. |
 | Login page | `apps/web/test/account.test.tsx` | Login redirects only to same-site paths; server errors shown. |
 | HTTP API | `apps/server/test/app.test.ts` | State without source URLs; dev scenario API (mock only); SSE delivers updates; go2rtc probe up/down/suppressed. |
 | Dashboard | `apps/web/test/dashboard.test.tsx` | Four and nine tiles; names in shared order; no interactive controls; muted video; **focus change keeps the same `<video>` element**; health messages; offline tile; video hidden until live. |
@@ -40,6 +40,10 @@ Scenarios (`apps/server/src/mock/scenarios.ts`), selectable at <http://127.0.0.1
 | `streaming-unavailable` | Backend reports go2rtc down 3–25 s (simulated health only). |
 | `nine-cameras` | Alerts on Voordeur, Mock 5 and Mock 9 (car). |
 | `demo` | Loop of single, double and re-activated alerts over 120 s. |
+
+## Video during a backend outage
+
+Verified 2026-11-08 with Docker: a stream with a valid session connects; after `docker compose stop server` the same session still connects (cached login check), while an unknown session is refused.
 
 ## Manual checks
 

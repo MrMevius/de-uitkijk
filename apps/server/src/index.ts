@@ -16,7 +16,8 @@ const mock =
         config.cameras.map((c) => c.id),
       )
     : undefined;
-const store = config.dataDir ? new AuthStore(join(config.dataDir, 'uitkijk.db')) : undefined;
+// Live mode always requires login: real camera images are never served without a session.
+const store = config.login ? new AuthStore(join(config.dataDir, 'uitkijk.db')) : undefined;
 store?.purgeExpired();
 const purge = setInterval(() => store?.purgeExpired(), 3600_000);
 const app = buildApp({

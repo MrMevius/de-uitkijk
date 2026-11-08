@@ -81,7 +81,7 @@ Consolidated specification for De Uitkijk. Each requirement has a phase:
 | RES-3 | Never display stale frames as live. | P1 |
 | RES-4 | Subtle status indicators for central service failures. | P1 |
 | RES-5 | A loaded dashboard keeps streaming when the application backend fails. | P1 (design and behaviour) |
-| RES-6 | Previously authorised TV clients can reconnect to the streaming service for up to four hours during a backend outage. | Superseded (2026-11-08: LAN viewing needs neither login nor backend) |
+| RES-6 | Previously authorised TV clients can reconnect to the streaming service for up to four hours during a backend outage. | Done (2026-11-08: the edge caches successful video login checks and accepts them while the backend is down) |
 | RES-7 | Live viewing survives a Frigate host failure; local operation survives internet failure. | P1 (design), Later (deployment) |
 
 ## 7. Development and testing
@@ -130,11 +130,11 @@ Consolidated specification for De Uitkijk. Each requirement has a phase:
 
 | ID | Requirement | Phase |
 | --- | --- | --- |
-| SEC-1 | Public HTTPS access through the existing SWAG reverse proxy. Local access must work without internet; local DNS through AdGuard Home. | Done 2026-11-08 for public HTTPS; local access by IP works without internet, no local DNS name yet |
-| SEC-2 | Own user accounts with administrator and viewer roles. No MFA (neither mandatory nor optional). | Done (2026-11-08; login only for access from outside the LAN) |
+| SEC-1 | Public HTTPS access through the existing SWAG reverse proxy. Local access must work without internet; local DNS through AdGuard Home. | Done 2026-11-08 (one address; local DNS rewrite on both AdGuard Home instances) |
+| SEC-2 | Own user accounts with administrator and viewer roles. No MFA (neither mandatory nor optional). | Done (2026-11-08; login everywhere, sessions without expiry) |
 | SEC-3 | Accounts activated and passwords recovered through administrator-generated one-time links; emergency administrator recovery through a secured server CLI. | Done (2026-11-08) |
 | SEC-4 | All authenticated users may access the full highlight archive; only administrators manage settings, feedback and deletion. | Later |
-| SEC-5 | TV clients use one-time pairing and revocable device sessions. | Superseded (2026-11-08: TVs use the open LAN access) |
+| SEC-5 | TV clients use one-time pairing and revocable device sessions. | Superseded (2026-11-08: TVs log in like other users; sessions do not expire) |
 | SEC-6 | Production streaming access protected independently of backend availability. | Later (architecture in [security.md](security.md)) |
 | SEC-7 | Never expose Frigate credentials or unrestricted go2rtc control endpoints to browsers. | P1 |
 | SEC-8 | No smartphone push notifications. | All phases |

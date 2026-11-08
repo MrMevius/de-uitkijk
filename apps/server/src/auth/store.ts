@@ -14,9 +14,10 @@ export interface User {
 
 export type LinkPurpose = 'activate' | 'reset';
 
-export const SESSION_TTL_MS = 30 * 24 * 3600_000;
 export const LINK_TTL_MS = 72 * 3600_000;
-/** Sessions are extended at most this often, to avoid a write per request. */
+/** Sessions do not expire (operator decision); they end on logout, password reset or account removal. */
+const NEVER = 8_640_000_000_000_000;
+/** Last use is recorded at most this often, to avoid a write per request. */
 const TOUCH_INTERVAL_MS = 3600_000;
 
 const USERNAME = /^[a-z0-9][a-z0-9._-]{1,31}$/;
@@ -160,11 +161,11 @@ export class AuthStore {
     const now = this.now();
     this.db
       .prepare('INSERT INTO sessions (token_hash, user_id, expires_at, touched_at) VALUES (?, ?, ?, ?)')
-      .run(digest(token), userId, now + SESSION_TTL_MS, now);
+      .run(digest(token), userId, NEVER, now);
     return token;
   }
 
-  /** Resolves a session token to its user and slides the expiry forward (at most hourly). */
+  /** Resolves a session token to its user and records its last use (at most hourly). */
   sessionUser(token: string | undefined): User | undefined {
     if (!token) return undefined;
     const hash = digest(token);
@@ -174,9 +175,7 @@ export class AuthStore {
       .get(hash, now) as { user_id: number; touched_at: number } | undefined;
     if (!row) return undefined;
     if (now - row.touched_at > TOUCH_INTERVAL_MS) {
-      this.db
-        .prepare('UPDATE sessions SET expires_at = ?, touched_at = ? WHERE token_hash = ?')
-        .run(now + SESSION_TTL_MS, now, hash);
+      this.db.prepare('UPDATE sessions SET expires_at = ?, touched_at = ? WHERE token_hash = ?').run(NEVER, now, hash);
     }
     const user = this.getUser(row.user_id);
     return user?.active ? user : undefined;
