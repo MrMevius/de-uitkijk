@@ -1,0 +1,61 @@
+import Fastify, { type FastifyInstance } from 'fastify';
+import type { StateHub } from './hub.ts';
+import type { MockSource } from './mock/mock-source.ts';
+
+export interface AppDeps {
+  hub: StateHub;
+  /** Present only in mock mode with the dev API enabled. */
+  mock?: MockSource;
+  logger?: boolean;
+  heartbeatMs?: number;
+}
+
+/**
+ * HTTP API. Deliberately small: state snapshot, a server-sent event stream for live updates,
+ * a health endpoint and, in mock mode only, scenario control for development.
+ * No route returns Frigate URLs, camera source URLs or credentials.
+ */
+export function buildApp({ hub, mock, logger = false, heartbeatMs = 15_000 }: AppDeps): FastifyInstance {
+  const app = Fastify({ logger });
+
+  app.get('/api/health', async () => {
+    const state = hub.snapshot();
+    return { status: 'ok', mode: state.mode, alerts: state.health.alerts, streaming: state.health.streaming };
+  });
+
+  app.get('/api/state', async () => hub.snapshot());
+
+  app.get('/api/events', (request, reply) => {
+    reply.hijack();
+    const res = reply.raw;
+    res.writeHead(200, {
+      'content-type': 'text/event-stream; charset=utf-8',
+      'cache-control': 'no-cache, no-transform',
+      connection: 'keep-alive',
+      'x-accel-buffering': 'no',
+    });
+    const send = (state: unknown) => res.write(`event: state\ndata: ${JSON.stringify(state)}\n\n`);
+    res.write('retry: 3000\n\n');
+    send(hub.snapshot());
+    const unsubscribe = hub.subscribe(send);
+    const heartbeat = setInterval(() => res.write(': ping\n\n'), heartbeatMs);
+    request.raw.on('close', () => {
+      clearInterval(heartbeat);
+      unsubscribe();
+    });
+  });
+
+  if (mock) {
+    app.get('/api/dev/scenarios', async () => ({ current: mock.scenario, scenarios: mock.list() }));
+    app.post<{ Body: { name?: unknown } }>('/api/dev/scenario', async (request, reply) => {
+      const name = request.body?.name;
+      if (typeof name !== 'string' || !mock.list().some((s) => s.name === name)) {
+        return reply.code(400).send({ error: 'unknown scenario' });
+      }
+      mock.start(name);
+      return { current: name };
+    });
+  }
+
+  return app;
+}

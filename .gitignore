@@ -1,0 +1,12 @@
+node_modules/
+dist/
+coverage/
+*.log
+.DS_Store
+
+# Local configuration and secrets. Only *.example files are committed.
+.env
+.env.*
+!.env.example
+go2rtc/live.yaml
+config/cameras.local.json

@@ -1,0 +1,46 @@
+# De Uitkijk — local development stack.
+#
+#   docker compose up --build          # mock mode: simulated cameras and alerts, no network access needed
+#   open http://127.0.0.1:8080         # dashboard;  http://127.0.0.1:8080/dev  scenario panel
+#
+# Live mode (trusted development network only): see docs/development.md.
+# Only the edge proxy is published, on 127.0.0.1 by default. go2rtc and the backend have no host ports.
+name: de-uitkijk
+
+services:
+  go2rtc:
+    image: alexxit/go2rtc:1.9.15
+    restart: unless-stopped
+    environment:
+      TZ: Europe/Amsterdam
+    # Camera credentials are read from .env by go2rtc only; the backend and browser never receive them.
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - ./go2rtc/${GO2RTC_CONFIG:-mock.yaml}:/config/go2rtc.yaml:ro
+      - ./go2rtc/mock-camera.sh:/config/mock-camera.sh:ro
+
+  server:
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
+    restart: unless-stopped
+    environment:
+      UITKIJK_MODE: ${UITKIJK_MODE:-mock}
+      UITKIJK_CAMERA_CONFIG: /app/config/${UITKIJK_CAMERA_FILE:-cameras.json}
+      UITKIJK_MOCK_SCENARIO: ${UITKIJK_MOCK_SCENARIO:-demo}
+      FRIGATE_URL: ${FRIGATE_URL:-}
+      FRIGATE_POLL_MS: ${FRIGATE_POLL_MS:-2000}
+      GO2RTC_URL: http://go2rtc:1984
+    volumes:
+      - ./config:/app/config:ro
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    depends_on: [server, go2rtc]
+    ports:
+      - "${UITKIJK_BIND:-127.0.0.1}:${UITKIJK_PORT:-8080}:8080"

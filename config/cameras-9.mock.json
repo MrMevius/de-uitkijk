@@ -1,0 +1,76 @@
+{
+  "cameras": [
+    {
+      "id": "oprit",
+      "name": "Oprit / Pad",
+      "streams": {
+        "main": "oprit_main",
+        "sub": "oprit_sub"
+      }
+    },
+    {
+      "id": "voordeur",
+      "name": "Voordeur",
+      "streams": {
+        "main": "voordeur_main",
+        "sub": "voordeur_sub"
+      }
+    },
+    {
+      "id": "achter_1",
+      "name": "Achter het huis 1",
+      "streams": {
+        "main": "achter_1_main",
+        "sub": "achter_1_sub"
+      }
+    },
+    {
+      "id": "achter_2",
+      "name": "Achter het huis 2 / Schuur",
+      "streams": {
+        "main": "achter_2_main",
+        "sub": "achter_2_sub"
+      }
+    },
+    {
+      "id": "mock_5",
+      "name": "Mock 5",
+      "streams": {
+        "main": "mock_5_main",
+        "sub": "mock_5_sub"
+      }
+    },
+    {
+      "id": "mock_6",
+      "name": "Mock 6",
+      "streams": {
+        "main": "mock_6_main",
+        "sub": "mock_6_sub"
+      }
+    },
+    {
+      "id": "mock_7",
+      "name": "Mock 7",
+      "streams": {
+        "main": "mock_7_main",
+        "sub": "mock_7_sub"
+      }
+    },
+    {
+      "id": "mock_8",
+      "name": "Mock 8",
+      "streams": {
+        "main": "mock_8_main",
+        "sub": "mock_8_sub"
+      }
+    },
+    {
+      "id": "mock_9",
+      "name": "Mock 9",
+      "streams": {
+        "main": "mock_9_main",
+        "sub": "mock_9_sub"
+      }
+    }
+  ]
+}

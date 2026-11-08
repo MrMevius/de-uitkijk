@@ -1,0 +1,28 @@
+{
+  "cameras": [
+    {
+      "id": "oprit",
+      "name": "Oprit / Pad",
+      "frigateCamera": "Vriezenveen_oprit",
+      "streams": { "main": "oprit_main", "sub": "oprit_sub" }
+    },
+    {
+      "id": "voordeur",
+      "name": "Voordeur",
+      "frigateCamera": "Vriezenveen_voordeur",
+      "streams": { "main": "voordeur_main", "sub": "voordeur_sub" }
+    },
+    {
+      "id": "achter_1",
+      "name": "Achter het huis 1",
+      "frigateCamera": "Vriezenveen_achter_thuis_1",
+      "streams": { "main": "achter_1_main", "sub": "achter_1_sub" }
+    },
+    {
+      "id": "achter_2",
+      "name": "Achter het huis 2 / Schuur",
+      "frigateCamera": "Vriezenveen_achter_thuis_2",
+      "streams": { "main": "achter_2_main", "sub": "achter_2_sub" }
+    }
+  ]
+}

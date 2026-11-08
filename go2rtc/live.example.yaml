@@ -1,0 +1,32 @@
+# go2rtc configuration for live mode. Copy to go2rtc/live.yaml (git-ignored) and set GO2RTC_CONFIG=live.yaml.
+# ${VAR} values come from .env and are expanded by go2rtc at start-up; never write credentials here.
+#
+# go2rtc connects to each camera directly (not via Frigate), opens one upstream RTSP session per
+# stream only while somebody watches it, and shares that session between all viewers.
+api:
+  listen: ":1984"
+  # Browsers reach only /api/ws through the edge proxy. /api (version) is used by the backend probe.
+  allow_paths: [/api, /api/ws]
+rtsp:
+  # No RTSP restream outside the container.
+  listen: "127.0.0.1:8554"
+webrtc:
+  # Disabled in increment 1; see docs/streaming.md before enabling (needs a published UDP/TCP port).
+  listen: ""
+log:
+  level: info
+
+streams:
+  oprit_main: rtsp://${CAMERA_USER}:${CAMERA_PASSWORD}@${CAM_OPRIT_HOST}:554/Streaming/Channels/101
+  oprit_sub: rtsp://${CAMERA_USER}:${CAMERA_PASSWORD}@${CAM_OPRIT_HOST}:554/Streaming/Channels/102
+  voordeur_main: rtsp://${CAMERA_USER}:${CAMERA_PASSWORD}@${CAM_VOORDEUR_HOST}:554/Streaming/Channels/101
+  voordeur_sub: rtsp://${CAMERA_USER}:${CAMERA_PASSWORD}@${CAM_VOORDEUR_HOST}:554/Streaming/Channels/102
+  achter_1_main: rtsp://${CAMERA_USER}:${CAMERA_PASSWORD}@${CAM_ACHTER_1_HOST}:554/Streaming/Channels/101
+  achter_1_sub: rtsp://${CAMERA_USER}:${CAMERA_PASSWORD}@${CAM_ACHTER_1_HOST}:554/Streaming/Channels/102
+  achter_2_main: rtsp://${CAMERA_USER}:${CAMERA_PASSWORD}@${CAM_ACHTER_2_HOST}:554/Streaming/Channels/101
+  achter_2_sub: rtsp://${CAMERA_USER}:${CAMERA_PASSWORD}@${CAM_ACHTER_2_HOST}:554/Streaming/Channels/102
+
+  # Optional H.264 fallback for clients that cannot decode H.265 through MSE. This transcodes on the
+  # go2rtc host: CPU heavy without hardware acceleration. Point the camera's stream name at it only
+  # when measurements show it is needed (see docs/streaming.md).
+  # oprit_sub_h264: ffmpeg:oprit_sub#video=h264#hardware

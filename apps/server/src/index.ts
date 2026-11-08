@@ -1,0 +1,46 @@
+import { buildApp } from './app.ts';
+import { loadConfig } from './config.ts';
+import { FrigateSource } from './frigate/frigate-source.ts';
+import { StateHub } from './hub.ts';
+import { MockSource } from './mock/mock-source.ts';
+import { StreamingProbe } from './streaming-probe.ts';
+
+const config = loadConfig();
+const hub = new StateHub(config.mode, config.cameras, config.holdMs);
+const mock =
+  config.mode === 'mock'
+    ? new MockSource(
+        hub,
+        config.cameras.map((c) => c.id),
+      )
+    : undefined;
+const app = buildApp({ hub, ...(config.devApi && mock ? { mock } : {}), logger: true });
+
+mock?.start(config.mockScenario);
+const frigate = config.frigate
+  ? new FrigateSource(hub, config.cameras, { ...config.frigate, log: (msg) => app.log.warn(msg) })
+  : undefined;
+frigate?.start();
+
+const probe = config.go2rtcUrl
+  ? new StreamingProbe(hub, config.go2rtcUrl, { suppressed: () => mock?.streamingSimulated ?? false })
+  : undefined;
+probe?.start();
+
+app.log.info(
+  { mode: config.mode, cameras: config.cameras.map((c) => c.id), go2rtcProbe: Boolean(probe) },
+  'De Uitkijk server starting',
+);
+
+const shutdown = async () => {
+  mock?.stop();
+  frigate?.stop();
+  probe?.stop();
+  hub.stop();
+  await app.close();
+  process.exit(0);
+};
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
+
+await app.listen({ host: config.host, port: config.port });

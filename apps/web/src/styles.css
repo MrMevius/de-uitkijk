@@ -1,0 +1,200 @@
+:root {
+  --bg: #07090c;
+  --tile-bg: #11151b;
+  --text: #f4f6f8;
+  --muted: #9aa4b2;
+  --alert: #ff5a4f;
+  --hold: #f2b84b;
+  --ok: #3ccf7a;
+  --radius: 10px;
+  --transition: 400ms cubic-bezier(0.4, 0, 0.2, 1);
+  font-family: system-ui, 'Segoe UI', Roboto, Ubuntu, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.dashboard {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  cursor: none;
+  --overlay: calc(18px * var(--scale, 1));
+}
+
+.dashboard__empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: calc(var(--overlay) * 1.3);
+}
+
+.tile {
+  position: absolute;
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: var(--tile-bg);
+  transition:
+    left var(--transition),
+    top var(--transition),
+    width var(--transition),
+    height var(--transition);
+}
+
+/* Alert frame drawn above the video. */
+.tile::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 0 transparent;
+  transition: box-shadow var(--transition);
+}
+
+.tile--alert::after {
+  box-shadow: inset 0 0 0 calc(3px * var(--scale, 1)) var(--alert);
+}
+
+.tile--hold::after {
+  box-shadow: inset 0 0 0 calc(2px * var(--scale, 1)) color-mix(in srgb, var(--hold) 75%, transparent);
+}
+
+.tile__video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  opacity: 1;
+  transition: opacity 300ms;
+}
+
+.tile__video--hidden {
+  opacity: 0;
+}
+
+.tile__placeholder {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: var(--overlay);
+  letter-spacing: 0.02em;
+}
+
+.tile__name,
+.tile__alert,
+.status {
+  background: rgba(0, 0, 0, 0.62);
+  backdrop-filter: blur(4px);
+  border-radius: calc(var(--radius) * 0.7);
+  padding: calc(var(--overlay) * 0.3) calc(var(--overlay) * 0.6);
+  font-size: var(--overlay);
+  line-height: 1.2;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+.tile__name {
+  position: absolute;
+  left: calc(var(--overlay) * 0.5);
+  bottom: calc(var(--overlay) * 0.5);
+  font-weight: 600;
+}
+
+.tile__alert {
+  position: absolute;
+  left: calc(var(--overlay) * 0.5);
+  top: calc(var(--overlay) * 0.5);
+  display: flex;
+  align-items: center;
+  gap: calc(var(--overlay) * 0.4);
+}
+
+.tile__alert-dot {
+  width: calc(var(--overlay) * 0.55);
+  height: calc(var(--overlay) * 0.55);
+  border-radius: 50%;
+  background: var(--alert);
+}
+
+.tile--hold .tile__alert-dot {
+  background: var(--hold);
+}
+
+.status {
+  position: absolute;
+  top: calc(var(--overlay) * 0.6);
+  right: calc(var(--overlay) * 0.6);
+  display: flex;
+  align-items: center;
+  gap: calc(var(--overlay) * 0.6);
+}
+
+.status__clock {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  font-size: calc(var(--overlay) * 1.25);
+}
+
+.status__date {
+  color: var(--muted);
+}
+
+.status__message {
+  color: var(--hold);
+}
+
+.status__dot {
+  width: calc(var(--overlay) * 0.5);
+  height: calc(var(--overlay) * 0.5);
+  border-radius: 50%;
+  background: var(--ok);
+  opacity: 0.7;
+}
+
+.status__dot--warning {
+  background: var(--hold);
+  opacity: 1;
+}
+
+.status__dot--error {
+  background: var(--alert);
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tile {
+    transition: none;
+  }
+}
+
+.dev {
+  padding: 2rem;
+  max-width: 60rem;
+  overflow: auto;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.dev a {
+  color: #8ab4ff;
+}
+
+.dev li {
+  margin: 0.5rem 0;
+}
+
+.dev__error {
+  color: var(--alert);
+}

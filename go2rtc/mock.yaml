@@ -1,0 +1,32 @@
+# go2rtc configuration for mock mode. Generated test streams only; no cameras are contacted.
+# Streams start on demand when a viewer connects and stop when the last viewer leaves.
+api:
+  listen: ":1984"
+  # Only the MSE/WebSocket endpoint and the version endpoint (backend health probe) are served.
+  allow_paths: [/api, /api/ws]
+rtsp:
+  # Required internally by exec/ffmpeg sources; not published outside the container.
+  listen: "127.0.0.1:8554"
+webrtc:
+  listen: ""
+log:
+  level: info
+streams:
+  oprit_main: exec:/config/mock-camera.sh oprit_main 1280x720 h265 {output}
+  oprit_sub: exec:/config/mock-camera.sh oprit_sub 640x360 h264 {output}
+  voordeur_main: exec:/config/mock-camera.sh voordeur_main 1280x720 h265 {output}
+  voordeur_sub: exec:/config/mock-camera.sh voordeur_sub 640x360 h264 {output}
+  achter_1_main: exec:/config/mock-camera.sh achter_1_main 1280x720 h265 {output}
+  achter_1_sub: exec:/config/mock-camera.sh achter_1_sub 640x360 h264 {output}
+  achter_2_main: exec:/config/mock-camera.sh achter_2_main 1280x720 h265 {output}
+  achter_2_sub: exec:/config/mock-camera.sh achter_2_sub 640x360 h264 {output}
+  mock_5_main: exec:/config/mock-camera.sh mock_5_main 1280x720 h265 {output}
+  mock_5_sub: exec:/config/mock-camera.sh mock_5_sub 640x360 h264 {output}
+  mock_6_main: exec:/config/mock-camera.sh mock_6_main 1280x720 h265 {output}
+  mock_6_sub: exec:/config/mock-camera.sh mock_6_sub 640x360 h264 {output}
+  mock_7_main: exec:/config/mock-camera.sh mock_7_main 1280x720 h265 {output}
+  mock_7_sub: exec:/config/mock-camera.sh mock_7_sub 640x360 h264 {output}
+  mock_8_main: exec:/config/mock-camera.sh mock_8_main 1280x720 h265 {output}
+  mock_8_sub: exec:/config/mock-camera.sh mock_8_sub 640x360 h264 {output}
+  mock_9_main: exec:/config/mock-camera.sh mock_9_main 1280x720 h265 {output}
+  mock_9_sub: exec:/config/mock-camera.sh mock_9_sub 640x360 h264 {output}

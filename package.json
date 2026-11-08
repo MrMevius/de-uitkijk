@@ -1,0 +1,28 @@
+{
+  "name": "de-uitkijk",
+  "private": true,
+  "description": "Self-hosted camera dashboard for a private homelab",
+  "license": "UNLICENSED",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "workspaces": [
+    "packages/shared",
+    "apps/server",
+    "apps/web"
+  ],
+  "scripts": {
+    "dev:server": "npm run dev -w @uitkijk/server",
+    "dev:web": "npm run dev -w @uitkijk/web",
+    "build": "npm run build -w @uitkijk/web",
+    "typecheck": "tsc -p packages/shared && tsc -p apps/server && tsc -p apps/web",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
+  }
+}

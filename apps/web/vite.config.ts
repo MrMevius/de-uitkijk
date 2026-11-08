@@ -1,0 +1,29 @@
+import react from '@vitejs/plugin-react';
+import { defineConfig } from 'vitest/config';
+
+// The dev server mirrors the edge proxy (deploy/nginx): /api goes to the backend, /stream/ws to go2rtc's
+// MSE WebSocket only. Override targets with UITKIJK_API_TARGET / UITKIJK_GO2RTC_TARGET.
+const apiTarget = process.env.UITKIJK_API_TARGET ?? 'http://127.0.0.1:3000';
+const go2rtcTarget = process.env.UITKIJK_GO2RTC_TARGET ?? 'http://127.0.0.1:1984';
+
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    host: '127.0.0.1',
+    port: 5173,
+    proxy: {
+      '/api': { target: apiTarget },
+      '/stream/ws': {
+        target: go2rtcTarget,
+        ws: true,
+        rewrite: (path) => path.replace(/^\/stream\/ws/, '/api/ws'),
+      },
+    },
+  },
+  test: {
+    name: 'web',
+    root: import.meta.dirname,
+    include: ['test/**/*.test.{ts,tsx}'],
+    environment: 'jsdom',
+  },
+});
