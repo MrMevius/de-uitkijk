@@ -11,7 +11,7 @@ Accepted trade-off: if `server503` or the VM is down, the dashboards have no vid
 - **Home LAN:** `http://10.0.0.171:8088`, open to every client including phones, without login.
 - **Outside the home:** `https://uitkijk.mrmevius.nl` through SWAG (`uitkijk.subdomain.conf` → `de-uitkijk:8081` on `swag_default`), with login.
 
-Details are in [security.md](security.md).
+Details are in [security.md](security.md). The SWAG vhost must disable response buffering (`proxy_buffering off`): otherwise the dashboard's server-sent events never arrive and the page stays on "Verbinden met De Uitkijk…". The edge also passes the backend's `X-Accel-Buffering: no` on.
 
 Phones: iPhones need iOS 17.1 or later (the player falls back to Safari's `ManagedMediaSource`). Android phones depend on the device's H.265 decoding in Chrome. The layout is made for a 16:9 screen, so a phone works best in landscape.
 

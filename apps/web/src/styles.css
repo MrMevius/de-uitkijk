@@ -22,11 +22,14 @@ body,
   background: var(--bg);
 }
 
+.dashboard--idle {
+  cursor: none;
+}
+
 .dashboard {
   position: relative;
   width: 100vw;
   height: 100vh;
-  cursor: none;
   --overlay: calc(18px * var(--scale, 1));
 }
 

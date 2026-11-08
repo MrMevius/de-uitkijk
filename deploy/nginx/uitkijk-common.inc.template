@@ -20,7 +20,8 @@ location /api/ {
     proxy_set_header Connection "";
     proxy_set_header X-Uitkijk-Access $uitkijk_access;
     proxy_set_header X-Uitkijk-Client $uitkijk_client;
-    # Server-sent events: no buffering, long-lived.
+    # Server-sent events: no buffering, long-lived. Pass the backend's X-Accel-Buffering: no on to SWAG too.
     proxy_buffering off;
+    proxy_pass_header X-Accel-Buffering;
     proxy_read_timeout 1h;
 }
