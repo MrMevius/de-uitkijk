@@ -38,9 +38,14 @@ services:
       # Accounts and sessions for access from outside the LAN (SQLite).
       UITKIJK_DATA_DIR: /data
       UITKIJK_PUBLIC_URL: ${UITKIJK_PUBLIC_URL:-http://127.0.0.1:8081}
+      UITKIJK_AI: ${UITKIJK_AI:-}
+      UITKIJK_AI_MODEL: ${UITKIJK_AI_MODEL:-}
+      # Optional Frigate viewer account and pinned certificate (JSON) for the authenticated API on port 8971.
+      FRIGATE_AUTH_FILE: /run/uitkijk/frigate-auth.json
     volumes:
       - ./config:/app/config:ro
       - data:/data
+      - ${FRIGATE_AUTH_HOST_FILE:-/dev/null}:/run/uitkijk/frigate-auth.json:ro
 
   web:
     build:

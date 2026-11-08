@@ -42,12 +42,7 @@ Safeguards:
 
 ## Access
 
-The development integration uses Frigate's port 5000 API, which needs no authentication and is reachable on the LAN. It is used read-only (GET `review`, `stats`, `config`). For production, decide between:
-
-- the authenticated port 8971 with a dedicated Frigate user (Frigate 0.17 issues a JWT cookie via `/api/login`); or
-- keeping port 5000 restricted to the De Uitkijk host at the network level.
-
-Either way the Frigate address and any credentials stay server-side.
+Since 2026-11-08, production uses the authenticated API on port 8971 with the dedicated viewer account `uitkijk` and the pinned Frigate certificate (`FRIGATE_AUTH_FILE`, see [security.md](security.md)). The client logs in through `POST /api/login`, sends the `frigate_token` cookie and logs in again after a 401. Development and tests may still use the unauthenticated port 5000 (no auth file).
 
 ## Open points
 

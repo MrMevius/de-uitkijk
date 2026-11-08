@@ -11,6 +11,7 @@ There is one address for everybody, at home and away: `https://uitkijk.mrmevius.
 - **Edge listeners.** `8081` is reached only by SWAG over the shared Docker network (`swag_default`). `8080` is published on the host address for deployctl's health check. Both apply the same rules.
 - **go2rtc.** Only the MSE WebSocket is exposed, for stream names matching `^[a-z0-9_]{1,64}$`. go2rtc itself serves only `/api` and `/api/ws` (`allow_paths`). RTSP listens on container localhost; WebRTC is disabled.
 - **Secrets.** Camera credentials exist only in the go2rtc configuration file, outside the repository and outside the shared runtime environment. No API response contains a source URL. Browsers never talk to Frigate. `FRIGATE_URL` with embedded credentials is rejected.
+- **Frigate.** The backend uses Frigate's authenticated API (port 8971) with a dedicated `viewer` account (`uitkijk`, created 2026-11-08), so it can read but not change Frigate. Frigate's self-signed certificate is pinned: only that exact certificate is trusted. If Frigate gets a new certificate, update `certificate` in `/etc/de-uitkijk/frigate-auth.json`. The password and certificate live in that file (mode 600) and are mounted into the backend only. Frigate's unauthenticated internal port 5000 still exists for other homelab consumers (monitoring); closing it is a separate decision.
 - **Development.** The mock-scenario API (`/api/dev/*`) exists only in mock mode.
 
 ## Accounts

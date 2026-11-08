@@ -61,7 +61,7 @@ The complete agreed scope is in [docs/requirements.md](docs/requirements.md).
 | Hosting location for go2rtc + edge | Decided 2026-11-08: `503-web-ubuntu`, deployed with deployctl; one address `https://uitkijk.mrmevius.nl` with login ([docs/deployment.md](docs/deployment.md)). | Install the NUC kiosk (own viewer account, AdGuard DNS). |
 | Camera account | Operator decision (2026-11-08): go2rtc uses the existing camera administrator account. Accepted trade-off: the credential stays server-side (`.env`, mode 600, go2rtc only). | None. |
 | Frigate alert timing | Frigate keeps alerts open for `cutoff_time` (40 s) after activity; focus lasts about 40 s + 15 s. | Decide whether that is acceptable or adjust Frigate (production change). |
-| Frigate API authentication | The backend uses Frigate's unauthenticated internal API (read-only, server-side). | Optionally switch to the authenticated API with a dedicated user. |
+| Frigate API authentication | Done 2026-11-08: authenticated API with a dedicated viewer account and a pinned certificate. Port 5000 stays open for other consumers. | Optionally close port 5000 once monitoring uses authentication too. |
 | Frigate push events | Could lower alert latency below the 2 s poll. | Verify the `/ws` `reviews` topic with a real alert. |
 | Highlight tuning | Selection is rule-based; administrator 👍/👎 feedback is stored but not used yet. | Use the feedback to adjust weights once enough has been collected. |
 | AI provider | Codex with ChatGPT sign-in is in use; Claude needs Max/Ultra/Team for the permitted API-credit route. | Revisit Claude when the plan changes. |

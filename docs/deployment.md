@@ -26,6 +26,7 @@ Phones: verified on an iPhone (Brave, which uses WebKit) on 2026-11-08: all four
 | Timer | `deployctl@de_uitkijk.timer` |
 | Runtime environment (no secrets) | `/etc/de-uitkijk/runtime.env`, mode 600 |
 | go2rtc configuration including camera credentials | `/etc/de-uitkijk/go2rtc.yaml`, mode 600 |
+| Frigate viewer account and pinned certificate | `/etc/de-uitkijk/frigate-auth.json`, mode 600, mounted read-only into the backend only |
 | Accounts and sessions (SQLite) | Docker volume `de-uitkijk_data` |
 | SWAG route | `/opt/docker/swag/appdata/nginx/proxy-confs/uitkijk.subdomain.conf` |
 | Releases / state | `/srv/de_uitkijk/`, `/var/lib/deployctl/de_uitkijk/` |
@@ -42,7 +43,8 @@ UITKIJK_PORT=8088
 UITKIJK_PUBLIC_URL=https://uitkijk.mrmevius.nl
 UITKIJK_EDGE_NETWORK=swag_default
 UITKIJK_EDGE_NETWORK_EXTERNAL=true
-FRIGATE_URL=http://10.0.0.161:5000
+FRIGATE_URL=https://10.0.0.161:8971
+FRIGATE_AUTH_HOST_FILE=/etc/de-uitkijk/frigate-auth.json
 GO2RTC_CONFIG_PATH=/etc/de-uitkijk/go2rtc.yaml
 ```
 

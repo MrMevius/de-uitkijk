@@ -20,6 +20,8 @@ export interface ServerConfig {
   clipCacheBytes: number;
   frigate?: {
     url: string;
+    /** JSON file with a Frigate viewer account and Frigate's certificate; empty means the unauthenticated API. */
+    authFile?: string;
     pollMs: number;
     maxAlertAgeMs: number;
   };
@@ -64,6 +66,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     if (unmapped.length) throw new Error(`live mode requires frigateCamera for: ${unmapped.join(', ')}`);
     config.frigate = {
       url: env.FRIGATE_URL.replace(/\/$/, ''),
+      ...(env.FRIGATE_AUTH_FILE ? { authFile: env.FRIGATE_AUTH_FILE } : {}),
       pollMs: Math.max(1_000, int(env.FRIGATE_POLL_MS, 2_000)),
       maxAlertAgeMs: int(env.FRIGATE_MAX_ALERT_AGE_S, 1_800) * 1_000,
     };
