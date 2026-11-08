@@ -43,7 +43,7 @@ The complete agreed scope is in [docs/requirements.md](docs/requirements.md).
 | --- | --- |
 | 1 (done) | Foundation, mock/live alert integration, streaming proof of concept, automatic dashboard, focus, resilience, tests. |
 | 2 | Real-camera streaming measurements; hosting benchmark and placement decision (independent of the Frigate host); kiosk client (Intel NUC) with HEVC verification; display profiles per device. |
-| 3 | Done 2026-11-08: SQLite accounts and roles, one-time links, login for public access through SWAG/HTTPS. TV pairing and stream tickets are superseded by open LAN access. Remaining: Zabbix health check, optional local DNS name. |
+| 3 | Done 2026-11-08: SQLite accounts and roles, one-time links, login for public access through SWAG/HTTPS. TV pairing and stream tickets are superseded by open LAN access. Zabbix watches the three containers (503-web required-running list). Remaining: optional local DNS name. |
 | 4 | Highlights: candidate selection, grouping across cameras, clip selection, thumbnails, rotation on the dashboard, archive, feedback/deletion with tombstones, catch-up after outages. |
 | 5 | AI descriptions via an officially permitted subscription method, with owner authorisation; administrative UI; downloads. |
 
