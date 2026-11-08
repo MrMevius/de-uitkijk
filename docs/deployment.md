@@ -8,7 +8,7 @@ Accepted trade-off: if `server503` or the VM is down, the dashboards have no vid
 
 ## Access (operator decision, 2026-11-08)
 
-One address for everybody: `https://uitkijk.mrmevius.nl`, through SWAG (`uitkijk.subdomain.conf` → `de-uitkijk:8081` on `swag_default`), with login everywhere. At home, both AdGuard Home instances rewrite the name to `10.0.0.171`, so it works without internet. `http://10.0.0.171:8088` remains only for deployctl's health check; it applies the same login rules. Details are in [security.md](security.md).
+One address for everybody: `https://uitkijk.mrmevius.nl`, through SWAG (`uitkijk.subdomain.conf` → `de-uitkijk:8081` on `swag_default`), with login everywhere. At home, both AdGuard Home instances rewrite the name to `10.0.0.171`, so it works without internet for devices that use them as DNS. Devices on the current DHCP default use the gateway resolver: they get the public address and reach SWAG through the router (hairpin NAT), which needs a working internet connection. Give TV kiosks `10.0.0.150` and `10.0.0.182` as DNS servers until the homelab DHCP/DNS rollout distributes them. `http://10.0.0.171:8088` remains only for deployctl's health check; it applies the same login rules. Details are in [security.md](security.md).
 
 The SWAG vhost must disable response buffering (`proxy_buffering off`). Otherwise the dashboard's server-sent events never arrive and the page stays on "Verbinden met De Uitkijk…". The edge also passes the backend's `X-Accel-Buffering: no` on.
 
