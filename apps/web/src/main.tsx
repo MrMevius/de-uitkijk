@@ -1,7 +1,8 @@
 import { StrictMode, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { displayProfile } from '@uitkijk/shared';
-import { ActivatePage, AdminPage, LoginPage } from './Account.tsx';
+import { ActivatePage, LoginPage } from './Account.tsx';
+import { AdminPage } from './admin/AdminPage.tsx';
 import { ArchivePage } from './Archive.tsx';
 import { Dashboard } from './Dashboard.tsx';
 import { DevPanel } from './DevPanel.tsx';

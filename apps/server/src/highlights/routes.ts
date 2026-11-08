@@ -72,6 +72,13 @@ export function registerHighlights(app: FastifyInstance, { store, clips, frigate
 
   app.get('/api/admin/ai', async () => (aiStatus ? aiStatus() : { enabled: false }));
 
+  app.get('/api/admin/highlights/stats', async () => {
+    const t = now();
+    const day = store.archive({ from: t - 86400, limit: 1, offset: 0 }).total;
+    const week = store.archive({ from: t - 7 * 86400, limit: 1, offset: 0 }).total;
+    return { last24h: day, last7d: week, rotation: store.rotation(t - SELECTION.rotationWindowS, SELECTION.maxRotation).length };
+  });
+
   if (facts) {
     app.get('/api/admin/facts', async () => facts.list());
     app.post<{ Body: { text?: unknown } }>('/api/admin/facts', async (request, reply) => {

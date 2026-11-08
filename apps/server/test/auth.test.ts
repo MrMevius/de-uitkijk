@@ -210,3 +210,45 @@ describe('one-time links and administration', () => {
     expect((await post({ username: 'beheer', role: 'viewer' })).statusCode).toBe(409);
   });
 });
+
+describe('own password and admin status', () => {
+  it('changes the own password with the current one and ends the other sessions', async () => {
+    const t = setup();
+    await t.activeUser('mark', 'viewer');
+    const a = await t.login('mark');
+    const b = await t.login('mark');
+    const change = (cookie: string, current: string, next: string) =>
+      t.app.inject({ method: 'POST', url: '/api/auth/password', headers: { ...t.pub, cookie, origin: ORIGIN }, payload: { current, next } });
+    expect((await change(a.cookie, 'wrong password!', 'een nieuw lang wachtwoord')).statusCode).toBe(400);
+    expect((await change(a.cookie, PASSWORD, 'kort')).statusCode).toBe(400);
+    expect((await change(a.cookie, PASSWORD, 'een nieuw lang wachtwoord')).statusCode).toBe(204);
+    expect((await t.app.inject({ url: '/api/auth/check', headers: { ...t.pub, cookie: a.cookie } })).statusCode).toBe(200);
+    expect((await t.app.inject({ url: '/api/auth/check', headers: { ...t.pub, cookie: b.cookie } })).statusCode).toBe(401);
+    expect((await t.login('mark', PASSWORD)).res.statusCode).toBe(401);
+    expect((await t.login('mark', 'een nieuw lang wachtwoord')).res.statusCode).toBe(200);
+  });
+
+  it('shows the system status to administrators only', async () => {
+    const clock = 1_800_000_000_000;
+    const store = new AuthStore(':memory:', () => clock);
+    const hub = new StateHub('live', cameras, 15_000);
+    const app = buildApp({
+      hub,
+      version: '1.2.3',
+      auth: { store, publicUrl: ORIGIN, now: () => clock },
+      detail: () => ({ cameras: [{ id: 'oprit', video: 'ok', checkedAt: 1 }] }),
+    });
+    cleanup.push(() => app.close(), () => hub.stop(), () => store.close());
+    const make = async (name: string, role: 'admin' | 'viewer') => {
+      const u = store.createUser(name, role);
+      store.redeemLink(store.createLink(u.id, 'activate'), await hashPassword(PASSWORD));
+      return `uitkijk_session=${store.createSession(u.id)}`;
+    };
+    const admin = await make('beheer', 'admin');
+    const viewer = await make('kijker', 'viewer');
+    store.createUser('nieuw', 'viewer');
+    expect((await app.inject({ url: '/api/admin/status', headers: { cookie: viewer } })).statusCode).toBe(403);
+    const res = await app.inject({ url: '/api/admin/status', headers: { cookie: admin } });
+    expect(res.json()).toMatchObject({ version: '1.2.3', users: { total: 3, admins: 1, inactive: 1 }, cameras: [{ id: 'oprit' }], cameraNames: { oprit: 'Oprit / Pad' } });
+  });
+});

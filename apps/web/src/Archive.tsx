@@ -16,8 +16,16 @@ function dayRange(date: string): [number, number] {
   return [start, start + 86400];
 }
 
-/** Archive of highlights with filters; administrators give feedback and delete. */
+/** The /archief page: the archive with its own header. */
 export function ArchivePage() {
+  return <ArchiveView />;
+}
+
+/**
+ * Archive of highlights with filters; administrators give feedback and delete.
+ * `embedded` drops the page header so the admin page can show it in a tab.
+ */
+export function ArchiveView({ embedded = false }: { embedded?: boolean }) {
   const [cameras, setCameras] = useState<Camera[]>([]);
   const [role, setRole] = useState<'admin' | 'viewer' | null>(null);
   const [date, setDate] = useState('');
@@ -98,18 +106,16 @@ export function ArchivePage() {
   const nameOf = (id: string) => cameras.find((c) => c.id === id)?.name ?? id;
 
   return (
-    <div className="account archive">
-      <h1>De Uitkijk</h1>
-      <h2>Highlights</h2>
-      <p>
-        <a href="/">Dashboard</a>
-        {role === 'admin' && (
-          <>
-            {' '}
-            · <a href="/beheer">Beheer</a>
-          </>
-        )}
-      </p>
+    <div className={embedded ? 'archive' : 'account archive'}>
+      {!embedded && (
+        <>
+          <h1>De Uitkijk</h1>
+          <h2>Highlights</h2>
+          <p>
+            <a href="/">Dashboard</a> · <a href="/beheer">{role === 'admin' ? 'Beheer' : 'Mijn account'}</a>
+          </p>
+        </>
+      )}
       <div className="archive__filters">
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} aria-label="Datum" />
         <select value={camera} onChange={(e) => setCamera(e.target.value)} aria-label="Camera">

@@ -185,6 +185,16 @@ export class AuthStore {
     this.db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(digest(token));
   }
 
+  /** Sets a new password and ends all sessions of the user except the given one. */
+  changePassword(userId: number, passwordHash: string, keepToken: string | undefined): void {
+    this.db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(passwordHash, userId);
+    this.db.prepare('DELETE FROM sessions WHERE user_id = ? AND token_hash != ?').run(userId, keepToken ? digest(keepToken) : '');
+  }
+
+  countSessions(userId: number): number {
+    return Number((this.db.prepare('SELECT COUNT(*) AS n FROM sessions WHERE user_id = ?').get(userId) as { n: number }).n);
+  }
+
   deleteSessionsOf(userId: number): void {
     this.db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
   }

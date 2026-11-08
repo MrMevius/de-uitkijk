@@ -63,6 +63,18 @@ The dashboard reloads itself every night at 04:00 (Europe/Amsterdam), and within
 
 Zabbix polls it; the items and triggers are in the homelab repository (`operations/noc-de-uitkijk-monitoring.md`).
 
+## Admin page (since 0.9.0)
+
+`/beheer` has tabs; the active tab is in the URL fragment (`/beheer#ai`).
+
+| Tab | Content | Who |
+| --- | --- | --- |
+| Overzicht | go2rtc, picture per camera, Frigate alerts, highlight import with counts, AI, users, version; refreshes every 30 s | admins |
+| Gebruikers | Users, roles, one-time links, removal | admins |
+| Highlights | The archive (also at `/archief`) | everyone |
+| AI | AI status and the household facts | admins |
+| Mijn account | Change the own password (other sessions end), log out | everyone |
+
 ## Operations
 
 - Status: `deployctl status`, or `curl http://10.0.0.171:8088/api/health`.

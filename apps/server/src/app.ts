@@ -44,6 +44,23 @@ export function buildApp({ hub, mock, auth, highlights, logger = false, heartbea
     });
   }
 
+  // The same status for administrators on the admin page (needs a session with the admin role).
+  if (detail && auth) {
+    app.get('/api/admin/status', async () => {
+      const state = hub.snapshot();
+      const users = auth.store.listUsers();
+      return {
+        mode: state.mode,
+        ...(version ? { version } : {}),
+        alerts: state.health.alerts,
+        streaming: state.health.streaming,
+        cameraNames: Object.fromEntries(state.cameras.map((c) => [c.id, c.name])),
+        users: { total: users.length, admins: users.filter((u) => u.role === 'admin').length, inactive: users.filter((u) => !u.active).length },
+        ...detail(),
+      };
+    });
+  }
+
   app.get('/api/state', async () => hub.snapshot());
 
   app.get('/api/events', (request, reply) => {

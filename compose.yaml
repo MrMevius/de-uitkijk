@@ -38,6 +38,8 @@ services:
       # Accounts and sessions for access from outside the LAN (SQLite).
       UITKIJK_DATA_DIR: /data
       UITKIJK_PUBLIC_URL: ${UITKIJK_PUBLIC_URL:-http://127.0.0.1:8081}
+      # Login is always on in live mode; UITKIJK_LOGIN=on also enables it in mock mode (development).
+      UITKIJK_LOGIN: ${UITKIJK_LOGIN:-}
       UITKIJK_AI: ${UITKIJK_AI:-}
       UITKIJK_AI_MODEL: ${UITKIJK_AI_MODEL:-}
       # Optional Frigate viewer account and pinned certificate (JSON) for the authenticated API on port 8971.

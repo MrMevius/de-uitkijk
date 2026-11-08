@@ -137,6 +137,25 @@ export function registerAuth(app: FastifyInstance, { store, publicUrl, now = Dat
     return reply.code(204).send();
   });
 
+  app.post<{ Body: { current?: unknown; next?: unknown } }>('/api/auth/password', async (request, reply) => {
+    const user = request.user!;
+    const problem = passwordProblem(request.body?.next);
+    if (problem) return reply.code(400).send({ error: problem });
+    const stored = store.findUser(user.username);
+    const current = typeof request.body?.current === 'string' ? request.body.current : '';
+    const userKey = `user:${user.username}`;
+    if (failures.blocked(userKey, MAX_FAILURES_PER_USER)) {
+      return reply.code(429).send({ error: 'Te veel mislukte pogingen, probeer het over 15 minuten opnieuw' });
+    }
+    if (!(await verifyPassword(current, stored?.passwordHash ?? null))) {
+      failures.fail(userKey);
+      return reply.code(400).send({ error: 'Huidig wachtwoord klopt niet' });
+    }
+    store.changePassword(user.id, await hashPassword(request.body!.next as string), cookieValue(request, SESSION_COOKIE));
+    request.log.info({ username: user.username }, 'password changed; other sessions ended');
+    return reply.code(204).send();
+  });
+
   /** The dashboard calls this on load and daily; it renews the cookie so a TV stays logged in. */
   app.get('/api/auth/me', async (request, reply) => {
     const token = cookieValue(request, SESSION_COOKIE);
