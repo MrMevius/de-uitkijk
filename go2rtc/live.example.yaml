@@ -1,4 +1,4 @@
-# go2rtc configuration for live mode. Copy to go2rtc/live.yaml (git-ignored) and set GO2RTC_CONFIG=live.yaml.
+# go2rtc configuration for live mode. Copy to go2rtc/live.yaml (git-ignored) and set GO2RTC_CONFIG_PATH=./go2rtc/live.yaml.
 # ${VAR} values come from .env and are expanded by go2rtc at start-up; never write credentials here.
 #
 # go2rtc connects to each camera directly (not via Frigate), opens one upstream RTSP session per

@@ -9,16 +9,18 @@ name: de-uitkijk
 
 services:
   go2rtc:
-    image: alexxit/go2rtc:1.9.15
+    image: alexxit/go2rtc:1.9.15@sha256:e098de5c2f8040dc3d4784ed2d5cfdac3b0979f9349afe587ef6a670a14b9f4d
     restart: unless-stopped
     environment:
       TZ: Europe/Amsterdam
-    # Camera credentials are read from .env by go2rtc only; the backend and browser never receive them.
+    # Development: camera credentials come from .env and are substituted by go2rtc (live.yaml).
+    # Production: GO2RTC_CONFIG_PATH points to a host file outside the repository that holds the
+    # complete config including credentials, so the environment (shared by all services) has none.
     env_file:
       - path: .env
         required: false
     volumes:
-      - ./go2rtc/${GO2RTC_CONFIG:-mock.yaml}:/config/go2rtc.yaml:ro
+      - ${GO2RTC_CONFIG_PATH:-./go2rtc/mock.yaml}:/config/go2rtc.yaml:ro
       - ./go2rtc/mock-camera.sh:/config/mock-camera.sh:ro
 
   server:
@@ -42,5 +44,8 @@ services:
       dockerfile: apps/web/Dockerfile
     restart: unless-stopped
     depends_on: [server, go2rtc]
+    environment:
+      # Space-separated client addresses/CIDRs allowed to use the dashboard; empty allows everyone.
+      UITKIJK_ALLOW_FROM: ${UITKIJK_ALLOW_FROM:-}
     ports:
       - "${UITKIJK_BIND:-127.0.0.1}:${UITKIJK_PORT:-8080}:8080"

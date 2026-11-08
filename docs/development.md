@@ -60,13 +60,13 @@ Server environment variables (all optional in mock mode):
 
 ## Live mode (trusted development network only)
 
-1. `cp .env.example .env` and fill in `UITKIJK_MODE=live`, `FRIGATE_URL`, `GO2RTC_CONFIG=live.yaml`, the camera account and the camera host addresses.
+1. `cp .env.example .env` and fill in `UITKIJK_MODE=live`, `FRIGATE_URL`, `GO2RTC_CONFIG_PATH=./go2rtc/live.yaml`, the camera account and the camera host addresses.
 2. `cp go2rtc/live.example.yaml go2rtc/live.yaml`. It contains only `${VAR}` references.
 3. `docker compose up --build`.
 
 Live mode reads Frigate (read-only) for alerts, camera availability and camera-name validation. go2rtc connects to the cameras directly. Both `.env` and `go2rtc/live.yaml` are git-ignored.
 
-Alerts only, without video: leave `GO2RTC_CONFIG=mock.yaml`. Tiles then show mock video while focus follows real Frigate alerts.
+Alerts only, without video: leave `GO2RTC_CONFIG_PATH` at `./go2rtc/mock.yaml`. Tiles then show mock video while focus follows real Frigate alerts.
 
 ## Camera configuration
 

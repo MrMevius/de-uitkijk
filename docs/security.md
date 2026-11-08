@@ -14,6 +14,10 @@ What it does enforce:
 
 Do not port-forward, add the dashboard to SWAG, or bind it to a non-trusted interface until the production design below is implemented.
 
+### Interim LAN deployment
+
+On `503-web-ubuntu` the edge only serves the client addresses in `UITKIJK_ALLOW_FROM` (TV kiosks with a DHCP reservation and the management VM); everyone else gets `403`, except `/api/health` (status only). This is an address check on a flat LAN, not authentication: it keeps casual LAN and Wi-Fi users out, not someone who spoofs a kiosk address. Camera credentials sit only in the go2rtc configuration file outside the repository, not in the shared runtime environment. See [deployment.md](deployment.md).
+
 ## Production design (later phases)
 
 ### Users

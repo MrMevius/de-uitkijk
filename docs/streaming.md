@@ -87,7 +87,7 @@ Operator's Windows 11 PC (remote, not in front of the cameras), Chrome, live das
 
 Run this only on a trusted network. Nothing on the cameras, the NVR or Frigate is changed. Every De Uitkijk viewer adds one RTSP session per watched stream on the camera.
 
-1. **Configure.** `cp .env.example .env` and `cp go2rtc/live.example.yaml go2rtc/live.yaml`. In `.env` set `UITKIJK_MODE=live`, `GO2RTC_CONFIG=live.yaml`, `FRIGATE_URL`, `CAMERA_USER`, `CAMERA_PASSWORD` and the `CAM_*_HOST` values. Keep `UITKIJK_BIND=127.0.0.1`, or a LAN address only on a trusted network.
+1. **Configure.** `cp .env.example .env` and `cp go2rtc/live.example.yaml go2rtc/live.yaml`. In `.env` set `UITKIJK_MODE=live`, `GO2RTC_CONFIG_PATH=./go2rtc/live.yaml`, `FRIGATE_URL`, `CAMERA_USER`, `CAMERA_PASSWORD` and the `CAM_*_HOST` values. Keep `UITKIJK_BIND=127.0.0.1`, or a LAN address only on a trusted network.
 2. **Start.** `docker compose up --build`. Open `http://127.0.0.1:8080`.
 3. **Compatibility.** In the target browser's console:
    ```js

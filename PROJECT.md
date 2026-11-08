@@ -31,6 +31,7 @@ Not production-ready: there is **no authentication**. Run it only on a trusted n
 | [docs/streaming.md](docs/streaming.md) | Streaming evaluation, measurements, real-camera test procedure |
 | [docs/security.md](docs/security.md) | Current boundary; production auth, TV pairing, 4-hour outage design |
 | [docs/development.md](docs/development.md) | Running mock and live mode, configuration |
+| [docs/deployment.md](docs/deployment.md) | Placement on `503-web-ubuntu`, deployctl, interim client allowlist |
 | [docs/testing.md](docs/testing.md) | Automated tests, fixtures, manual checks |
 
 ## Roadmap
@@ -52,7 +53,7 @@ Not production-ready: there is **no authentication**. Run it only on a trusted n
 | Camera clocks | Resolved 2026-11-08 (operator-approved): the hardware NVR and all four cameras now use NTP on the LAN gateway with CET/CEST and matched real time to the second. | Re-check after a day (homelab backlog). |
 | Camera RTSP session limit | go2rtc adds one session per camera per watched stream type, next to Frigate and the NVR (measured). | Check the ANNKE maximum. |
 | Real latency and resources | Startup, bitrate, sessions and go2rtc resources were measured on 2026-11-08; end-to-end latency was not. | Stopwatch latency test on the TV client. |
-| Hosting location for go2rtc + edge | Must not depend on the Frigate host; hardware acceleration available only where a GPU is passed through. | Benchmark, then decide. |
+| Hosting location for go2rtc + edge | Decided 2026-11-08: `503-web-ubuntu`, deployed with deployctl, LAN access limited to an address allowlist until phase 3 ([docs/deployment.md](docs/deployment.md)). | Add the NUC's reserved address to the allowlist once it is installed. |
 | Camera account | Operator decision (2026-11-08): go2rtc uses the existing camera administrator account. Accepted trade-off: the credential stays server-side (`.env`, mode 600, go2rtc only). | None. |
 | Frigate alert timing | Frigate keeps alerts open for `cutoff_time` (40 s) after activity; focus lasts about 40 s + 15 s. | Decide whether that is acceptable or adjust Frigate (production change). |
 | Frigate API authentication | Development uses the unauthenticated internal API. | Choose authenticated API or network restriction for production. |
