@@ -18,6 +18,8 @@ export interface ReviewItem {
   /** Recognised faces / sub labels, e.g. household members. */
   subLabels: string[];
   detections: string[];
+  /** Time of Frigate's best frame for this alert (epoch seconds), when known. */
+  thumbTime?: number;
 }
 
 export interface ScoredGroup {

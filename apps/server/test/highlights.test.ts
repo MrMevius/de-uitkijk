@@ -284,3 +284,30 @@ describe('feedback learning', () => {
     expect(t2.store.rotation(0, 15).map((c) => c.id)).not.toContain('n1');
   });
 });
+
+describe('facts API', () => {
+  it('lets only administrators list, add and remove facts', async () => {
+    const { FactStore } = await import('../src/ai/facts.ts');
+    const auth = new AuthStore(':memory:');
+    const store = new HighlightStore(':memory:');
+    const facts = new FactStore(':memory:');
+    const hub = new StateHub('live', cameras, 15_000);
+    const clips = new ClipCache(join(tmpdir(), 'unused'), 1, async () => {}, (async () => new Response('')) as typeof fetch);
+    const app = buildApp({ hub, auth: { store: auth, publicUrl: 'https://u.example' }, highlights: { store, clips, frigateUrl: 'http://f', facts } });
+    cleanup.push(() => app.close(), () => hub.stop(), () => store.close(), () => auth.close(), () => facts.close());
+    const login = async (username: string, role: 'admin' | 'viewer') => {
+      const user = auth.createUser(username, role);
+      auth.redeemLink(auth.createLink(user.id, 'activate'), await hashPassword('correct horse battery'));
+      return { cookie: `uitkijk_session=${auth.createSession(user.id)}`, origin: 'https://u.example' };
+    };
+    const adminFresh = await login('beheer', 'admin');
+    const viewerFresh = await login('kijker', 'viewer');
+    expect((await app.inject({ url: '/api/admin/facts', headers: viewerFresh })).statusCode).toBe(403);
+    const added = await app.inject({ method: 'POST', url: '/api/admin/facts', headers: adminFresh, payload: { text: 'Blauwe VW up! is van Tini' } });
+    expect(added.statusCode).toBe(201);
+    expect(added.json()).toMatchObject({ text: 'Blauwe VW up! is van Tini', createdBy: 'beheer' });
+    expect((await app.inject({ method: 'POST', url: '/api/admin/facts', headers: adminFresh, payload: { text: 'x' } })).statusCode).toBe(400);
+    expect((await app.inject({ url: '/api/admin/facts', headers: adminFresh })).json()).toHaveLength(1);
+    expect((await app.inject({ method: 'DELETE', url: `/api/admin/facts/${added.json().id}`, headers: adminFresh })).statusCode).toBe(204);
+  });
+});

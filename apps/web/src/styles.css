@@ -409,3 +409,19 @@ body,
 .account__note {
   color: var(--muted);
 }
+
+.account__facts {
+  margin: 1.5rem 0;
+}
+
+.account__factlist {
+  padding-left: 1.1rem;
+}
+
+.account__factlist li {
+  margin: 0.35rem 0;
+}
+
+.account__factinput {
+  flex: 1 1 22rem;
+}

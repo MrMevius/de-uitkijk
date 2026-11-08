@@ -31,7 +31,7 @@ interface FrigateReview {
   start_time: number;
   end_time: number | null;
   severity: string;
-  data: { objects?: string[]; sub_labels?: string[]; detections?: string[] };
+  data: { objects?: string[]; sub_labels?: string[]; detections?: string[]; thumb_time?: number };
 }
 
 interface FrigateEvent {
@@ -130,6 +130,7 @@ export class HighlightImporter {
       objects: r.data.objects ?? [],
       subLabels: r.data.sub_labels ?? [],
       detections: r.data.detections ?? [],
+      ...(typeof r.data.thumb_time === 'number' ? { thumbTime: r.data.thumb_time } : {}),
     };
   }
 
@@ -214,6 +215,7 @@ export class HighlightImporter {
       repEvent,
       clipStart,
       clipEnd,
+      frameTime: rep.thumbTime ?? rep.startTime + 1,
       eventStart: Math.max(rep.startTime - 5, groupStart - 5),
       eventEnd: Math.min(groupEnd + 5, rep.startTime + 600),
       labels: [...new Set(items.flatMap((i) => i.objects))],

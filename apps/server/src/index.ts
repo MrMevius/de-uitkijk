@@ -4,6 +4,7 @@ import { buildApp } from './app.ts';
 import { CameraVideoProbe } from './camera-probe.ts';
 import { AuthStore } from './auth/store.ts';
 import { codexDescriber } from './ai/codex.ts';
+import { FactStore } from './ai/facts.ts';
 import { AiWorker } from './ai/worker.ts';
 import { ClipCache } from './highlights/clips.ts';
 import { HighlightImporter } from './highlights/importer.ts';
@@ -36,12 +37,26 @@ const highlightStore = config.frigate && store ? new HighlightStore(join(config.
 const clips = highlightStore ? new ClipCache(join(config.dataDir, 'clip-cache'), config.clipCacheBytes, undefined, frigateHttp) : undefined;
 // Codex keeps its ChatGPT login here; created up front so an administrator can sign in before enabling AI.
 if (highlightStore) mkdirSync(join(config.dataDir, 'codex'), { recursive: true, mode: 0o700 });
+const facts = highlightStore ? new FactStore(join(config.dataDir, 'uitkijk.db')) : undefined;
 // AI descriptions (AI-4: only when the owner enabled them; AI-7: isolated, failures never affect the rest).
 const ai =
   highlightStore && config.ai === 'codex'
     ? new AiWorker(highlightStore, codexDescriber({ codexHome: join(config.dataDir, 'codex'), model: config.aiModel }), {
         cameras: config.cameras,
         model: config.aiModel,
+        facts: () => facts?.list().map((f) => f.text) ?? [],
+        // Full-resolution frame from Frigate's recording (1080p): plates and vehicles are far more legible
+        // than in the 640x360 detection snapshot.
+        still: async (c) => {
+          if (!frigateHttp || !config.frigate || !c.frameTime) return undefined;
+          const res = await frigateHttp(
+            `${config.frigate.url}/api/${encodeURIComponent(c.frigateCamera)}/recordings/${c.frameTime.toFixed(2)}/snapshot.jpg?height=1080`,
+            { signal: AbortSignal.timeout(20_000) },
+          );
+          if (!res.ok) return undefined;
+          const jpeg = new Uint8Array(await res.arrayBuffer());
+          return jpeg[0] === 0xff && jpeg[1] === 0xd8 ? jpeg : undefined;
+        },
         // `app` exists by the time the worker logs (it starts after the app is built).
         log: (msg) => app.log.warn(msg),
       })
@@ -66,7 +81,7 @@ const app = buildApp({
   }),
   ...(config.devApi && mock ? { mock } : {}),
   ...(store ? { auth: { store, publicUrl: config.publicUrl } } : {}),
-  ...(highlightStore && clips && config.frigate ? { highlights: { store: highlightStore, clips, frigateUrl: config.frigate.url, ...(ai ? { aiStatus: () => ai.status() } : {}) } } : {}),
+  ...(highlightStore && clips && config.frigate ? { highlights: { store: highlightStore, clips, frigateUrl: config.frigate.url, ...(ai ? { aiStatus: () => ai.status() } : {}), ...(facts ? { facts } : {}) } } : {}),
   logger: true,
 });
 importer =
@@ -116,6 +131,7 @@ const shutdown = async () => {
   await app.close();
   store?.close();
   highlightStore?.close();
+  facts?.close();
   process.exit(0);
 };
 process.on('SIGTERM', shutdown);

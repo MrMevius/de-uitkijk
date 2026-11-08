@@ -229,6 +229,7 @@ export function AdminPage() {
       </p>
       {error && <p className="account__error">{error}</p>}
       {me?.role === 'admin' && <AiStatusLine />}
+      {me?.role === 'admin' && <FactsEditor />}
       {me?.role === 'admin' && (
         <>
           {link && (
@@ -307,5 +308,78 @@ function AiStatusLine() {
       AI-beschrijvingen (Codex, {ai.model}): vandaag {ai.callsToday} van max. {ai.dailyCap}, laatste gelukt: {last}, wachtend: {ai.pending}
       {ai.lastError && <span className="account__error"> · laatste fout: {ai.lastError}</span>}
     </p>
+  );
+}
+
+interface Fact {
+  id: number;
+  text: string;
+  createdBy: string;
+}
+
+/** Household facts the AI may use in highlight descriptions. */
+function FactsEditor() {
+  const [facts, setFacts] = useState<Fact[] | null>(null);
+  const [text, setText] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const load = () => api<Fact[]>('GET', '/api/admin/facts').then(setFacts, () => setFacts(null));
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  if (!facts) return null;
+
+  const add = async (e: FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    try {
+      await api('POST', '/api/admin/facts', { text });
+      setText('');
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
+  const remove = async (f: Fact) => {
+    setError(null);
+    try {
+      await api('DELETE', `/api/admin/facts/${f.id}`);
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
+  return (
+    <section className="account__facts">
+      <h3>Feiten voor de AI</h3>
+      <p className="account__note">
+        Korte feiten die de AI mag gebruiken bij het beschrijven van highlights, bijvoorbeeld
+        "Rode Tesla Model 3 met kenteken XX-123-Y is van Jasper". De AI noemt een naam alleen als het beeld het feit
+        duidelijk laat zien. Deze feiten worden bij elke beschrijving naar OpenAI (Codex) gestuurd.
+      </p>
+      <ul className="account__factlist">
+        {facts.map((f) => (
+          <li key={f.id}>
+            <span>{f.text}</span> <button onClick={() => void remove(f)}>Verwijderen</button>
+          </li>
+        ))}
+        {facts.length === 0 && <li className="account__note">Nog geen feiten.</li>}
+      </ul>
+      <form className="account__form account__form--inline" onSubmit={(e) => void add(e)}>
+        <input
+          className="account__factinput"
+          placeholder="Nieuw feit, bijv. Blauwe VW up! is van Tini"
+          maxLength={200}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          required
+        />
+        <button>Toevoegen</button>
+      </form>
+      {error && <p className="account__error">{error}</p>}
+    </section>
   );
 }

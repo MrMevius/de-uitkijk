@@ -14,6 +14,8 @@ export interface CandidateRecord {
   repEvent: string;
   clipStart: number;
   clipEnd: number;
+  /** Best frame of the representative alert (epoch seconds), for a full-resolution still. */
+  frameTime?: number;
   eventStart: number;
   eventEnd: number;
   labels: string[];
@@ -50,6 +52,7 @@ interface Row {
   ai_attempts: number;
   base_score: number | null;
   feedback_adj: number;
+  frame_time: number | null;
 }
 
 export interface StoredCandidate extends CandidateRecord {
@@ -69,7 +72,7 @@ export interface StoredCandidate extends CandidateRecord {
 }
 
 const COLUMNS =
-  'id, start_time, end_time, cameras, camera, frigate_camera, rep_event, clip_start, clip_end, event_start, event_end, labels, sub_labels, score, reasons, description, selected, feedback, deleted, thumbnail IS NOT NULL AS has_thumbnail, ai_description, ai_real, ai_status, ai_attempts, base_score, feedback_adj';
+  'id, start_time, end_time, cameras, camera, frigate_camera, rep_event, clip_start, clip_end, event_start, event_end, labels, sub_labels, score, reasons, description, selected, feedback, deleted, thumbnail IS NOT NULL AS has_thumbnail, ai_description, ai_real, ai_status, ai_attempts, base_score, feedback_adj, frame_time';
 
 const fromRow = (r: Row): StoredCandidate => ({
   id: r.id,
@@ -81,6 +84,7 @@ const fromRow = (r: Row): StoredCandidate => ({
   repEvent: r.rep_event,
   clipStart: r.clip_start,
   clipEnd: r.clip_end,
+  frameTime: r.frame_time ?? r.clip_start + 3,
   eventStart: r.event_start,
   eventEnd: r.event_end,
   labels: JSON.parse(r.labels),
@@ -179,6 +183,8 @@ export class HighlightStore {
       ['base_score', 'REAL'],
       ['feedback_adj', 'REAL NOT NULL DEFAULT 0'],
       ['feedback_at', 'REAL'],
+      // Added in 0.8.0 (full-resolution still for the AI).
+      ['frame_time', 'REAL'],
     ] as const) {
       if (!columns.has(name)) this.db.exec(`ALTER TABLE candidates ADD COLUMN ${name} ${type}`);
     }
@@ -208,13 +214,13 @@ export class HighlightStore {
       this.db
         .prepare(
           `INSERT INTO candidates (id, start_time, end_time, cameras, camera, frigate_camera, rep_event, clip_start, clip_end,
-             event_start, event_end, labels, sub_labels, score, reasons, description, base_score)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             event_start, event_end, labels, sub_labels, score, reasons, description, base_score, frame_time)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           c.id, c.startTime, c.endTime, JSON.stringify(c.cameras), c.camera, c.frigateCamera, c.repEvent, c.clipStart,
           c.clipEnd, c.eventStart, c.eventEnd, JSON.stringify(c.labels), JSON.stringify(c.subLabels), c.score,
-          JSON.stringify(c.reasons), c.description, c.score,
+          JSON.stringify(c.reasons), c.description, c.score, c.frameTime ?? null,
         );
       const mark = this.db.prepare('INSERT OR IGNORE INTO processed_reviews (review_id, candidate_id) VALUES (?, ?)');
       for (const id of reviewIds) mark.run(id, c.id);

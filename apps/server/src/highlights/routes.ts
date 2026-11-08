@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { factProblem, type FactStore } from '../ai/facts.ts';
 import { SELECTION } from './selection.ts';
 import { sendFileWithRanges, type ClipCache } from './clips.ts';
 import { toSummary, type HighlightStore } from './store.ts';
@@ -11,6 +12,8 @@ export interface HighlightRouteOptions {
   now?: () => number;
   /** AI description status for administrators, when AI is enabled. */
   aiStatus?: () => unknown;
+  /** Household facts for the AI (administrators only). */
+  facts?: FactStore;
 }
 
 const num = (v: unknown) => (typeof v === 'string' && v !== '' && Number.isFinite(Number(v)) ? Number(v) : undefined);
@@ -19,7 +22,7 @@ const num = (v: unknown) => (typeof v === 'string' && v !== '' && Number.isFinit
  * Highlight API. Viewing needs a session (auth hook); feedback and deletion need the admin role
  * (`/api/admin/`). Video is fetched from Frigate on demand; nothing is copied permanently.
  */
-export function registerHighlights(app: FastifyInstance, { store, clips, frigateUrl, now = () => Date.now() / 1000, aiStatus }: HighlightRouteOptions): void {
+export function registerHighlights(app: FastifyInstance, { store, clips, frigateUrl, now = () => Date.now() / 1000, aiStatus, facts }: HighlightRouteOptions): void {
   const frigate = frigateUrl.replace(/\/$/, '');
 
   app.get('/api/highlights/rotation', async () =>
@@ -68,6 +71,26 @@ export function registerHighlights(app: FastifyInstance, { store, clips, frigate
   app.get<{ Params: { id: string }; Querystring: { download?: string } }>('/api/highlights/:id/event.mp4', video('event'));
 
   app.get('/api/admin/ai', async () => (aiStatus ? aiStatus() : { enabled: false }));
+
+  if (facts) {
+    app.get('/api/admin/facts', async () => facts.list());
+    app.post<{ Body: { text?: unknown } }>('/api/admin/facts', async (request, reply) => {
+      const problem = factProblem(request.body?.text);
+      if (problem) return reply.code(400).send({ error: problem });
+      try {
+        const fact = facts.add(request.body!.text as string, request.user?.username ?? 'onbekend', now());
+        request.log.info({ by: request.user?.username, id: fact.id }, 'AI fact added');
+        return reply.code(201).send(fact);
+      } catch (err) {
+        return reply.code(400).send({ error: (err as Error).message });
+      }
+    });
+    app.delete<{ Params: { id: string } }>('/api/admin/facts/:id', async (request, reply) => {
+      if (!facts.remove(Number(request.params.id))) return reply.code(404).send({ error: 'Feit niet gevonden' });
+      request.log.info({ by: request.user?.username, id: request.params.id }, 'AI fact removed');
+      return reply.code(204).send();
+    });
+  }
 
   app.post<{ Params: { id: string }; Body: { value?: unknown } }>('/api/admin/highlights/:id/feedback', async (request, reply) => {
     const value = request.body?.value;

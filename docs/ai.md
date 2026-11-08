@@ -22,6 +22,15 @@ Highlights get a short Dutch description written by an AI from one still image. 
 
 The same rules apply to every camera (AI-2). The worker runs only when `UITKIJK_AI=codex` is set in the runtime environment (AI-4: explicit owner authorisation). There is no use of another application's session cookies or undocumented endpoints (AI-5); the only interface is the published `codex` binary.
 
+## Household facts (since 0.8.0)
+
+Administrators keep a short list of facts on `/beheer`, for example "Rode Tesla Model 3 met kenteken XX-123-Y is van Jasper". It holds at most 50 facts of up to 200 characters each, stored in the application database as plain single lines.
+
+- **Prompt.** Every description request includes the facts, plus names from Frigate's face recognition for that event.
+- **Naming rule.** The prompt allows a name only when it follows from face recognition, or from a fact that visibly matches the picture (a legible plate, or a vehicle that matches exactly). It forbids guessing who someone is from appearance or clothing, and asks for a neutral description when in doubt.
+- **Input image.** Since 0.8.0 the AI receives a 1920×1080 still from Frigate's recording at the alert's best frame (`/api/<camera>/recordings/<time>/snapshot.jpg?height=1080`) instead of the 640×360 detection snapshot, which makes plates and vehicle details legible. If Frigate cannot deliver it, the stored snapshot is used.
+- **Privacy.** The facts (names, plates) are sent to OpenAI through Codex with every description. Facts change only new descriptions; existing ones stay.
+
 ## Confinement
 
 Codex is an agent with a shell tool that cannot be disabled. Each run is therefore confined:

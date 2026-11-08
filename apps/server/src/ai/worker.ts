@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import type { Camera } from '@uitkijk/shared';
-import type { HighlightStore } from '../highlights/store.ts';
+import type { HighlightStore, StoredCandidate } from '../highlights/store.ts';
 import type { Describer } from './codex.ts';
 
 export interface AiWorkerOptions {
@@ -14,6 +14,10 @@ export interface AiWorkerOptions {
   log?: (msg: string) => void;
   /** Shown in the status. */
   model?: string;
+  /** Household facts for the prompt. */
+  facts?: () => string[];
+  /** A better still for the AI (full-resolution recording frame); falls back to the stored thumbnail. */
+  still?: (c: StoredCandidate) => Promise<Uint8Array | undefined>;
   /** Converts the stored WebP thumbnail to JPEG; override in tests. */
   toJpeg?: (webp: Uint8Array) => Promise<Uint8Array>;
 }
@@ -77,6 +81,8 @@ export class AiWorker {
       now: () => Date.now() / 1000,
       log: () => {},
       model: 'standaard',
+      facts: () => [],
+      still: async () => undefined,
       toJpeg: ffmpegToJpeg,
       ...options,
     };
@@ -124,10 +130,13 @@ export class AiWorker {
     if (!webp) return false;
     this.callsToday++;
     try {
-      const verdict = await this.describe(await this.opts.toJpeg(webp), {
+      const still = await this.opts.still(next).catch(() => undefined);
+      const verdict = await this.describe(still ?? (await this.opts.toJpeg(webp)), {
         cameraName: this.names.get(next.camera) ?? next.camera,
         time: timeFormat.format(next.startTime * 1000),
         objects: next.labels.map((l) => l.replace(/-verified$/, '')),
+        recognized: next.subLabels,
+        facts: this.opts.facts(),
       });
       this.store.setAiResult(next.id, verdict.description, verdict.realEvent, now);
       this.lastSuccessAt = now;
