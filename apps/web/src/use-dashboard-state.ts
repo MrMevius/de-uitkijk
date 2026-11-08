@@ -43,6 +43,12 @@ export function useDashboardState(eventsUrl = '/api/events'): DashboardConnectio
         if (source?.readyState === EventSource.CLOSED && !disposed) {
           source.close();
           retry = setTimeout(open, backoffDelay(attempt++));
+          // From outside the LAN a missing or expired login closes the stream: go to the login page.
+          void fetch('/api/state', { method: 'HEAD' }).then((res) => {
+            if (res.status === 401 && !disposed) {
+              location.replace(`/login?next=${encodeURIComponent(location.pathname + location.search)}`);
+            }
+          }, () => {});
         }
       };
     };

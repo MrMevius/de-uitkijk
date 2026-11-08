@@ -1,0 +1,11 @@
+# go2rtc MSE WebSocket (included inside `location = /stream/ws` of both listeners).
+# Rewrite (query string kept) instead of variables in proxy_pass, which would need a resolver.
+rewrite ^ /api/ws break;
+proxy_pass http://${GO2RTC_UPSTREAM};
+proxy_http_version 1.1;
+proxy_set_header Upgrade $http_upgrade;
+proxy_set_header Connection $connection_upgrade;
+# go2rtc compares the WebSocket Origin with Host.
+proxy_set_header Host $http_host;
+proxy_read_timeout 1h;
+proxy_buffering off;

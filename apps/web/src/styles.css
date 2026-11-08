@@ -198,3 +198,86 @@ body,
 .dev__error {
   color: var(--alert);
 }
+
+/* Login, activation and administration (public address only). */
+.account {
+  padding: 2rem 1.25rem;
+  max-width: 40rem;
+  margin: 0 auto;
+  overflow: auto;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.account h1 {
+  margin: 0;
+  font-size: 1.1rem;
+  color: var(--muted);
+}
+
+.account a {
+  color: #8ab4ff;
+}
+
+.account__form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  max-width: 22rem;
+}
+
+.account__form--inline {
+  flex-direction: row;
+  flex-wrap: wrap;
+  max-width: none;
+  margin-top: 1rem;
+}
+
+.account__form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  color: var(--muted);
+}
+
+.account input,
+.account select,
+.account button {
+  font: inherit;
+  padding: 0.55rem 0.7rem;
+  border-radius: 6px;
+  border: 1px solid #2a313b;
+  background: var(--tile-bg);
+  color: var(--text);
+}
+
+.account button {
+  cursor: pointer;
+  background: #1d2632;
+}
+
+.account button:disabled {
+  opacity: 0.6;
+}
+
+.account__error {
+  color: var(--alert);
+}
+
+.account__link input {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 0.5rem;
+}
+
+.account__table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.account__table td,
+.account__table th {
+  text-align: left;
+  padding: 0.45rem 0.4rem;
+  border-bottom: 1px solid #1f252d;
+}

@@ -1,4 +1,5 @@
 import Fastify, { type FastifyInstance } from 'fastify';
+import { registerAuth, type AuthOptions } from './auth/routes.ts';
 import type { StateHub } from './hub.ts';
 import type { MockSource } from './mock/mock-source.ts';
 
@@ -6,6 +7,8 @@ export interface AppDeps {
   hub: StateHub;
   /** Present only in mock mode with the dev API enabled. */
   mock?: MockSource;
+  /** Login for public access. Without it every route is open (development and tests). */
+  auth?: AuthOptions;
   logger?: boolean;
   heartbeatMs?: number;
 }
@@ -15,8 +18,9 @@ export interface AppDeps {
  * a health endpoint and, in mock mode only, scenario control for development.
  * No route returns Frigate URLs, camera source URLs or credentials.
  */
-export function buildApp({ hub, mock, logger = false, heartbeatMs = 15_000 }: AppDeps): FastifyInstance {
+export function buildApp({ hub, mock, auth, logger = false, heartbeatMs = 15_000 }: AppDeps): FastifyInstance {
   const app = Fastify({ logger });
+  if (auth) registerAuth(app, auth);
 
   app.get('/api/health', async () => {
     const state = hub.snapshot();

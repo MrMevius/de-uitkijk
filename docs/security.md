@@ -1,59 +1,33 @@
 # Security
 
-## Increment 1: trusted development environment only
+## Access model (operator decisions, 2026-11-08)
 
-The first increment has **no authentication**. It is a development prototype and must not be exposed beyond a trusted network.
+| Where | Access |
+| --- | --- |
+| Home LAN, including phones on Wi-Fi (`http://10.0.0.171:8088`) | Open, no login. Login and administration are refused here. |
+| Outside the home (`https://uitkijk.mrmevius.nl`, through SWAG) | Login required for every API call and every video stream. |
 
-What it does enforce:
+TVs stand on the LAN, so they need no login, pairing or tickets. Anyone on the LAN or Wi-Fi can watch the live cameras; that is intended.
 
-- Only the edge proxy is published, on `127.0.0.1:8080` by default (`UITKIJK_BIND`). go2rtc and the backend have no host ports.
-- The edge exposes go2rtc's MSE WebSocket only, for stream names matching `^[a-z0-9_]{1,64}$`. go2rtc itself also serves only `/api` and `/api/ws` (`allow_paths`). go2rtc's RTSP server listens on container localhost only; WebRTC is disabled.
-- Camera credentials live in `.env` and are passed only to the go2rtc container. The backend never receives them, and no API response contains a source URL. `FRIGATE_URL` with embedded credentials is rejected.
-- Browsers never talk to Frigate.
-- The mock-scenario API (`/api/dev/*`) exists only in mock mode.
+## How the boundary is enforced
 
-Do not port-forward, add the dashboard to SWAG, or bind it to a non-trusted interface until the production design below is implemented.
+- **Two edge listeners.** `8080` is the LAN listener, published on the LAN address. `8081` is the public listener. It is reachable only from SWAG over the shared Docker network, plus a loopback port on the host for testing. Each listener sets `X-Uitkijk-Access` (`local` or `public`) towards the backend and overwrites any value the client sent. The backend has no host port, so the header cannot be forged from outside the edge.
+- **The backend fails closed.** A request without `X-Uitkijk-Access: local` is treated as public. On the public side every `/api/` route except health, login, logout and the one-time-link routes requires a valid session. `/api/admin/*` additionally requires the `admin` role.
+- **Video.** On the public listener the edge calls the backend (`auth_request` → `/api/auth/check`) before it proxies a stream to go2rtc. Remote viewing therefore needs the backend; LAN viewing does not.
+- **go2rtc.** Only the MSE WebSocket is exposed, for stream names matching `^[a-z0-9_]{1,64}$`. go2rtc itself serves only `/api` and `/api/ws` (`allow_paths`). RTSP listens on container localhost; WebRTC is disabled.
+- **Secrets.** Camera credentials exist only in the go2rtc configuration file, outside the repository and outside the shared runtime environment. No API response contains a source URL. Browsers never talk to Frigate. `FRIGATE_URL` with embedded credentials is rejected.
+- **Development.** The mock-scenario API (`/api/dev/*`) exists only in mock mode.
 
-### Interim LAN deployment
+## Accounts
 
-On `503-web-ubuntu` the dashboard is open to the whole home LAN, phones included (operator decision, 2026-11-08). Anyone on the LAN or Wi-Fi can watch the live cameras; nobody outside it can. Camera credentials sit only in the go2rtc configuration file outside the repository, not in the shared runtime environment, and the go2rtc API stays limited to the MSE endpoint. An optional client allowlist (`UITKIJK_ALLOW_FROM`) exists but is not used. See [deployment.md](deployment.md).
+- **Roles.** Own accounts with `admin` and `viewer` roles. No MFA (product decision).
+- **Passwords.** Hashed with scrypt (N=2^15, r=8, p=1, 16-byte salt) from `node:crypto`; at least 10 characters.
+- **One-time links.** Activation and password-reset links are created by an administrator in `/beheer`. Each link is random (256 bits), valid for 72 hours and works once. Only its SHA-256 hash is stored, and a new link for a user invalidates the previous one. Setting a password ends all other sessions of that user. The token sits in the URL fragment (`/activeer#…`), so it never reaches server logs or `Referer` headers.
+- **Sessions.** Server-side records in SQLite (`/data/uitkijk.db` in the `data` volume), stored as hashes. The cookie is `HttpOnly; Secure; SameSite=Strict` with a 30-day sliding expiry, and logout deletes the record.
+- **Brute force.** After 5 failed logins for a username, or 10 from one client address, logins from there are blocked for 15 minutes. The counters are in memory, so a restart resets them. Unknown users take as long to check as known ones.
+- **Cross-site requests.** Besides `SameSite=Strict`, any write from a foreign `Origin` is rejected.
+- **Recovery and the first administrator.** Run `docker compose exec server node apps/server/src/cli.ts admin-link <name>` on the server. It creates or promotes the administrator and prints a one-time link. `... cli.ts users` lists the accounts.
 
-## Production design (later phases)
+## Superseded
 
-### Users
-
-Own accounts with `admin` and `viewer` roles; activation and password reset through administrator-generated one-time links; emergency admin recovery through a server CLI; no MFA (product decision). Passwords hashed with a memory-hard KDF (argon2id or scrypt from `node:crypto`). Sessions as server-side records in SQLite with an HTTP-only, `Secure`, `SameSite=Strict` cookie.
-
-### TV clients
-
-1. An administrator creates a one-time pairing code, short-lived and single-use.
-2. The TV kiosk opens `/pair`, enters or scans the code, and receives a **device session**: a long random identifier stored server-side and revocable per device.
-3. The device session authorises dashboard API access, including the event stream.
-
-### Streaming that survives a backend outage of up to four hours
-
-Requirement: a TV that was authorised before the backend went down must be able to (re)connect to video for up to four hours without the backend.
-
-The streaming path (edge → go2rtc) must therefore verify access **without calling the backend**. Proposed design:
-
-- While the backend is up, a paired device periodically (for example every 30 minutes) obtains a **stream ticket**: `{deviceId, expires = now + 4 h, allowed streams}`, signed with a key shared between backend and edge only.
-- The dashboard sends the ticket with every WebSocket connection (query parameter, since browsers cannot set headers on WebSockets). The edge verifies signature and expiry locally before proxying to go2rtc. The dashboard stores the ticket in `localStorage`, so a page reload during an outage still works. The static page itself comes from the edge, not the backend.
-- Expiry bounds the outage window to four hours after the last successful refresh.
-- **Revocation**: removing a device stops refreshes immediately, so its ticket dies within four hours at the latest. For immediate revocation the backend also writes a small deny-list (device ids) that the edge reads, or rotates the signing key and thereby invalidates all tickets.
-
-Edge verification options, to be decided when implemented:
-
-| Option | Pros | Cons |
-| --- | --- | --- |
-| nginx `secure_link` (built into nginx, available in SWAG) | No extra process; verifies expiry and a hash over URI + secret. | MD5-based; a shared secret on the edge. |
-| `auth_request` to a tiny stateless verifier (HMAC/Ed25519) in the edge container | Modern cryptography; device deny-list support. | One more small process, which must not depend on the backend. |
-
-Either way: never expose go2rtc's API beyond the MSE endpoint, never give browsers camera or Frigate credentials, and keep the edge independent of the backend. Public access via SWAG adds TLS. Local access must keep working without internet, which requires local DNS (AdGuard Home) and a certificate that validates offline.
-
-### Frigate access
-
-Read-only, server-side only. Production should use either the authenticated Frigate API with a dedicated user, or network restriction of the unauthenticated port. See [frigate-integration.md](frigate-integration.md#access).
-
-### Secrets
-
-Never commit `.env` or `go2rtc/live.yaml` (both git-ignored). go2rtc uses the existing camera administrator account (operator decision, 2026-11-08), so `.env` must stay mode 600 on the server and its contents must never reach logs, the backend or browsers.
+The earlier design for TV pairing, device sessions and signed four-hour stream tickets (requirements SEC-5, RES-6) is no longer needed: TVs are on the LAN, where viewing needs no login, and the LAN path does not depend on the backend. If TVs ever need to work outside the LAN, revisit it.

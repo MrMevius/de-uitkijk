@@ -1,4 +1,6 @@
+import { join } from 'node:path';
 import { buildApp } from './app.ts';
+import { AuthStore } from './auth/store.ts';
 import { loadConfig } from './config.ts';
 import { FrigateSource } from './frigate/frigate-source.ts';
 import { StateHub } from './hub.ts';
@@ -14,7 +16,15 @@ const mock =
         config.cameras.map((c) => c.id),
       )
     : undefined;
-const app = buildApp({ hub, ...(config.devApi && mock ? { mock } : {}), logger: true });
+const store = config.dataDir ? new AuthStore(join(config.dataDir, 'uitkijk.db')) : undefined;
+store?.purgeExpired();
+const purge = setInterval(() => store?.purgeExpired(), 3600_000);
+const app = buildApp({
+  hub,
+  ...(config.devApi && mock ? { mock } : {}),
+  ...(store ? { auth: { store, publicUrl: config.publicUrl } } : {}),
+  logger: true,
+});
 
 mock?.start(config.mockScenario);
 const frigate = config.frigate
@@ -28,7 +38,7 @@ const probe = config.go2rtcUrl
 probe?.start();
 
 app.log.info(
-  { mode: config.mode, cameras: config.cameras.map((c) => c.id), go2rtcProbe: Boolean(probe) },
+  { mode: config.mode, cameras: config.cameras.map((c) => c.id), go2rtcProbe: Boolean(probe), login: Boolean(store) },
   'De Uitkijk server starting',
 );
 
@@ -37,7 +47,9 @@ const shutdown = async () => {
   frigate?.stop();
   probe?.stop();
   hub.stop();
+  clearInterval(purge);
   await app.close();
+  store?.close();
   process.exit(0);
 };
 process.on('SIGTERM', shutdown);

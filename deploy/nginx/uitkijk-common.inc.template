@@ -1,0 +1,26 @@
+# Shared by both listeners (included from default.conf). $uitkijk_access and $uitkijk_client are set per server.
+server_tokens off;
+root /usr/share/nginx/html;
+
+add_header X-Content-Type-Options nosniff always;
+add_header Referrer-Policy no-referrer always;
+
+location / {
+    try_files $uri /index.html;
+}
+
+location = /index.html {
+    add_header Cache-Control "no-cache";
+    add_header X-Content-Type-Options nosniff always;
+}
+
+location /api/ {
+    proxy_pass http://${API_UPSTREAM};
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_set_header X-Uitkijk-Access $uitkijk_access;
+    proxy_set_header X-Uitkijk-Client $uitkijk_client;
+    # Server-sent events: no buffering, long-lived.
+    proxy_buffering off;
+    proxy_read_timeout 1h;
+}

@@ -35,8 +35,12 @@ services:
       FRIGATE_URL: ${FRIGATE_URL:-}
       FRIGATE_POLL_MS: ${FRIGATE_POLL_MS:-2000}
       GO2RTC_URL: http://go2rtc:1984
+      # Accounts and sessions for access from outside the LAN (SQLite).
+      UITKIJK_DATA_DIR: /data
+      UITKIJK_PUBLIC_URL: ${UITKIJK_PUBLIC_URL:-http://127.0.0.1:8081}
     volumes:
       - ./config:/app/config:ro
+      - data:/data
 
   web:
     build:
@@ -44,8 +48,23 @@ services:
       dockerfile: apps/web/Dockerfile
     restart: unless-stopped
     depends_on: [server, go2rtc]
-    environment:
-      # Space-separated client addresses/CIDRs allowed to use the dashboard; empty allows everyone.
-      UITKIJK_ALLOW_FROM: ${UITKIJK_ALLOW_FROM:-}
+    networks:
+      default: {}
+      edge:
+        # SWAG proxies to de-uitkijk:8081 (public listener).
+        aliases: [de-uitkijk]
     ports:
+      # Home LAN listener: no login.
       - "${UITKIJK_BIND:-127.0.0.1}:${UITKIJK_PORT:-8080}:8080"
+      # Public listener (login required). Production reaches it from SWAG over the edge network;
+      # the host port stays on loopback for local testing.
+      - "127.0.0.1:${UITKIJK_PUBLIC_PORT:-8081}:8081"
+
+volumes:
+  data:
+
+networks:
+  # Production: the existing SWAG network (UITKIJK_EDGE_NETWORK=swag_default, UITKIJK_EDGE_NETWORK_EXTERNAL=true).
+  edge:
+    name: ${UITKIJK_EDGE_NETWORK:-de-uitkijk_edge}
+    external: ${UITKIJK_EDGE_NETWORK_EXTERNAL:-false}

@@ -19,9 +19,10 @@ The complete agreed scope is in [docs/requirements.md](docs/requirements.md).
 - Resilient players: unavailable tiles, bounded exponential backoff, stall detection, no stale frames, backend-independent streaming.
 - 61 automated tests.
 
-Not production-ready: there is **no authentication**. Run it only on a trusted network ([docs/security.md](docs/security.md)).
+**Deployed (2026-11-08):** live mode on `503-web-ubuntu`, delivered by deployctl from `main` ([docs/deployment.md](docs/deployment.md)).
 
-**Deployed (2026-11-08):** live mode on `503-web-ubuntu` at `http://10.0.0.171:8088`, delivered by deployctl from `main`. Open to the home LAN, phones included; not reachable from outside ([docs/deployment.md](docs/deployment.md)).
+- Home LAN, phones included: `http://10.0.0.171:8088`, no login.
+- Outside the home: `https://uitkijk.mrmevius.nl` through SWAG, with own accounts (administrator and viewer roles, one-time activation links) ([docs/security.md](docs/security.md)).
 
 ## Documentation
 
@@ -33,7 +34,7 @@ Not production-ready: there is **no authentication**. Run it only on a trusted n
 | [docs/streaming.md](docs/streaming.md) | Streaming evaluation, measurements, real-camera test procedure |
 | [docs/security.md](docs/security.md) | Current boundary; production auth, TV pairing, 4-hour outage design |
 | [docs/development.md](docs/development.md) | Running mock and live mode, configuration |
-| [docs/deployment.md](docs/deployment.md) | Placement on `503-web-ubuntu`, deployctl, LAN access |
+| [docs/deployment.md](docs/deployment.md) | Placement on `503-web-ubuntu`, deployctl, LAN and public access, administration |
 | [docs/testing.md](docs/testing.md) | Automated tests, fixtures, manual checks |
 
 ## Roadmap
@@ -42,7 +43,7 @@ Not production-ready: there is **no authentication**. Run it only on a trusted n
 | --- | --- |
 | 1 (done) | Foundation, mock/live alert integration, streaming proof of concept, automatic dashboard, focus, resilience, tests. |
 | 2 | Real-camera streaming measurements; hosting benchmark and placement decision (independent of the Frigate host); kiosk client (Intel NUC) with HEVC verification; display profiles per device. |
-| 3 | SQLite persistence; user accounts and roles; TV pairing and device sessions; stream tickets that survive a 4-hour backend outage; SWAG/HTTPS and local DNS; Zabbix health checks; backups. |
+| 3 | Done 2026-11-08: SQLite accounts and roles, one-time links, login for public access through SWAG/HTTPS. TV pairing and stream tickets are superseded by open LAN access. Remaining: Zabbix health check, optional local DNS name. |
 | 4 | Highlights: candidate selection, grouping across cameras, clip selection, thumbnails, rotation on the dashboard, archive, feedback/deletion with tombstones, catch-up after outages. |
 | 5 | AI descriptions via an officially permitted subscription method, with owner authorisation; administrative UI; downloads. |
 
@@ -58,8 +59,7 @@ Not production-ready: there is **no authentication**. Run it only on a trusted n
 | Hosting location for go2rtc + edge | Decided 2026-11-08: `503-web-ubuntu`, deployed with deployctl, open to the home LAN until phase 3 ([docs/deployment.md](docs/deployment.md)). | Install the NUC kiosk. |
 | Camera account | Operator decision (2026-11-08): go2rtc uses the existing camera administrator account. Accepted trade-off: the credential stays server-side (`.env`, mode 600, go2rtc only). | None. |
 | Frigate alert timing | Frigate keeps alerts open for `cutoff_time` (40 s) after activity; focus lasts about 40 s + 15 s. | Decide whether that is acceptable or adjust Frigate (production change). |
-| Frigate API authentication | Development uses the unauthenticated internal API. | Choose authenticated API or network restriction for production. |
-| Stream authorisation at the edge | Required for the 4-hour outage requirement. | Choose `secure_link` or a stateless verifier ([docs/security.md](docs/security.md)). |
+| Frigate API authentication | The backend uses Frigate's unauthenticated internal API (read-only, server-side). | Optionally switch to the authenticated API with a dedicated user. |
 | Frigate push events | Could lower alert latency below the 2 s poll. | Verify the `/ws` `reviews` topic with a real alert. |
 | Highlight semantics | Grouping, clip extraction and catch-up depend on Frigate event/recording APIs. | Verify against 0.17.2 before design. |
 | AI provider | Must use an officially permitted subscription method without paid fallback. | Re-evaluate availability when phase 5 starts. |
