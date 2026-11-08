@@ -31,9 +31,18 @@ Codex is an agent with a shell tool that cannot be disabled. Each run is therefo
 
 Residual risk: the process runs as the backend's user and could in theory read files the backend can read (for example the SQLite database with password hashes) if a manipulated image talked the model into it. The only way out is the 120-character description, which is shown to logged-in users. This is accepted as very low.
 
+## Verification (2026-11-08)
+
+The owner signed in with ChatGPT through the device code. On production, two real Frigate snapshots were described through Codex in 6.5 s and 4.8 s:
+
+- "Een persoon loopt over de oprit.", real event;
+- "Een persoon loopt op de achtergrond langs de heg.", real event.
+
+AI was then enabled with `UITKIJK_AI=codex`.
+
 ## Operations
 
 - **Sign in once:** `docker exec -it de-uitkijk-server-1 codex login --device-auth`, then open the shown URL and enter the code with the owner's ChatGPT account. The login is stored in `/data/codex` (data volume, mode 700).
-- **Enable:** add `UITKIJK_AI=codex` to `/etc/de-uitkijk/runtime.env`; it takes effect with the next deployment.
+- **Enable:** add `UITKIJK_AI=codex` to `/etc/de-uitkijk/runtime.env`; it takes effect with the next deployment. Enabled on production since 2026-11-08.
 - **Disable:** remove the line (next deployment). Existing AI descriptions stay.
 - **Revoke:** `docker exec de-uitkijk-server-1 codex logout`, or revoke the session in the ChatGPT account.
