@@ -14,6 +14,8 @@ export interface ServerConfig {
   devApi: boolean;
   /** AI descriptions for highlights: 'codex' (ChatGPT sign-in through the Codex CLI) or off. */
   ai: 'codex' | 'off';
+  /** Codex model for descriptions; a light, fast model is enough for one sentence about one image. */
+  aiModel: string;
   /** Upper bound for the temporary clip cache (bytes). */
   clipCacheBytes: number;
   frigate?: {
@@ -49,6 +51,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     dataDir: env.UITKIJK_DATA_DIR || 'data',
     login: mode === 'live' || env.UITKIJK_LOGIN === 'on',
     ai: env.UITKIJK_AI === 'codex' ? 'codex' : 'off',
+    aiModel: env.UITKIJK_AI_MODEL || 'gpt-6-luna',
     clipCacheBytes: int(env.UITKIJK_CLIP_CACHE_MB, 512) * 1024 * 1024,
     publicUrl: new URL(env.UITKIJK_PUBLIC_URL || 'http://127.0.0.1:8080').origin,
     ...(env.GO2RTC_URL ? { go2rtcUrl: env.GO2RTC_URL.replace(/\/$/, '') } : {}),

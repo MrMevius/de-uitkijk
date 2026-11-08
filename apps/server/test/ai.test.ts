@@ -52,7 +52,7 @@ fs.writeFileSync(args[args.indexOf('--output-last-message') + 1], JSON.stringify
     );
     chmodSync(fake, 0o755);
     process.env.UITKIJK_SECRET_TEST = 'x';
-    const describe = codexDescriber({ codexHome: join(dir, 'home'), command: fake });
+    const describe = codexDescriber({ codexHome: join(dir, 'home'), model: 'gpt-6-luna', command: fake });
     const verdict = await describe(new Uint8Array([0xff, 0xd8, 0xff, 0xd9]), { cameraName: 'Voordeur', time: 't', objects: ['person'] });
     delete process.env.UITKIJK_SECRET_TEST;
     expect(verdict).toEqual({ description: 'Iemand loopt naar de deur', realEvent: true });
@@ -60,6 +60,7 @@ fs.writeFileSync(args[args.indexOf('--output-last-message') + 1], JSON.stringify
     expect(run.args.slice(0, 1)).toEqual(['exec']);
     expect(run.args).toEqual(expect.arrayContaining(['--sandbox', 'read-only', '--ephemeral', '--ignore-user-config', '--output-schema']));
     expect(run.args[run.args.indexOf('--sandbox') + 1]).toBe('read-only');
+    expect(run.args[run.args.indexOf('--model') + 1]).toBe('gpt-6-luna');
     expect(run.args).toEqual(expect.arrayContaining(['--disable', 'computer_use']));
     expect(run.image).toBe(true);
     expect(run.cwd).toContain('uitkijk-ai-');

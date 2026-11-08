@@ -285,6 +285,7 @@ export function AdminPage() {
 
 interface AiStatus {
   enabled: boolean;
+  model?: string;
   callsToday?: number;
   dailyCap?: number;
   lastSuccessAt?: number | null;
@@ -303,7 +304,7 @@ function AiStatusLine() {
   const last = ai.lastSuccessAt ? new Date(ai.lastSuccessAt * 1000).toLocaleString('nl-NL', { timeZone: 'Europe/Amsterdam' }) : 'nog niet';
   return (
     <p className="account__note">
-      AI-beschrijvingen (Codex): vandaag {ai.callsToday} van max. {ai.dailyCap}, laatste gelukt: {last}, wachtend: {ai.pending}
+      AI-beschrijvingen (Codex, {ai.model}): vandaag {ai.callsToday} van max. {ai.dailyCap}, laatste gelukt: {last}, wachtend: {ai.pending}
       {ai.lastError && <span className="account__error"> · laatste fout: {ai.lastError}</span>}
     </p>
   );

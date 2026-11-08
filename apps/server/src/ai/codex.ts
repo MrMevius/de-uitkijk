@@ -58,6 +58,8 @@ export interface CodexOptions {
   /** Directory with Codex's login (ChatGPT OAuth), outside the repository. */
   codexHome: string;
   timeoutMs?: number;
+  /** Codex model slug; the CLI default is a large coding model, which is more than a one-line caption needs. */
+  model?: string;
   /** Override for tests. */
   command?: string;
 }
@@ -89,7 +91,7 @@ function run(command: string, args: string[], env: NodeJS.ProcessEnv, cwd: strin
  * temporary working directory, the read-only sandbox (no writes, no network for commands), no user
  * config, extra tool features off, and a strict JSON output schema.
  */
-export function codexDescriber({ codexHome, timeoutMs = 180_000, command = 'codex' }: CodexOptions): Describer {
+export function codexDescriber({ codexHome, timeoutMs = 180_000, model, command = 'codex' }: CodexOptions): Describer {
   return async (jpeg, context) => {
     const dir = await mkdtemp(join(tmpdir(), 'uitkijk-ai-'));
     try {
@@ -101,6 +103,7 @@ export function codexDescriber({ codexHome, timeoutMs = 180_000, command = 'code
       const args = ['exec', '--skip-git-repo-check', '--ephemeral', '--ignore-user-config', '--ignore-rules'];
       args.push('--sandbox', 'read-only', '--cd', dir, '--color', 'never');
       for (const f of DISABLED_FEATURES) args.push('--disable', f);
+      if (model) args.push('--model', model);
       args.push('-c', 'model_reasoning_effort="low"');
       args.push('--image', image, '--output-schema', schema, '--output-last-message', answer, buildPrompt(context));
       // Only what Codex needs: no application environment.

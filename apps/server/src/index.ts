@@ -34,8 +34,9 @@ if (highlightStore) mkdirSync(join(config.dataDir, 'codex'), { recursive: true, 
 // AI descriptions (AI-4: only when the owner enabled them; AI-7: isolated, failures never affect the rest).
 const ai =
   highlightStore && config.ai === 'codex'
-    ? new AiWorker(highlightStore, codexDescriber({ codexHome: join(config.dataDir, 'codex') }), {
+    ? new AiWorker(highlightStore, codexDescriber({ codexHome: join(config.dataDir, 'codex'), model: config.aiModel }), {
         cameras: config.cameras,
+        model: config.aiModel,
         // `app` exists by the time the worker logs (it starts after the app is built).
         log: (msg) => app.log.warn(msg),
       })
@@ -70,7 +71,7 @@ const probe = config.go2rtcUrl
 probe?.start();
 
 app.log.info(
-  { mode: config.mode, cameras: config.cameras.map((c) => c.id), go2rtcProbe: Boolean(probe), login: Boolean(store), highlights: Boolean(importer), ai: config.ai },
+  { mode: config.mode, cameras: config.cameras.map((c) => c.id), go2rtcProbe: Boolean(probe), login: Boolean(store), highlights: Boolean(importer), ai: config.ai, aiModel: config.ai === 'codex' ? config.aiModel : undefined },
   'De Uitkijk server starting',
 );
 

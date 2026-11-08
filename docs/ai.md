@@ -8,6 +8,10 @@ Highlights get a short Dutch description written by an AI from one still image. 
 - **Claude**: the owner currently has a Pro plan. The officially permitted programmatic route found so far (monthly API credits through a Console API key) needs Max, Ultra or Team. To be revisited later.
 - Frigate's own GenAI stays off: it is configured with an OpenAI API key (paid).
 
+## Model
+
+`gpt-6-luna` by default (`UITKIJK_AI_MODEL`). Without `--model`, Codex uses the first model in its catalog (`gpt-6.1-sol`, a large "workhorse for coding"), which is more than one sentence about one image needs. On 2026-11-08 both models described the same real snapshots equally well. Luna was about 30% faster (2.8–3.0 s against 4.0 s), and OpenAI's catalog lists it as "fast and affordable … for easier tasks", so it uses less of the plan's limits. Reasoning effort is `low`. The catalog for the signed-in account is available with `codex debug models`.
+
 ## How it works
 
 1. Only highlights that passed the rule-based selection (AI-1) are sent, oldest first and one at a time, every two minutes. At most 60 calls a day.

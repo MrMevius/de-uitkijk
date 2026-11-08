@@ -12,6 +12,8 @@ export interface AiWorkerOptions {
   /** Epoch seconds. */
   now?: () => number;
   log?: (msg: string) => void;
+  /** Shown in the status. */
+  model?: string;
   /** Converts the stored WebP thumbnail to JPEG; override in tests. */
   toJpeg?: (webp: Uint8Array) => Promise<Uint8Array>;
 }
@@ -19,6 +21,7 @@ export interface AiWorkerOptions {
 export interface AiStatus {
   enabled: true;
   provider: 'codex';
+  model: string;
   callsToday: number;
   dailyCap: number;
   lastSuccessAt: number | null;
@@ -73,6 +76,7 @@ export class AiWorker {
       maxAttempts: 3,
       now: () => Date.now() / 1000,
       log: () => {},
+      model: 'standaard',
       toJpeg: ffmpegToJpeg,
       ...options,
     };
@@ -96,6 +100,7 @@ export class AiWorker {
     return {
       enabled: true,
       provider: 'codex',
+      model: this.opts.model,
       callsToday: this.day === dayFormat.format(this.opts.now() * 1000) ? this.callsToday : 0,
       dailyCap: this.opts.dailyCap,
       lastSuccessAt: this.lastSuccessAt,
