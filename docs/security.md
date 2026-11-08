@@ -52,4 +52,4 @@ Read-only, server-side only. Production should use either the authenticated Frig
 
 ### Secrets
 
-Never commit `.env` or `go2rtc/live.yaml` (both git-ignored). Use a dedicated read-only camera account for go2rtc rather than the administrator account.
+Never commit `.env` or `go2rtc/live.yaml` (both git-ignored). go2rtc uses the existing camera administrator account (operator decision, 2026-11-08), so `.env` must stay mode 600 on the server and its contents must never reach logs, the backend or browsers.

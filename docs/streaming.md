@@ -37,7 +37,7 @@ Environment: development VM, Docker, go2rtc 1.9.15, mock streams (ffmpeg test pa
 
 ## Measured with the real cameras (2026-11-08)
 
-Environment: development VM on the LAN; go2rtc 1.9.15 in Docker connecting directly to the four ANNKE cameras (`/Streaming/Channels/101` and `102`, RTSP over TCP); nginx edge on localhost. Frigate kept running unchanged. Measurement clients: a Node.js MSE WebSocket client (`ftyp`/`moof` timing) and Playwright WebKit (GTK build 2370) at 1920x1080. The camera account used for the test was the existing administrator account; production must use a dedicated live-view-only account.
+Environment: development VM on the LAN; go2rtc 1.9.15 in Docker connecting directly to the four ANNKE cameras (`/Streaming/Channels/101` and `102`, RTSP over TCP); nginx edge on localhost. Frigate kept running unchanged. Measurement clients: a Node.js MSE WebSocket client (`ftyp`/`moof` timing) and Playwright WebKit (GTK build 2370) at 1920x1080. The camera account is the existing administrator account (operator decision).
 
 | Measurement | Result |
 | --- | --- |
@@ -48,7 +48,7 @@ Environment: development VM on the LAN; go2rtc 1.9.15 in Docker connecting direc
 | Achter het huis 1 network path | Ping from the development VM: average 160 ms RTT, maximum 566 ms, while the other cameras answer in 1–2 ms. This camera's network link explains its slow start; the cause (wireless/cabling/switch port) is not yet investigated. |
 | Browser playback (WebKit GTK, HEVC via GStreamer) | Page navigation → all four substreams playing in 2.2 s. After ~12 s: 69–74 decoded frames per tile, 0–1 dropped. |
 | Buffer ahead of playback position | 0.54–0.72 s per tile. |
-| End-to-end latency | **Not measured.** The camera OSD clocks were ~51 minutes ahead of real time (not NTP-synced), so OSD-versus-screen comparison is not possible. Use the stopwatch method in the procedure below. |
+| End-to-end latency | **Not measured.** The camera OSD clocks were ~51 minutes ahead of real time at the time (fixed later the same day, see PROJECT.md), and the test browsers could not provide a comparable display clock. Use the stopwatch method in the procedure below. |
 | Upstream camera connections | One RTSP session per camera per watched stream type, with 1 or 2 consumers per stream (8 consumers on 4 substreams → 4 sessions). Zero sessions when nobody watches; sessions close immediately when the last viewer leaves. |
 | go2rtc resources | 4 substreams with 8 consumers: ~1 % CPU, 24 MiB RAM. 4 main streams: ~5.5 % CPU, 27 MiB RAM (development VM). Backend 38 MiB, edge 4 MiB. |
 | Effect on Frigate | Frigate camera FPS 5.0/5.0/5.0/5.0 during the test, identical to the baseline before it. |
@@ -57,7 +57,18 @@ Environment: development VM on the LAN; go2rtc 1.9.15 in Docker connecting direc
 
 Still open: end-to-end latency, HEVC support on the actual TV client (Intel NUC + browser), camera disconnect/reconnect with real cameras, and the camera's maximum number of RTSP sessions.
 
-## Design targets
+## TV client recommendation
+
+Browser HEVC support decides whether the default path (no transcoding) works. Sources disagree on stock Chrome on Linux: HEVC through MSE depends on VAAPI and the build, and recent reports show `isTypeSupported('…hvc1…')` failing. Chrome on Windows with a GPU that decodes HEVC in hardware is the most widely reported working path. go2rtc and Frigate both describe browser HEVC as dependent on browser, OS and hardware decoder.
+
+Recommendation (2026-11-08, to be verified on the device):
+
+1. **Hardware:** a mini PC with a recent Intel iGPU (hardware HEVC decode) and wired Ethernet.
+2. **OS and browser:** Windows 11 with Google Chrome in kiosk mode, for example `chrome.exe --kiosk --autoplay-policy=no-user-gesture-required http://<dashboard>/?profile=shop`. Use automatic sign-in to a local account, disable sleep/screen-off, and schedule Windows updates outside viewing hours.
+3. **Acceptance before buying a second unit:** `MediaSource.isTypeSupported('video/mp4; codecs="hvc1.1.6.L153.B0"')` returns `true`; four substreams play without dropped frames; stopwatch latency is recorded; main-stream decoding in a focused tile is tested.
+4. **Fallback** if HEVC fails: a Linux kiosk with WebKit and GStreamer, which played the real H.265 streams in this repository's test, or per-stream H.264 transcoding of the substream in go2rtc.
+
+
 
 - Local end-to-end latency 1–2 s.
 - Startup to first frame under 2 s per tile.
@@ -66,7 +77,7 @@ Still open: end-to-end latency, HEVC support on the actual TV client (Intel NUC 
 
 ## Procedure: testing the real ANNKE H.265 streams
 
-Run this only on a trusted network, with a dedicated read-only camera account. Nothing on the cameras, the NVR or Frigate is changed. Every De Uitkijk viewer adds one RTSP session per watched stream on the camera.
+Run this only on a trusted network. Nothing on the cameras, the NVR or Frigate is changed. Every De Uitkijk viewer adds one RTSP session per watched stream on the camera.
 
 1. **Configure.** `cp .env.example .env` and `cp go2rtc/live.example.yaml go2rtc/live.yaml`. In `.env` set `UITKIJK_MODE=live`, `GO2RTC_CONFIG=live.yaml`, `FRIGATE_URL`, `CAMERA_USER`, `CAMERA_PASSWORD` and the `CAM_*_HOST` values. Keep `UITKIJK_BIND=127.0.0.1`, or a LAN address only on a trusted network.
 2. **Start.** `docker compose up --build`. Open `http://127.0.0.1:8080`.
