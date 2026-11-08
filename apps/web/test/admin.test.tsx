@@ -60,7 +60,7 @@ describe('admin page', () => {
       window.dispatchEvent(new HashChangeEvent('hashchange'));
     });
     expect(await screen.findByText('Gebruiker toevoegen')).toBeTruthy();
-    expect(screen.getByRole('tab', { name: 'Gebruikers' }).getAttribute('aria-selected')).toBe('true');
+    await waitFor(() => expect(screen.getByRole('tab', { name: /^Gebruikers/ }).getAttribute('aria-selected')).toBe('true'));
   });
 
   it('shows open questions with answer controls; a vehicle answer is prefilled from the AI', async () => {
@@ -78,7 +78,7 @@ describe('admin page', () => {
     location.hash = '#gebruikers';
     render(<AdminPage />);
     await waitFor(() => expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Highlights', 'Mijn account']));
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'Highlights' }).getAttribute('aria-selected')).toBe('true'));
     expect(screen.queryByText('Gebruiker toevoegen')).toBeNull();
-    expect(screen.getByRole('tab', { name: 'Highlights' }).getAttribute('aria-selected')).toBe('true');
   });
 });
