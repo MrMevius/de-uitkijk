@@ -3,7 +3,7 @@
 api:
   listen: ":1984"
   # Only the MSE/WebSocket endpoint and the version endpoint (backend health probe) are served.
-  allow_paths: [/api, /api/ws]
+  allow_paths: [/api, /api/ws, /api/frame.jpeg]
 rtsp:
   # Required internally by exec/ffmpeg sources; not published outside the container.
   listen: "127.0.0.1:8554"

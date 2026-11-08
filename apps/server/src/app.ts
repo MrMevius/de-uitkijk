@@ -35,6 +35,15 @@ export function buildApp({ hub, mock, auth, highlights, logger = false, heartbea
     return { status: 'ok', mode: state.mode, ...(version ? { version } : {}), alerts: state.health.alerts, streaming: state.health.streaming };
   });
 
+  // Monitoring detail (Zabbix). Reachable without login on the host's LAN listener only; the edge refuses
+  // it on the public listener. Contains states and counts, no images or credentials.
+  if (detail) {
+    app.get('/api/health/detail', async () => {
+      const state = hub.snapshot();
+      return { status: 'ok', mode: state.mode, ...(version ? { version } : {}), alerts: state.health.alerts, streaming: state.health.streaming, ...detail() };
+    });
+  }
+
   app.get('/api/state', async () => hub.snapshot());
 
   app.get('/api/events', (request, reply) => {

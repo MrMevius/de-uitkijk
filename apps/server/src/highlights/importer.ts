@@ -74,6 +74,9 @@ export class HighlightImporter {
   private baselineAt = 0;
   private timer: ReturnType<typeof setTimeout> | undefined;
   private running = false;
+  /** For monitoring: last successful import cycle (epoch seconds) and last error. */
+  lastOkAt: number | null = null;
+  lastError: string | null = null;
 
   constructor(store: HighlightStore, options: ImporterOptions) {
     this.store = store;
@@ -91,7 +94,16 @@ export class HighlightImporter {
 
   start(): void {
     const loop = async () => {
-      await this.runOnce().catch((err: Error) => this.opts.log(`highlights: ${err.message}`));
+      await this.runOnce().then(
+        () => {
+          this.lastOkAt = this.opts.now();
+          this.lastError = null;
+        },
+        (err: Error) => {
+          this.lastError = err.message.slice(0, 200);
+          this.opts.log(`highlights: ${err.message}`);
+        },
+      );
       if (this.running) this.timer = setTimeout(loop, this.opts.intervalMs);
     };
     this.running = true;

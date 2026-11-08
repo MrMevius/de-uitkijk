@@ -3,7 +3,7 @@
 # - Exposes exactly one go2rtc endpoint: the MSE WebSocket, for validated stream names and logged-in
 #   users only. The go2rtc management API, RTSP, and source URLs are never reachable through this proxy.
 # - Two listeners with the same rules:
-#     8080  on the host (deployment health check; not meant for viewing)
+#     8080  on the host (deployment health check and Zabbix monitoring detail; not meant for viewing)
 #     8081  for SWAG (https://uitkijk.mrmevius.nl, the one address for viewers)
 # ${API_UPSTREAM} and ${GO2RTC_UPSTREAM} are filled in by the nginx image's envsubst at start-up.
 
@@ -27,4 +27,9 @@ server {
     # SWAG is the only client here; it passes the real client address for login throttling.
     set $uitkijk_client $http_x_real_ip;
     include /etc/nginx/conf.d/uitkijk-common.inc;
+
+    # Monitoring detail is for the LAN listener (Zabbix) only.
+    location = /api/health/detail {
+        return 404;
+    }
 }

@@ -48,6 +48,21 @@ FRIGATE_AUTH_HOST_FILE=/etc/de-uitkijk/frigate-auth.json
 GO2RTC_CONFIG_PATH=/etc/de-uitkijk/go2rtc.yaml
 ```
 
+## Unattended TVs (since 0.7.0)
+
+The dashboard reloads itself every night at 04:00 (Europe/Amsterdam), and within five minutes after a new release is live (it compares its built-in version with `/api/health`). It never reloads during an active alert; then it retries a few minutes later. Reloads are at least ten minutes apart, so a mismatch cannot cause a reload loop.
+
+## Monitoring (since 0.7.0)
+
+`http://10.0.0.171:8088/api/health/detail` (LAN listener only; the public listener answers 404) reports:
+
+- the version, Frigate alert source and go2rtc status;
+- per camera whether go2rtc delivered a picture in the last check (one JPEG frame per camera every 5 minutes through go2rtc's internal `/api/frame.jpeg`; it reuses a running camera session while someone watches);
+- the last successful highlight import;
+- the AI status.
+
+Zabbix polls it; the items and triggers are in the homelab repository (`operations/noc-de-uitkijk-monitoring.md`).
+
 ## Operations
 
 - Status: `deployctl status`, or `curl http://10.0.0.171:8088/api/health`.

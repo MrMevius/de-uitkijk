@@ -6,7 +6,7 @@
 api:
   listen: ":1984"
   # Browsers reach only /api/ws through the edge proxy. /api (version) is used by the backend probe.
-  allow_paths: [/api, /api/ws]
+  allow_paths: [/api, /api/ws, /api/frame.jpeg]
 rtsp:
   # No RTSP restream outside the container.
   listen: "127.0.0.1:8554"

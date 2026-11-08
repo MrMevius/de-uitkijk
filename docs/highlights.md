@@ -34,10 +34,17 @@ browser ──► /api/highlights/:id/clip.mp4 ──► clip cache (bounded, te
 - **Storage (HL-9).** Metadata and one clean Frigate snapshot (WebP, about 20 KB) per candidate are stored in SQLite indefinitely. Video stays in Frigate, which keeps alert recordings for 100 days; older clips are no longer playable, but the archive entry and thumbnail remain. The clip cache (default 512 MB, `UITKIJK_CLIP_CACHE_MB`) only exists so browsers get byte ranges and a Safari-compatible file: ffmpeg rewraps without re-encoding (`-c copy -tag:v hvc1 -movflags +faststart`). It is evicted least-recently-used.
 - **Archive (HL-10/11).**
   - Filters for date, camera and high relevance (score ≥ 3).
-  - Administrators can mark a highlight good or bad. The feedback is stored for later tuning; it does not yet change scores.
+  - Administrators can mark a highlight good or bad (see *Learning from feedback*).
   - Administrators can delete a highlight. Deletion keeps a tombstone, so it is never imported again.
 - **Start and catch-up (HL-12).** The first start records an activation time, and nothing earlier is imported. A cursor plus the processed review ids catch up after an outage without duplicates.
 - **Downloads (HL-13).** "Clip downloaden" (the highlight) and "Hele gebeurtenis" (the whole group from 5 s before to 5 s after, at most 10 minutes), both with the original audio.
+
+## Learning from feedback (since 0.7.0)
+
+- **👎 on a highlight** takes it out of the dashboard rotation at once; it stays in the archive.
+- **Similar candidates are adjusted.** Each 👍 counts +1 and each 👎 or deletion −1 for its representative camera and time-of-day period (day 06–19, evening 19–23, night 23–06), over the last 90 days. The total times 0.4, capped between −1.5 and +1.0, is added to the rule-based score of candidates with the same camera and period.
+- **Takes effect within a minute.** Selection is recalculated over the last two days on every import cycle, so feedback changes the current rotation right away.
+- **Visible:** the adjustment shows as "feedback ±x" among a highlight's reasons; the rule-based score is kept separately.
 
 ## API
 

@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { buildApp } from './app.ts';
+import { CameraVideoProbe } from './camera-probe.ts';
 import { AuthStore } from './auth/store.ts';
 import { codexDescriber } from './ai/codex.ts';
 import { AiWorker } from './ai/worker.ts';
@@ -45,6 +46,9 @@ const ai =
         log: (msg) => app.log.warn(msg),
       })
     : undefined;
+// Per-camera picture check for monitoring (live mode only; mock streams are synthetic).
+const cameraProbe = config.mode === 'live' && config.go2rtcUrl ? new CameraVideoProbe(config.cameras, config.go2rtcUrl) : undefined;
+let importer: HighlightImporter | undefined;
 const version = (() => {
   try {
     return readFileSync('VERSION', 'utf8').trim();
@@ -55,12 +59,17 @@ const version = (() => {
 const app = buildApp({
   hub,
   ...(version ? { version } : {}),
+  detail: () => ({
+    cameras: cameraProbe?.snapshot() ?? [],
+    highlights: importer ? { enabled: true, lastOkAt: importer.lastOkAt, lastError: importer.lastError } : { enabled: false },
+    ai: ai ? ai.status() : { enabled: false },
+  }),
   ...(config.devApi && mock ? { mock } : {}),
   ...(store ? { auth: { store, publicUrl: config.publicUrl } } : {}),
   ...(highlightStore && clips && config.frigate ? { highlights: { store: highlightStore, clips, frigateUrl: config.frigate.url, ...(ai ? { aiStatus: () => ai.status() } : {}) } } : {}),
   logger: true,
 });
-const importer =
+importer =
   highlightStore && config.frigate
     ? new HighlightImporter(highlightStore, {
         frigateUrl: config.frigate.url,
@@ -70,6 +79,7 @@ const importer =
       })
     : undefined;
 importer?.start();
+cameraProbe?.start();
 ai?.start();
 
 mock?.start(config.mockScenario);
@@ -99,6 +109,7 @@ const shutdown = async () => {
   frigate?.stop();
   probe?.stop();
   importer?.stop();
+  cameraProbe?.stop();
   ai?.stop();
   hub.stop();
   clearInterval(purge);

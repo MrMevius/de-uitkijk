@@ -17,7 +17,7 @@ export interface AuthOptions {
 }
 
 /** Routes that work without a session. */
-const OPEN = new Set(['/api/health', '/api/auth/login', '/api/auth/logout', '/api/auth/link', '/api/auth/activate']);
+const OPEN = new Set(['/api/health', '/api/health/detail', '/api/auth/login', '/api/auth/logout', '/api/auth/link', '/api/auth/activate']);
 
 const WINDOW_MS = 15 * 60_000;
 const MAX_FAILURES_PER_IP = 10;
