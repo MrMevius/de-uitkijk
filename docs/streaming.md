@@ -35,7 +35,29 @@ Environment: development VM, Docker, go2rtc 1.9.15, mock streams (ffmpeg test pa
 | go2rtc `allow_paths: [/api, /api/ws]` | `/api/streams`, `/api/config`, `/stream.html` → 404. |
 | Edge stream-name validation | `src=../api/config` → 400. |
 
-## Design targets (not yet measured with cameras)
+## Measured with the real cameras (2026-11-08)
+
+Environment: development VM on the LAN; go2rtc 1.9.15 in Docker connecting directly to the four ANNKE cameras (`/Streaming/Channels/101` and `102`, RTSP over TCP); nginx edge on localhost. Frigate kept running unchanged. Measurement clients: a Node.js MSE WebSocket client (`ftyp`/`moof` timing) and Playwright WebKit (GTK build 2370) at 1920x1080. The camera account used for the test was the existing administrator account; production must use a dedicated live-view-only account.
+
+| Measurement | Result |
+| --- | --- |
+| Codec negotiation | All eight streams passed through as H.265 (`hvc1.1.6.L153.B0`). No transcoding. |
+| Substreams (640x360) | ~6.0 fragments/s (one per frame), 0.30–0.49 Mbit/s per camera. |
+| Main streams (3840x2160) | ~12.4 fragments/s, 3.7–4.7 Mbit/s per camera (excluding Achter het huis 1, below). |
+| Startup: WebSocket open → first media fragment | Substreams 0.11–0.50 s; main streams 0.26–0.36 s. **Achter het huis 1** is consistently slower: substream 1.0–2.4 s, main stream 6.6–7.7 s. |
+| Achter het huis 1 network path | Ping from the development VM: average 160 ms RTT, maximum 566 ms, while the other cameras answer in 1–2 ms. This camera's network link explains its slow start; the cause (wireless/cabling/switch port) is not yet investigated. |
+| Browser playback (WebKit GTK, HEVC via GStreamer) | Page navigation → all four substreams playing in 2.2 s. After ~12 s: 69–74 decoded frames per tile, 0–1 dropped. |
+| Buffer ahead of playback position | 0.54–0.72 s per tile. |
+| End-to-end latency | **Not measured.** The camera OSD clocks were ~51 minutes ahead of real time (not NTP-synced), so OSD-versus-screen comparison is not possible. Use the stopwatch method in the procedure below. |
+| Upstream camera connections | One RTSP session per camera per watched stream type, with 1 or 2 consumers per stream (8 consumers on 4 substreams → 4 sessions). Zero sessions when nobody watches; sessions close immediately when the last viewer leaves. |
+| go2rtc resources | 4 substreams with 8 consumers: ~1 % CPU, 24 MiB RAM. 4 main streams: ~5.5 % CPU, 27 MiB RAM (development VM). Backend 38 MiB, edge 4 MiB. |
+| Effect on Frigate | Frigate camera FPS 5.0/5.0/5.0/5.0 during the test, identical to the baseline before it. |
+| Frigate alert integration (live mode) | Backend health `alerts: ok` against the production Frigate. No alert occurred during the test, so alert-to-focus latency is still unmeasured. |
+| Headless Chromium (Playwright build 1248) | No HEVC through MSE; the real-camera dashboard cannot play there without transcoding. |
+
+Still open: end-to-end latency, HEVC support on the actual TV client (Intel NUC + browser), camera disconnect/reconnect with real cameras, and the camera's maximum number of RTSP sessions.
+
+## Design targets
 
 - Local end-to-end latency 1–2 s.
 - Startup to first frame under 2 s per tile.
@@ -54,7 +76,7 @@ Run this only on a trusted network, with a dedicated read-only camera account. N
    ```
    Record browser, version, OS and GPU. Repeat with `?profile=` variants. To test the main stream, temporarily set a profile's `streamQuality` to `main`.
 4. **Startup latency.** DevTools → Network → WS: time from the `/stream/ws` request to the first binary frame, and to the tile showing video (status changes to live).
-5. **End-to-end latency.** Put a clock with seconds (phone stopwatch, or the camera's OSD clock synced via NTP) in front of the camera. Photograph the TV and the clock together and compare. Take at least five samples per stream and record the median. Alternatively use the mock stream's burned-in time against a synced screen clock.
+5. **End-to-end latency.** Hold a running phone stopwatch in front of the camera (the camera OSD clocks are not NTP-synced, see above). Photograph the TV and the clock together and compare. Take at least five samples per stream and record the median. Alternatively use the mock stream's burned-in time against a synced screen clock.
 6. **CPU and RAM.** `docker stats` for `go2rtc`, `server` and `web` with 0, 1 and 2 dashboards open; browser task manager on the client. Record the values with substream and with main stream.
 7. **Upstream connections.** `docker compose exec go2rtc sh -c 'netstat -tn | grep :554'` (count per camera address) with one and with two dashboards open. Expect one session per watched stream per camera, regardless of the number of dashboards.
 8. **Quality changes.** Compare sub and main on the shop and bedroom TVs at their viewing distances. Record client CPU/GPU, dropped frames (`video.getVideoPlaybackQuality()`) and latency.

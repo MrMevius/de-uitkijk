@@ -47,11 +47,13 @@ Not production-ready: there is **no authentication**. Run it only on a trusted n
 
 | Topic | Why it matters | Next step |
 | --- | --- | --- |
-| HEVC decoding on the TV client | Determines whether H.265 can be passed through or must be transcoded. | Test the actual NUC + browser ([docs/streaming.md](docs/streaming.md)). |
-| Camera RTSP session limit | go2rtc adds sessions per watched stream next to Frigate and the NVR. | Check the ANNKE limit; measure with two dashboards. |
-| Real latency and resources | 1–2 s target and hosting decision. | Run the measurement procedure with real cameras. |
+| HEVC decoding on the TV client | Determines whether H.265 can be passed through or must be transcoded. Real H.265 passthrough already plays in WebKit GTK; headless Chromium cannot. | Test the actual NUC + browser ([docs/streaming.md](docs/streaming.md)). |
+| Achter het huis 1 network link | 160 ms average RTT (others 1–2 ms) and a 7 s main-stream start. | Investigate the camera's link (outside this project). |
+| Camera clocks | OSD clocks ~51 minutes ahead; not NTP-synced. Affects evidence and latency measurement. | Configure NTP on the cameras (camera configuration change, needs approval). |
+| Camera RTSP session limit | go2rtc adds one session per camera per watched stream type, next to Frigate and the NVR (measured). | Check the ANNKE maximum. |
+| Real latency and resources | Startup, bitrate, sessions and go2rtc resources were measured on 2026-11-08; end-to-end latency was not. | Stopwatch latency test on the TV client. |
 | Hosting location for go2rtc + edge | Must not depend on the Frigate host; hardware acceleration available only where a GPU is passed through. | Benchmark, then decide. |
-| Camera account | Live mode needs credentials for go2rtc. | Create a dedicated read-only camera user (camera configuration change, needs approval). |
+| Camera account | The 2026-11-08 test used the administrator account. | Create a dedicated live-view-only camera user and replace it in `.env`. |
 | Frigate alert timing | Frigate keeps alerts open for `cutoff_time` (40 s) after activity; focus lasts about 40 s + 15 s. | Decide whether that is acceptable or adjust Frigate (production change). |
 | Frigate API authentication | Development uses the unauthenticated internal API. | Choose authenticated API or network restriction for production. |
 | Stream authorisation at the edge | Required for the 4-hour outage requirement. | Choose `secure_link` or a stateless verifier ([docs/security.md](docs/security.md)). |
