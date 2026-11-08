@@ -1,5 +1,7 @@
 # Backend: Node.js runs the TypeScript sources directly (type stripping), no build step.
 FROM node:24-alpine
+# ffmpeg re-wraps highlight clips for browsers (stream copy, no transcoding).
+RUN apk add --no-cache ffmpeg
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY packages/shared/package.json packages/shared/

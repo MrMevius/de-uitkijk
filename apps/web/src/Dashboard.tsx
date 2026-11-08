@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { computeLayout, summarizeHealth, type DashboardState, type DisplayProfile } from '@uitkijk/shared';
 import { CameraTile } from './CameraTile.tsx';
 import { StatusBar } from './StatusBar.tsx';
+import { HIGHLIGHT_TILE, HighlightTile, useHighlightRotation } from './highlights.tsx';
 
 interface Props {
   state: DashboardState | null;
@@ -45,12 +46,15 @@ export function Dashboard({ state, connected, profile }: Props) {
   const cameras = state?.cameras ?? [];
   const cameraIds = useMemo(() => cameras.map((c) => c.id), [cameras]);
   const focusedIds = useMemo(() => state?.focus.map((f) => f.cameraId) ?? [], [state?.focus]);
+  // Highlights get their own tile, except while a camera has an alert (then live cameras get all space).
+  const { current: highlight, next: nextHighlight } = useHighlightRotation(focusedIds.length > 0);
+  const tileIds = useMemo(() => (highlight ? [...cameraIds, HIGHLIGHT_TILE] : cameraIds), [cameraIds, highlight]);
   const scale = profile.overlayScale * (height / 1080);
   // On a landscape screen the status bar sits in the space around the 16:9 tiles. A portrait screen
   // (phone) has no such space, so reserve a band at the top for it.
   const topBand = height > width ? Math.round(18 * scale * 2.6) : 0;
   const rects = useMemo(() => {
-    const layout = computeLayout(cameraIds, focusedIds, {
+    const layout = computeLayout(tileIds, focusedIds, {
       width,
       height: height - topBand,
       gap: profile.gapPx,
@@ -58,7 +62,7 @@ export function Dashboard({ state, connected, profile }: Props) {
     });
     if (!topBand) return layout;
     return Object.fromEntries(Object.entries(layout).map(([id, r]) => [id, { ...r, y: r.y + topBand }]));
-  }, [cameraIds, focusedIds, width, height, topBand, profile]);
+  }, [tileIds, focusedIds, width, height, topBand, profile]);
   const health = summarizeHealth(state, connected);
 
   return (
@@ -74,6 +78,14 @@ export function Dashboard({ state, connected, profile }: Props) {
           showObjectType={profile.showObjectType}
         />
       ))}
+      {highlight && rects[HIGHLIGHT_TILE] && (
+        <HighlightTile
+          highlight={highlight}
+          rect={rects[HIGHLIGHT_TILE]}
+          cameraName={cameras.find((c) => c.id === highlight.cameraId)?.name ?? ''}
+          onDone={nextHighlight}
+        />
+      )}
       {!state && <div className="dashboard__empty">Verbinden met De Uitkijk…</div>}
       <StatusBar health={health} />
     </main>

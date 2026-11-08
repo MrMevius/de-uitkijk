@@ -100,19 +100,19 @@ Consolidated specification for De Uitkijk. Each requirement has a phase:
 
 | ID | Requirement | Phase |
 | --- | --- | --- |
-| HL-1 | Use Frigate alerts and relevant object detections as candidates. | Later |
-| HL-2 | Group related events across cameras; select the best representative camera clip. | Later |
-| HL-3 | Prefer unusual events while retaining useful daily variety. No fixed camera weighting. | Later |
-| HL-4 | Select 0–15 highlights from a rolling 24-hour window. Never add uninteresting filler. | Later |
-| HL-5 | Variable clip length, generally 5–30 s. Aim for availability within five minutes of an event. | Later |
-| HL-6 | Show camera, timestamp and a short Dutch AI description. | Later |
-| HL-7 | Rotate highlights automatically, prioritising important/new events. Hide during active alerts; continue with the next highlight after the interruption. | Later |
-| HL-8 | Without highlights, live cameras use all available space. | Later (P1 behaviour already true) |
-| HL-9 | Store metadata and one optimised thumbnail per selected highlight indefinitely. Never permanently duplicate Frigate recordings. | Later |
-| HL-10 | Archive with date, camera and relevance filters. | Later |
-| HL-11 | Administrators give positive/negative selection feedback and delete highlights; deletion tombstones prevent re-import. | Later |
-| HL-12 | Import no events from before initial activation. Catch up missed events after outages without duplicates. | Later |
-| HL-13 | Authenticated users download short clips or full events, retaining original audio when available. | Later |
+| HL-1 | Use Frigate alerts and relevant object detections as candidates. | Done (2026-11-08) |
+| HL-2 | Group related events across cameras; select the best representative camera clip. | Done (2026-11-08) |
+| HL-3 | Prefer unusual events while retaining useful daily variety. No fixed camera weighting. | Done (2026-11-08, rule-based) |
+| HL-4 | Select 0–15 highlights from a rolling 24-hour window. Never add uninteresting filler. | Done (2026-11-08) |
+| HL-5 | Variable clip length, generally 5–30 s. Aim for availability within five minutes of an event. | Done (2026-11-08) |
+| HL-6 | Show camera, timestamp and a short Dutch AI description. | Partly (2026-11-08): rule-based Dutch description; AI description in phase 5 |
+| HL-7 | Rotate highlights automatically, prioritising important/new events. Hide during active alerts; continue with the next highlight after the interruption. | Done (2026-11-08) |
+| HL-8 | Without highlights, live cameras use all available space. | Done |
+| HL-9 | Store metadata and one optimised thumbnail per selected highlight indefinitely. Never permanently duplicate Frigate recordings. | Done (2026-11-08) |
+| HL-10 | Archive with date, camera and relevance filters. | Done (2026-11-08) |
+| HL-11 | Administrators give positive/negative selection feedback and delete highlights; deletion tombstones prevent re-import. | Done (2026-11-08; feedback stored, not yet used for tuning) |
+| HL-12 | Import no events from before initial activation. Catch up missed events after outages without duplicates. | Done (2026-11-08) |
+| HL-13 | Authenticated users download short clips or full events, retaining original audio when available. | Done (2026-11-08) |
 
 ## 9. AI
 

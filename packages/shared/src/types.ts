@@ -75,3 +75,23 @@ export interface DashboardState {
   /** Backend clock in epoch milliseconds when this state was produced. */
   serverTime: number;
 }
+
+/** A selected highlight as the dashboard and archive see it. Times in epoch seconds (Frigate's unit). */
+export interface HighlightSummary {
+  id: string;
+  /** Representative camera (De Uitkijk id) whose clip is shown. */
+  cameraId: string;
+  /** All cameras that saw the event, in order of appearance. */
+  cameras: string[];
+  startTime: number;
+  endTime: number;
+  /** Seconds. */
+  clipDuration: number;
+  /** Short Dutch description. */
+  description: string;
+  score: number;
+  reasons: string[];
+  /** Administrator feedback: 1 good selection, -1 bad selection. */
+  feedback: -1 | 1 | null;
+  hasThumbnail: boolean;
+}

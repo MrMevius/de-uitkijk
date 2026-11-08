@@ -32,6 +32,7 @@ The complete agreed scope is in [docs/requirements.md](docs/requirements.md).
 | [docs/architecture.md](docs/architecture.md) | Components, data flow, state machine, layout, resilience, decisions |
 | [docs/frigate-integration.md](docs/frigate-integration.md) | Verified Frigate 0.17.2 API behaviour and alert derivation |
 | [docs/streaming.md](docs/streaming.md) | Streaming evaluation, measurements, real-camera test procedure |
+| [docs/highlights.md](docs/highlights.md) | Highlight selection, rotation, archive, storage |
 | [docs/security.md](docs/security.md) | Current boundary; production auth, TV pairing, 4-hour outage design |
 | [docs/development.md](docs/development.md) | Running mock and live mode, configuration |
 | [docs/deployment.md](docs/deployment.md) | Placement on `503-web-ubuntu`, deployctl, LAN and public access, administration |
@@ -44,7 +45,7 @@ The complete agreed scope is in [docs/requirements.md](docs/requirements.md).
 | 1 (done) | Foundation, mock/live alert integration, streaming proof of concept, automatic dashboard, focus, resilience, tests. |
 | 2 | Real-camera streaming measurements; hosting benchmark and placement decision (independent of the Frigate host); kiosk client (Intel NUC) with HEVC verification; display profiles per device. |
 | 3 | Done 2026-11-08: SQLite accounts and roles, one-time links, one public address with login everywhere, local DNS, video reconnects during backend outages through a cached login check. TV pairing and stream tickets are superseded. Zabbix watches the three containers (503-web required-running list). |
-| 4 | Highlights: candidate selection, grouping across cameras, clip selection, thumbnails, rotation on the dashboard, archive, feedback/deletion with tombstones, catch-up after outages. |
+| 4 | Done 2026-11-08: rule-based highlights from Frigate alerts, grouping across cameras, clips, thumbnails, rotation in an extra dashboard tile, archive (`/archief`) with feedback, deletion and downloads ([docs/highlights.md](docs/highlights.md)). |
 | 5 | AI descriptions via an officially permitted subscription method, with owner authorisation; administrative UI; downloads. |
 
 ## Open technical dependencies

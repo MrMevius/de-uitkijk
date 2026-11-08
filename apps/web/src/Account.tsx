@@ -225,7 +225,7 @@ export function AdminPage() {
             Ingelogd als <strong>{me.username}</strong> ·{' '}
           </>
         )}
-        <a href="/">Dashboard</a> · <button onClick={() => void logout()}>Uitloggen</button>
+        <a href="/">Dashboard</a> · <a href="/archief">Highlights</a> · <button onClick={() => void logout()}>Uitloggen</button>
       </p>
       {error && <p className="account__error">{error}</p>}
       {me?.role === 'admin' && (

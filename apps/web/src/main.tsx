@@ -2,6 +2,7 @@ import { StrictMode, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { displayProfile } from '@uitkijk/shared';
 import { ActivatePage, AdminPage, LoginPage } from './Account.tsx';
+import { ArchivePage } from './Archive.tsx';
 import { Dashboard } from './Dashboard.tsx';
 import { DevPanel } from './DevPanel.tsx';
 import { useDashboardState } from './use-dashboard-state.ts';
@@ -30,6 +31,7 @@ function page() {
   if (path === '/login') return <LoginPage />;
   if (path === '/activeer') return <ActivatePage />;
   if (path === '/beheer') return <AdminPage />;
+  if (path === '/archief') return <ArchivePage />;
   return <DashboardPage />;
 }
 

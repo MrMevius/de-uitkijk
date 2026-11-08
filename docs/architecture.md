@@ -79,7 +79,7 @@ Short records; full rationale where it matters.
 7. **Own minimal MSE player** (`apps/web/src/player/mse-player.ts`) instead of go2rtc's `video-rtc.js`. The requirements on stale frames, bounded backoff and status reporting are specific; the go2rtc protocol for MSE is small.
 8. **Stream quality is fixed per display profile.** Switching main/sub on focus would recreate connections (FOC-5) and double upstream sessions. Revisit after measurements.
 9. **nginx edge in front of go2rtc** with a path allowlist plus go2rtc's own `allow_paths`. The same rules can later be expressed in SWAG.
-10. **No SQLite yet.** P1 has no persistent data. SQLite (likely Node's built-in `node:sqlite`, no native dependency) arrives with highlights, users and device sessions.
+10. **SQLite through Node's built-in `node:sqlite`** (no native dependency) for accounts, sessions and highlights, in one file in the `data` volume.
 11. **Mock video from go2rtc itself** (`exec` + ffmpeg test pattern with camera id and wall clock). The full streaming path, including the edge proxy, is exercised without cameras.
 
 ## Repository layout
