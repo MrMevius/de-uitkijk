@@ -28,7 +28,8 @@ Administrators keep a short list of facts on `/beheer`, for example "Rode Tesla 
 
 - **Prompt.** Every description request includes the facts, plus names from Frigate's face recognition for that event.
 - **Naming rule.** The prompt allows a name only when it follows from face recognition, or from a fact that visibly matches the picture (a legible plate, or a vehicle that matches exactly). It forbids guessing who someone is from appearance or clothing, and asks for a neutral description when in doubt.
-- **Input image.** Since 0.8.0 the AI receives a 1920×1080 still from Frigate's recording at the alert's best frame (`/api/<camera>/recordings/<time>/snapshot.jpg?height=1080`) instead of the 640×360 detection snapshot, which makes plates and vehicle details legible. If Frigate cannot deliver it, the stored snapshot is used.
+- **Input image.** The AI receives the full-resolution (3840×2160) still from Frigate's recording at the alert's best frame (`/api/<camera>/recordings/<time>/snapshot.jpg`, about 1 MB) instead of the 640×360 detection snapshot. 0.8.0 used 1080p; 0.8.1 switched to 4K by operator decision, accepting more plan usage per description. On 2026-11-08 the nearest plate on *Achter het huis 1* measured about 58×29 pixels in 4K (about 29×14 in 1080p, about 10×5 in the detection stream). If Frigate cannot deliver the still, the stored snapshot is used.
+- **Frigate's own plate recognition** was evaluated and not enabled: it only reads the detection stream (640×360 here), where plates are far below its minimum of about 1000 pixels of area. It would need a dedicated plate camera or a much more expensive detection resolution.
 - **Privacy.** The facts (names, plates) are sent to OpenAI through Codex with every description. Facts change only new descriptions; existing ones stay.
 
 ## Confinement

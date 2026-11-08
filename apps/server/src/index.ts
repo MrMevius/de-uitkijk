@@ -45,13 +45,13 @@ const ai =
         cameras: config.cameras,
         model: config.aiModel,
         facts: () => facts?.list().map((f) => f.text) ?? [],
-        // Full-resolution frame from Frigate's recording (1080p): plates and vehicles are far more legible
-        // than in the 640x360 detection snapshot.
+        // Full-resolution (4K) frame from Frigate's recording (operator decision): plates and vehicles are far
+        // more legible than in the 640x360 detection snapshot.
         still: async (c) => {
           if (!frigateHttp || !config.frigate || !c.frameTime) return undefined;
           const res = await frigateHttp(
-            `${config.frigate.url}/api/${encodeURIComponent(c.frigateCamera)}/recordings/${c.frameTime.toFixed(2)}/snapshot.jpg?height=1080`,
-            { signal: AbortSignal.timeout(20_000) },
+            `${config.frigate.url}/api/${encodeURIComponent(c.frigateCamera)}/recordings/${c.frameTime.toFixed(2)}/snapshot.jpg`,
+            { signal: AbortSignal.timeout(30_000) },
           );
           if (!res.ok) return undefined;
           const jpeg = new Uint8Array(await res.arrayBuffer());
