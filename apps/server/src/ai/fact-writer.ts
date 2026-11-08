@@ -27,7 +27,9 @@ export function buildFactPrompt(c: FactContext): string {
     'Schrijf één kort Nederlands feit (maximaal 160 tekens) waarmee dit later te herkennen is aan zichtbare, vaste kenmerken, met de naam of rol uit het antwoord. Geschikt zijn: een voertuig (kleur, merk, model, kenteken als het volledig leesbaar is), een bedrijfslogo, of het uniform of de bus van een bezorg- of dienstbedrijf.',
     'Voorbeelden: "De PostNL-bezorger komt met een oranje-witte PostNL-bestelbus." of "Oma komt met een grijze Toyota Yaris."',
     'Nooit gebruiken: gezicht, haar, lichaamsbouw, leeftijd of gewone kleding van privépersonen, of iets wat je niet duidelijk ziet.',
-    'Is er geen bruikbaar zichtbaar kenmerk, geef dan een lege tekst.',
+    'Geen momentopname: niet wat iemand nu doet of waar die staat (bijvoorbeeld "staat bij een auto", "achterklep open").',
+    'Een voertuig alleen noemen als merk en model herkenbaar zijn of het kenteken volledig leesbaar is ("een donkere auto" is te vaag), en alleen als het duidelijk bij deze persoon hoort (de persoon stapt in of uit, of rijdt erin). Alleen ernaast staan is niet genoeg.',
+    'Twijfel je, of is er geen bruikbaar zichtbaar kenmerk, geef dan een lege tekst. Een lege tekst is een goed antwoord.',
   ].join('\n');
 }
 

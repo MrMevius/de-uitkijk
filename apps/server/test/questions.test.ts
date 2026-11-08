@@ -200,6 +200,8 @@ describe('facts from answers about people', () => {
     const prompt = buildFactPrompt({ question: 'Wie is dit?', answer: 'Oma (bezoeker)', cameraName: 'Voordeur' });
     expect(prompt).toContain('Antwoord van de bewoner: Oma (bezoeker)');
     expect(prompt).toContain('Nooit gebruiken: gezicht, haar, lichaamsbouw, leeftijd of gewone kleding van privépersonen');
+    expect(prompt).toContain('Geen momentopname');
+    expect(prompt).toContain('Alleen ernaast staan is niet genoeg');
     expect(parseFact('{"fact":""}')).toBeNull();
     expect(parseFact('{"fact":"Oma komt met een <i>grijze</i> Toyota Yaris.\\n"}')).toBe('Oma komt met een grijze Toyota Yaris.');
   });
