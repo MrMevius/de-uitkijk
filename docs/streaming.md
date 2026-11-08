@@ -106,6 +106,18 @@ Run this only on a trusted network. Nothing on the cameras, the NVR or Frigate i
 9. **Reconnection.** Disconnect one camera (unplug, or block it temporarily at a switch port you control) for 60 s. Expect that tile to show "Geen beeld" within about 6 s, the other tiles unaffected, and recovery within one backoff interval after the camera returns. Then `docker compose restart go2rtc`: every tile should recover. Then `docker compose stop server`: video should continue and the status show "Server niet bereikbaar".
 10. **Record** results in a new section of this document with date, versions and environment. Keep them separate from the targets above.
 
+## Camera stream sessions (2026-11-08)
+
+Each camera reported 5 active streaming sessions through `/ISAPI/Streaming/status`. On `Achter het huis 1` the addresses were readable: hardware NVR ×2, Frigate ×2 (record and detect), De Uitkijk ×1. The other three cameras listed addresses that do not exist on the LAN (a firmware quirk), but the same count.
+
+The camera does not report a maximum through ISAPI. A spec sheet for the ANNKE I91BL lists simultaneous live view of up to 6 channels; this was not confirmed against an official ANNKE datasheet. That leaves **one** spare session per camera. A 7th session was not tested on purpose: it is unknown whether the camera then refuses the new session or drops an existing recording stream.
+
+Consequences:
+
+- De Uitkijk uses substreams only (all display profiles are `streamQuality: 'sub'`), and go2rtc shares one upstream session per stream across all viewers. Do not switch a profile to `main` without freeing a session elsewhere.
+- Direct live viewing from another client (for example the ANNKE app directly on a camera, rather than through the NVR) can use the last session.
+- If more headroom is needed: let the NVR or Frigate take one stream instead of two, or restream from one of them. Each option has a dependency trade-off and changes production.
+
 ## Nine cameras
 
 Only four physical cameras exist. Nine-camera **layout** behaviour is covered by automated tests. Nine-stream **playback** has been exercised with nine mock streams only. That shows the client can play nine MSE streams; it does not validate nine real H.265 cameras. A reproducible real test would point go2rtc at multiple streams (for example five extra names re-using existing cameras' substreams, which also raises upstream sessions per camera) and must be labelled as such.
