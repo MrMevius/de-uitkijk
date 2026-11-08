@@ -9,6 +9,8 @@ RUN npm ci --omit=dev --workspace=@uitkijk/server --no-audit --no-fund && npm ca
 COPY packages/shared/src packages/shared/src
 COPY apps/server/src apps/server/src
 COPY config config
+# Build contexts may have private directory modes (deployctl unpacks releases with umask 077).
+RUN chmod -R a+rX packages apps config
 ENV NODE_ENV=production PORT=3000
 USER node
 EXPOSE 3000

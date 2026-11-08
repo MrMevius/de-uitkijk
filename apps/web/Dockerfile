@@ -11,8 +11,8 @@ COPY apps/web apps/web
 RUN npm run build --workspace=@uitkijk/web
 
 FROM nginx:1.30-alpine
-COPY deploy/nginx/default.conf.template /etc/nginx/templates/default.conf.template
-COPY deploy/nginx/05-uitkijk-allowlist.sh /docker-entrypoint.d/05-uitkijk-allowlist.sh
+COPY --chmod=644 deploy/nginx/default.conf.template /etc/nginx/templates/default.conf.template
+COPY --chmod=755 deploy/nginx/05-uitkijk-allowlist.sh /docker-entrypoint.d/05-uitkijk-allowlist.sh
 COPY --from=build /app/apps/web/dist /usr/share/nginx/html
 ENV API_UPSTREAM=server:3000 GO2RTC_UPSTREAM=go2rtc:1984
 EXPOSE 8080
