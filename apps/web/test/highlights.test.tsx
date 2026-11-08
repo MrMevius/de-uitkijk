@@ -14,6 +14,7 @@ const h = (id: string, score = 3): HighlightSummary => ({
   ruleDescription: 'Persoon bij Voordeur',
   aiDescribed: false,
   aiNoise: false,
+  annotation: null,
   score,
   reasons: [],
   feedback: null,

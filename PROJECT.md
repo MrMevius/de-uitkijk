@@ -34,6 +34,7 @@ The complete agreed scope is in [docs/requirements.md](docs/requirements.md).
 | [docs/streaming.md](docs/streaming.md) | Streaming evaluation, measurements, real-camera test procedure |
 | [docs/highlights.md](docs/highlights.md) | Highlight selection, rotation, archive, storage |
 | [docs/ai.md](docs/ai.md) | AI descriptions: provider, confinement, operations |
+| [docs/questions.md](docs/questions.md) | Questions and suggestions for administrators |
 | [docs/security.md](docs/security.md) | Current boundary; production auth, TV pairing, 4-hour outage design |
 | [docs/development.md](docs/development.md) | Running mock and live mode, configuration |
 | [docs/deployment.md](docs/deployment.md) | Placement on `503-web-ubuntu`, deployctl, LAN and public access, administration |

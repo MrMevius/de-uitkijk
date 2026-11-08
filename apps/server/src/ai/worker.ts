@@ -138,7 +138,7 @@ export class AiWorker {
         recognized: next.subLabels,
         facts: this.opts.facts(),
       });
-      this.store.setAiResult(next.id, verdict.description, verdict.realEvent, now);
+      this.store.setAiResult(next.id, verdict.description, verdict.realEvent, now, verdict.vehicle ?? null, verdict.vehicleKnown ?? false);
       this.lastSuccessAt = now;
       this.lastError = null;
     } catch (err) {

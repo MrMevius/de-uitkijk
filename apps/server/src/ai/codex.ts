@@ -9,6 +9,10 @@ export interface AiVerdict {
   description: string;
   /** False when the frame shows no real event (shadow, light, insect, empty scene). */
   realEvent: boolean;
+  /** Exact description of a prominent vehicle (colour, make, model, plate if fully legible), or null. */
+  vehicle?: string | null;
+  /** True when that vehicle matches one of the household facts. */
+  vehicleKnown?: boolean;
 }
 
 export interface AiContext {
@@ -29,10 +33,12 @@ export type Describer = (jpeg: Uint8Array, context: AiContext) => Promise<AiVerd
 const SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['description', 'real_event'],
+  required: ['description', 'real_event', 'vehicle', 'vehicle_known'],
   properties: {
     description: { type: 'string', maxLength: 120 },
     real_event: { type: 'boolean' },
+    vehicle: { type: 'string', maxLength: 100 },
+    vehicle_known: { type: 'boolean' },
   },
 };
 
@@ -53,18 +59,21 @@ export function buildPrompt(context: AiContext): string {
     'Geef:',
     '- description: één korte, feitelijke Nederlandse zin (maximaal 90 tekens) over wat er gebeurt, zonder de camera of de tijd te noemen.',
     '- real_event: true als er echt iets gebeurt (een persoon, voertuig of dier); false als het ruis lijkt (schaduw, licht, regen, insect, leeg beeld).',
+    '- vehicle: als er een auto of ander voertuig duidelijk en dichtbij in beeld is: een exacte omschrijving (kleur, merk, model; het kenteken alleen als het volledig leesbaar is), bijvoorbeeld "zwarte Volkswagen up!, kenteken XX-123-Y". Anders een lege tekst. Bij meerdere voertuigen het meest opvallende of het voertuig waar de gebeurtenis om draait.',
+    '- vehicle_known: true als dat voertuig overeenkomt met een van de bekende feiten; anders false.',
   );
   return lines.join('\n');
 }
 
 /** Parses and validates Codex's final message. */
 export function parseVerdict(text: string): AiVerdict {
-  const json = JSON.parse(text.trim()) as { description?: unknown; real_event?: unknown };
+  const json = JSON.parse(text.trim()) as { description?: unknown; real_event?: unknown; vehicle?: unknown; vehicle_known?: unknown };
   if (typeof json.description !== 'string' || typeof json.real_event !== 'boolean') throw new Error('unexpected AI answer');
   // Plain single line; drop anything that looks like markup.
   const description = json.description.replace(/[\r\n\t<>]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120);
   if (!description) throw new Error('empty AI description');
-  return { description, realEvent: json.real_event };
+  const vehicle = typeof json.vehicle === 'string' ? json.vehicle.replace(/[\r\n\t<>]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 100) : '';
+  return { description, realEvent: json.real_event, vehicle: vehicle || null, vehicleKnown: json.vehicle_known === true };
 }
 
 export interface CodexOptions {

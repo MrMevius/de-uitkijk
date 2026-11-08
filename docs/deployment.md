@@ -70,6 +70,7 @@ Zabbix polls it; the items and triggers are in the homelab repository (`operatio
 | Tab | Content | Who |
 | --- | --- | --- |
 | Overzicht | go2rtc, picture per camera, Frigate alerts, highlight import with counts, AI, users, version; refreshes every 30 s | admins |
+| Vragen | Questions and suggestions from the system ([questions.md](questions.md)) | admins |
 | Gebruikers | Users, roles, one-time links, removal | admins |
 | Highlights | The archive (also at `/archief`) | everyone |
 | AI | AI status and the household facts | admins |

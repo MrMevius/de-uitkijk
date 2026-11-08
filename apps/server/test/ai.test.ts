@@ -28,7 +28,14 @@ describe('AI answer handling', () => {
     expect(parseVerdict('{"description":"Bezorger\\nlegt <b>pakket</b> neer","real_event":true}')).toEqual({
       description: 'Bezorger legt b pakket /b neer',
       realEvent: true,
+      vehicle: null,
+      vehicleKnown: false,
     });
+    expect(parseVerdict('{"description":"Auto rijdt de oprit op","real_event":true,"vehicle":" zwarte Volkswagen up!\\n","vehicle_known":false}')).toMatchObject({
+      vehicle: 'zwarte Volkswagen up!',
+      vehicleKnown: false,
+    });
+    expect(parseVerdict('{"description":"x","real_event":true,"vehicle":"","vehicle_known":true}').vehicle).toBeNull();
     expect(() => parseVerdict('{"description":"x"}')).toThrow();
     expect(() => parseVerdict('{"description":"   ","real_event":false}')).toThrow();
     expect(() => parseVerdict('geen json')).toThrow();
@@ -55,7 +62,7 @@ fs.writeFileSync(args[args.indexOf('--output-last-message') + 1], JSON.stringify
     const describe = codexDescriber({ codexHome: join(dir, 'home'), model: 'gpt-6-luna', command: fake });
     const verdict = await describe(new Uint8Array([0xff, 0xd8, 0xff, 0xd9]), { cameraName: 'Voordeur', time: 't', objects: ['person'] });
     delete process.env.UITKIJK_SECRET_TEST;
-    expect(verdict).toEqual({ description: 'Iemand loopt naar de deur', realEvent: true });
+    expect(verdict).toEqual({ description: 'Iemand loopt naar de deur', realEvent: true, vehicle: null, vehicleKnown: false });
     const run = JSON.parse(readFileSync(log, 'utf8')) as { args: string[]; cwd: string; env: string[]; image: boolean };
     expect(run.args.slice(0, 1)).toEqual(['exec']);
     expect(run.args).toEqual(expect.arrayContaining(['--sandbox', 'read-only', '--ephemeral', '--ignore-user-config', '--output-schema']));

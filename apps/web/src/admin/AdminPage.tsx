@@ -4,6 +4,7 @@ import { ArchiveView } from '../Archive.tsx';
 import { AccountTab } from './AccountTab.tsx';
 import { AiTab } from './AiTab.tsx';
 import { OverviewTab } from './OverviewTab.tsx';
+import { QuestionsTab } from './QuestionsTab.tsx';
 import { UsersTab } from './UsersTab.tsx';
 
 export interface Me {
@@ -12,19 +13,25 @@ export interface Me {
   role: 'admin' | 'viewer';
 }
 
+interface TabContext {
+  me: Me;
+  setQuestionCount: (n: number) => void;
+}
+
 interface Tab {
   id: string;
   label: string;
   adminOnly: boolean;
-  render: (me: Me) => ReactNode;
+  render: (ctx: TabContext) => ReactNode;
 }
 
 const TABS: Tab[] = [
   { id: 'overzicht', label: 'Overzicht', adminOnly: true, render: () => <OverviewTab /> },
-  { id: 'gebruikers', label: 'Gebruikers', adminOnly: true, render: (me) => <UsersTab me={me} /> },
+  { id: 'vragen', label: 'Vragen', adminOnly: true, render: ({ setQuestionCount }) => <QuestionsTab onCountChange={setQuestionCount} /> },
+  { id: 'gebruikers', label: 'Gebruikers', adminOnly: true, render: ({ me }) => <UsersTab me={me} /> },
   { id: 'highlights', label: 'Highlights', adminOnly: false, render: () => <ArchiveView embedded /> },
   { id: 'ai', label: 'AI', adminOnly: true, render: () => <AiTab /> },
-  { id: 'account', label: 'Mijn account', adminOnly: false, render: (me) => <AccountTab me={me} /> },
+  { id: 'account', label: 'Mijn account', adminOnly: false, render: ({ me }) => <AccountTab me={me} /> },
 ];
 
 const tabFromHash = (tabs: Tab[]) => tabs.find((t) => `#${t.id}` === location.hash)?.id ?? tabs[0]!.id;
@@ -38,6 +45,7 @@ export function AdminPage() {
   const [error, setError] = useState<string | null>(null);
   const tabs = me ? TABS.filter((t) => !t.adminOnly || me.role === 'admin') : [];
   const [active, setActive] = useState<string>('');
+  const [questionCount, setQuestionCount] = useState(0);
 
   useEffect(() => {
     api<Me>('GET', '/api/auth/me').then(setMe, (err) => {
@@ -45,6 +53,14 @@ export function AdminPage() {
       else setError((err as Error).message);
     });
   }, []);
+
+  useEffect(() => {
+    if (me?.role !== 'admin') return;
+    const load = () => api<{ open: number }>('GET', '/api/admin/questions/count').then((c) => setQuestionCount(c.open), () => {});
+    void load();
+    const timer = setInterval(load, 60_000);
+    return () => clearInterval(timer);
+  }, [me]);
 
   useEffect(() => {
     if (!me) return;
@@ -81,11 +97,12 @@ export function AdminPage() {
                 className={t.id === active ? 'admin__tab admin__tab--active' : 'admin__tab'}
               >
                 {t.label}
+                {t.id === 'vragen' && questionCount > 0 && <span className="admin__badge">{questionCount}</span>}
               </a>
             ))}
           </nav>
           <main className="admin__body" role="tabpanel">
-            {current?.render(me)}
+            {current?.render({ me, setQuestionCount })}
           </main>
         </>
       )}

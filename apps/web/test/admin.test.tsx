@@ -27,6 +27,12 @@ function stubApi(role: 'admin' | 'viewer') {
           users: { total: 2, admins: 1, inactive: 0 },
         });
       if (url === '/api/admin/highlights/stats') return json({ last24h: 7, last7d: 40, rotation: 7 });
+      if (url === '/api/admin/questions/count') return json({ open: 2 });
+      if (url === '/api/admin/questions')
+        return json([
+          { id: 1, kind: 'person', title: 'Wie is dit?', body: 'Persoon bij Voordeur.', data: {}, status: 'open', answer: null, answeredBy: null, createdAt: Date.now() / 1000, answeredAt: null, highlight: { id: 'h1', hasThumbnail: true } },
+          { id: 2, kind: 'vehicle', title: 'Van wie is deze auto?', body: 'De AI ziet: zwarte Volkswagen up!.', data: { vehicle: 'zwarte Volkswagen up!' }, status: 'open', answer: null, answeredBy: null, createdAt: Date.now() / 1000, answeredAt: null, highlight: { id: 'h2', hasThumbnail: true } },
+        ]);
       if (url === '/api/admin/users') return json([{ id: 1, username: 'mark', role: 'admin', active: true }]);
       if (url.startsWith('/api/highlights')) return json({ items: [], total: 0 });
       if (url === '/api/state') return json({ cameras: [] });
@@ -39,7 +45,7 @@ describe('admin page', () => {
   it('shows all tabs to administrators, starting with the overview', async () => {
     stubApi('admin');
     render(<AdminPage />);
-    await waitFor(() => expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Overzicht', 'Gebruikers', 'Highlights', 'AI', 'Mijn account']));
+    await waitFor(() => expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Overzicht', 'Vragen2', 'Gebruikers', 'Highlights', 'AI', 'Mijn account']));
     expect(await screen.findByText(/De Uitkijk 0\.9\.0/)).toBeTruthy();
     expect(screen.getByText(/geen beeld/)).toBeTruthy();
     expect(screen.getByText(/7 in 24 uur/)).toBeTruthy();
@@ -55,6 +61,16 @@ describe('admin page', () => {
     });
     expect(await screen.findByText('Gebruiker toevoegen')).toBeTruthy();
     expect(screen.getByRole('tab', { name: 'Gebruikers' }).getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('shows open questions with answer controls; a vehicle answer is prefilled from the AI', async () => {
+    stubApi('admin');
+    location.hash = '#vragen';
+    render(<AdminPage />);
+    expect(await screen.findByText('Wie is dit?')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Bezorger / dienst' })).toBeTruthy();
+    expect((screen.getByDisplayValue('zwarte Volkswagen up!') as HTMLInputElement).value).toBe('zwarte Volkswagen up!');
+    expect(screen.getByRole('button', { name: 'Opslaan als feit voor de AI' })).toBeTruthy();
   });
 
   it('shows viewers only the highlights and their own account', async () => {

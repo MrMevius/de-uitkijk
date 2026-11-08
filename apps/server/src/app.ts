@@ -1,6 +1,7 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import { registerAuth, type AuthOptions } from './auth/routes.ts';
 import { registerHighlights, type HighlightRouteOptions } from './highlights/routes.ts';
+import { registerQuestions, type QuestionRouteOptions } from './questions/routes.ts';
 import type { StateHub } from './hub.ts';
 import type { MockSource } from './mock/mock-source.ts';
 
@@ -12,6 +13,8 @@ export interface AppDeps {
   auth?: AuthOptions;
   /** Highlights from Frigate (live mode). */
   highlights?: HighlightRouteOptions;
+  /** Questions and suggestions for administrators. */
+  questions?: QuestionRouteOptions;
   logger?: boolean;
   heartbeatMs?: number;
   /** Release version, reported by /api/health so dashboards can reload after a deployment. */
@@ -25,10 +28,11 @@ export interface AppDeps {
  * a health endpoint and, in mock mode only, scenario control for development.
  * No route returns Frigate URLs, camera source URLs or credentials.
  */
-export function buildApp({ hub, mock, auth, highlights, logger = false, heartbeatMs = 15_000, version, detail }: AppDeps): FastifyInstance {
+export function buildApp({ hub, mock, auth, highlights, questions, logger = false, heartbeatMs = 15_000, version, detail }: AppDeps): FastifyInstance {
   const app = Fastify({ logger });
   if (auth) registerAuth(app, auth);
   if (highlights) registerHighlights(app, highlights);
+  if (questions) registerQuestions(app, questions);
 
   app.get('/api/health', async () => {
     const state = hub.snapshot();

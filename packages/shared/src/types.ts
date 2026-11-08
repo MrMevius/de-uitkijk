@@ -93,6 +93,8 @@ export interface HighlightSummary {
   aiDescribed: boolean;
   /** The AI judged the still to show no real event; such highlights leave the rotation. */
   aiNoise: boolean;
+  /** Administrator's answer about who or what is shown (questions tab). */
+  annotation: string | null;
   score: number;
   reasons: string[];
   /** Administrator feedback: 1 good selection, -1 bad selection. */

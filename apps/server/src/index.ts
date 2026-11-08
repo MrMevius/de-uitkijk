@@ -9,6 +9,8 @@ import { AiWorker } from './ai/worker.ts';
 import { ClipCache } from './highlights/clips.ts';
 import { HighlightImporter } from './highlights/importer.ts';
 import { HighlightStore } from './highlights/store.ts';
+import { QuestionGenerator } from './questions/generator.ts';
+import { QuestionStore } from './questions/store.ts';
 import { loadConfig } from './config.ts';
 import { frigateFetch, readFrigateAuth } from './frigate/client.ts';
 import { FrigateSource } from './frigate/frigate-source.ts';
@@ -38,6 +40,7 @@ const clips = highlightStore ? new ClipCache(join(config.dataDir, 'clip-cache'),
 // Codex keeps its ChatGPT login here; created up front so an administrator can sign in before enabling AI.
 if (highlightStore) mkdirSync(join(config.dataDir, 'codex'), { recursive: true, mode: 0o700 });
 const facts = highlightStore ? new FactStore(join(config.dataDir, 'uitkijk.db')) : undefined;
+const questionStore = highlightStore ? new QuestionStore(join(config.dataDir, 'uitkijk.db')) : undefined;
 // AI descriptions (AI-4: only when the owner enabled them; AI-7: isolated, failures never affect the rest).
 const ai =
   highlightStore && config.ai === 'codex'
@@ -74,6 +77,7 @@ const version = (() => {
 const app = buildApp({
   hub,
   ...(version ? { version } : {}),
+  ...(questionStore && highlightStore ? { questions: { questions: questionStore, highlights: highlightStore, ...(facts ? { facts } : {}) } } : {}),
   detail: () => ({
     cameras: cameraProbe?.snapshot() ?? [],
     highlights: importer ? { enabled: true, lastOkAt: importer.lastOkAt, lastError: importer.lastError } : { enabled: false },
@@ -94,6 +98,15 @@ importer =
       })
     : undefined;
 importer?.start();
+const questionGenerator =
+  questionStore && highlightStore
+    ? new QuestionGenerator(highlightStore, questionStore, {
+        cameras: config.cameras,
+        ...(cameraProbe ? { cameraStatus: () => cameraProbe.snapshot() } : {}),
+        ...(ai ? { aiStatus: () => ai.status() } : {}),
+      })
+    : undefined;
+questionGenerator?.start();
 cameraProbe?.start();
 ai?.start();
 
@@ -124,6 +137,7 @@ const shutdown = async () => {
   frigate?.stop();
   probe?.stop();
   importer?.stop();
+  questionGenerator?.stop();
   cameraProbe?.stop();
   ai?.stop();
   hub.stop();
@@ -132,6 +146,7 @@ const shutdown = async () => {
   store?.close();
   highlightStore?.close();
   facts?.close();
+  questionStore?.close();
   process.exit(0);
 };
 process.on('SIGTERM', shutdown);

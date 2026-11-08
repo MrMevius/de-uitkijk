@@ -53,6 +53,9 @@ interface Row {
   base_score: number | null;
   feedback_adj: number;
   frame_time: number | null;
+  ai_vehicle: string | null;
+  ai_vehicle_known: number | null;
+  annotation: string | null;
 }
 
 export interface StoredCandidate extends CandidateRecord {
@@ -69,10 +72,14 @@ export interface StoredCandidate extends CandidateRecord {
   baseScore: number;
   /** Adjustment learned from feedback on similar highlights (part of `score`). */
   feedbackAdj: number;
+  aiVehicle: string | null;
+  aiVehicleKnown: boolean;
+  /** Administrator's answer about who or what is shown. */
+  annotation: string | null;
 }
 
 const COLUMNS =
-  'id, start_time, end_time, cameras, camera, frigate_camera, rep_event, clip_start, clip_end, event_start, event_end, labels, sub_labels, score, reasons, description, selected, feedback, deleted, thumbnail IS NOT NULL AS has_thumbnail, ai_description, ai_real, ai_status, ai_attempts, base_score, feedback_adj, frame_time';
+  'id, start_time, end_time, cameras, camera, frigate_camera, rep_event, clip_start, clip_end, event_start, event_end, labels, sub_labels, score, reasons, description, selected, feedback, deleted, thumbnail IS NOT NULL AS has_thumbnail, ai_description, ai_real, ai_status, ai_attempts, base_score, feedback_adj, frame_time, ai_vehicle, ai_vehicle_known, annotation';
 
 const fromRow = (r: Row): StoredCandidate => ({
   id: r.id,
@@ -102,6 +109,9 @@ const fromRow = (r: Row): StoredCandidate => ({
   aiAttempts: Number(r.ai_attempts),
   baseScore: r.base_score ?? r.score,
   feedbackAdj: Number(r.feedback_adj ?? 0),
+  aiVehicle: r.ai_vehicle,
+  aiVehicleKnown: r.ai_vehicle_known === 1,
+  annotation: r.annotation,
 });
 
 export const toSummary = (c: StoredCandidate): HighlightSummary => ({
@@ -115,6 +125,7 @@ export const toSummary = (c: StoredCandidate): HighlightSummary => ({
   ruleDescription: c.description,
   aiDescribed: c.aiDescription !== null,
   aiNoise: c.aiRealEvent === false,
+  annotation: c.annotation,
   score: c.score,
   reasons: c.feedbackAdj ? [...c.reasons, `feedback ${c.feedbackAdj > 0 ? '+' : ''}${c.feedbackAdj.toFixed(1)}`] : c.reasons,
   feedback: c.feedback,
@@ -185,6 +196,10 @@ export class HighlightStore {
       ['feedback_at', 'REAL'],
       // Added in 0.8.0 (full-resolution still for the AI).
       ['frame_time', 'REAL'],
+      // Added in 0.10.0 (questions).
+      ['ai_vehicle', 'TEXT'],
+      ['ai_vehicle_known', 'INTEGER'],
+      ['annotation', 'TEXT'],
     ] as const) {
       if (!columns.has(name)) this.db.exec(`ALTER TABLE candidates ADD COLUMN ${name} ${type}`);
     }
@@ -301,10 +316,15 @@ export class HighlightStore {
     ).map(fromRow);
   }
 
-  setAiResult(id: string, description: string, realEvent: boolean, at: number): void {
+  setAiResult(id: string, description: string, realEvent: boolean, at: number, vehicle: string | null = null, vehicleKnown = false): void {
     this.db
-      .prepare("UPDATE candidates SET ai_description = ?, ai_real = ?, ai_status = 'done', ai_updated = ? WHERE id = ?")
-      .run(description, realEvent ? 1 : 0, at, id);
+      .prepare("UPDATE candidates SET ai_description = ?, ai_real = ?, ai_status = 'done', ai_updated = ?, ai_vehicle = ?, ai_vehicle_known = ? WHERE id = ?")
+      .run(description, realEvent ? 1 : 0, at, vehicle, vehicleKnown ? 1 : 0, id);
+  }
+
+  /** An administrator's answer about who or what is in the highlight (from the questions tab). */
+  setAnnotation(id: string, text: string | null): void {
+    this.db.prepare('UPDATE candidates SET annotation = ? WHERE id = ?').run(text, id);
   }
 
   setAiFailure(id: string, maxAttempts: number, at: number): void {

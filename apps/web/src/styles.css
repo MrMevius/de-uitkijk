@@ -614,3 +614,68 @@ body,
 .admin button:hover {
   background: #26324a;
 }
+
+.admin__badge {
+  margin-left: 0.4rem;
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  background: var(--alert);
+  color: #fff;
+  font-size: 0.75em;
+  font-weight: 700;
+}
+
+.admin__question {
+  display: grid;
+  grid-template-columns: minmax(12rem, 22rem) 1fr;
+  gap: 1rem;
+  align-items: start;
+}
+
+@media (max-width: 44rem) {
+  .admin__question {
+    grid-template-columns: 1fr;
+  }
+}
+
+.admin__question:not(:has(.admin__qmedia)) {
+  grid-template-columns: 1fr;
+}
+
+.admin__qmedia video,
+.admin__qmedia img {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 6px;
+  background: #000;
+  display: block;
+}
+
+.admin__qbody {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.admin__qbody h3,
+.admin__qbody p {
+  margin: 0;
+}
+
+.admin__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  color: var(--muted);
+}
+
+.admin .admin__subtle {
+  background: transparent;
+  color: var(--muted);
+  align-self: flex-start;
+}
+
+.archive__annotation {
+  color: #8ab4ff !important;
+}

@@ -153,6 +153,7 @@ export function ArchiveView({ embedded = false }: { embedded?: boolean }) {
                 {h.description}
                 {h.aiDescribed && <span className="archive__tag">AI</span>}
               </strong>
+              {h.annotation && <span className="archive__annotation">Volgens beheer: {h.annotation}</span>}
               {h.aiNoise && <span className="archive__noise">Volgens de AI geen echte gebeurtenis; niet in de rotatie op de tv.</span>}
               <span>
                 {highlightTime(h.startTime)} · {h.cameras.map(nameOf).join(', ')} · relevantie {h.score.toFixed(1)}
