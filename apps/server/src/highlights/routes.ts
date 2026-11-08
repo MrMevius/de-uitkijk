@@ -74,7 +74,7 @@ export function registerHighlights(app: FastifyInstance, { store, clips, frigate
     if (value !== 1 && value !== -1 && value !== null) return reply.code(400).send({ error: 'Ongeldige waarde' });
     const h = store.get(request.params.id);
     if (!h || h.deleted) return reply.code(404).send({ error: 'Highlight niet gevonden' });
-    store.setFeedback(h.id, value);
+    store.setFeedback(h.id, value, now());
     return reply.code(204).send();
   });
 

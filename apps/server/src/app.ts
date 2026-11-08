@@ -14,6 +14,10 @@ export interface AppDeps {
   highlights?: HighlightRouteOptions;
   logger?: boolean;
   heartbeatMs?: number;
+  /** Release version, reported by /api/health so dashboards can reload after a deployment. */
+  version?: string;
+  /** Extra status for the LAN-only monitoring endpoint. */
+  detail?: () => Record<string, unknown>;
 }
 
 /**
@@ -21,14 +25,14 @@ export interface AppDeps {
  * a health endpoint and, in mock mode only, scenario control for development.
  * No route returns Frigate URLs, camera source URLs or credentials.
  */
-export function buildApp({ hub, mock, auth, highlights, logger = false, heartbeatMs = 15_000 }: AppDeps): FastifyInstance {
+export function buildApp({ hub, mock, auth, highlights, logger = false, heartbeatMs = 15_000, version, detail }: AppDeps): FastifyInstance {
   const app = Fastify({ logger });
   if (auth) registerAuth(app, auth);
   if (highlights) registerHighlights(app, highlights);
 
   app.get('/api/health', async () => {
     const state = hub.snapshot();
-    return { status: 'ok', mode: state.mode, alerts: state.health.alerts, streaming: state.health.streaming };
+    return { status: 'ok', mode: state.mode, ...(version ? { version } : {}), alerts: state.health.alerts, streaming: state.health.streaming };
   });
 
   app.get('/api/state', async () => hub.snapshot());

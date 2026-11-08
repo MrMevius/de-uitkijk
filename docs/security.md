@@ -2,7 +2,7 @@
 
 ## Access model (operator decision, 2026-11-08)
 
-There is one address for everybody, at home and away: `https://uitkijk.mrmevius.nl` through SWAG. Every viewer logs in, TVs included, and sessions do not expire. At home, local DNS (both AdGuard Home instances) resolves the name to SWAG on `503-web-ubuntu`, so it also works without internet; the certificate stays valid offline.
+There is one address for everybody, at home and away: `https://uitkijk.mrmevius.nl` through SWAG. Every viewer logs in, TVs included, and sessions do not expire. At home the name resolves to the public address and the router hairpins it back to SWAG; viewing at home therefore needs a working internet connection (see deployment.md).
 
 ## How the boundary is enforced
 

@@ -1,6 +1,9 @@
 import type { Camera } from '@uitkijk/shared';
 import {
   buildBaseline,
+  FEEDBACK_WINDOW_S,
+  feedbackAdjustment,
+  feedbackKey,
   groupItems,
   scoreGroup,
   selectHighlights,
@@ -212,6 +215,16 @@ export class HighlightImporter {
 
   /** Re-runs selection over the last two days and stores thumbnails of newly selected highlights. */
   private async reselect(now: number): Promise<void> {
+    // Learn from feedback: similar recent candidates (same camera and time-of-day period) move up or down.
+    const sums = new Map<string, number>();
+    for (const f of this.store.feedbackSignals(now - FEEDBACK_WINDOW_S)) {
+      const key = feedbackKey(f.camera, hourInAmsterdam(f.startTime));
+      sums.set(key, (sums.get(key) ?? 0) + f.value);
+    }
+    for (const c of this.store.candidatesSince(now - 2 * 86400)) {
+      const adjustment = feedbackAdjustment(sums.get(feedbackKey(c.camera, hourInAmsterdam(c.startTime))) ?? 0);
+      if (adjustment !== c.feedbackAdj) this.store.setFeedbackAdjustment(c.id, adjustment);
+    }
     const recent = this.store.candidatesSince(now - 2 * 86400);
     const selected = selectHighlights(recent.map((c) => ({ id: c.id, startTime: c.startTime, cameras: c.cameras, score: c.score })));
     for (const c of recent) {

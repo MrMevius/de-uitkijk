@@ -21,7 +21,7 @@ The complete agreed scope is in [docs/requirements.md](docs/requirements.md).
 
 **Deployed (2026-11-08):** live mode on `503-web-ubuntu`, delivered by deployctl from `main` ([docs/deployment.md](docs/deployment.md)).
 
-- One address for everybody, at home and away: `https://uitkijk.mrmevius.nl` through SWAG, with local DNS at home.
+- One address for everybody, at home and away: `https://uitkijk.mrmevius.nl` through SWAG (at home via the router, so it needs internet).
 - Login everywhere with own accounts (administrator and viewer roles, one-time activation links); sessions do not expire ([docs/security.md](docs/security.md)).
 
 ## Documentation
@@ -45,7 +45,7 @@ The complete agreed scope is in [docs/requirements.md](docs/requirements.md).
 | --- | --- |
 | 1 (done) | Foundation, mock/live alert integration, streaming proof of concept, automatic dashboard, focus, resilience, tests. |
 | 2 | Real-camera streaming measurements; hosting benchmark and placement decision (independent of the Frigate host); kiosk client (Intel NUC) with HEVC verification; display profiles per device. |
-| 3 | Done 2026-11-08: SQLite accounts and roles, one-time links, one public address with login everywhere, local DNS, video reconnects during backend outages through a cached login check. TV pairing and stream tickets are superseded. Zabbix watches the three containers (503-web required-running list). |
+| 3 | Done 2026-11-08: SQLite accounts and roles, one-time links, one public address with login everywhere, video reconnects during backend outages through a cached login check. TV pairing and stream tickets are superseded. Zabbix watches the three containers (503-web required-running list). |
 | 4 | Done 2026-11-08: rule-based highlights from Frigate alerts, grouping across cameras, clips, thumbnails, rotation in an extra dashboard tile, archive (`/archief`) with feedback, deletion and downloads ([docs/highlights.md](docs/highlights.md)). |
 | 5 | Done 2026-11-08: AI descriptions and noise filtering via the Codex CLI with the owner's ChatGPT sign-in ([docs/ai.md](docs/ai.md)); administrative pages `/beheer` and `/archief`; downloads. Later: Claude route when the plan allows. |
 
@@ -58,7 +58,7 @@ The complete agreed scope is in [docs/requirements.md](docs/requirements.md).
 | Camera clocks | Resolved 2026-11-08 (operator-approved): the hardware NVR and all four cameras now use NTP on the LAN gateway with CET/CEST and matched real time to the second. | Re-check after a day (homelab backlog). |
 | Camera RTSP session limit | Checked 2026-11-08: 5 of a reported maximum of 6 sessions in use per camera (NVR 2, Frigate 2, De Uitkijk 1) ([docs/streaming.md](docs/streaming.md#camera-stream-sessions-2026-11-08)). | Keep De Uitkijk on substreams; free a session elsewhere before using main streams. |
 | Real latency and resources | Startup, bitrate, sessions and go2rtc resources were measured on 2026-11-08; end-to-end latency was not. | Stopwatch latency test on the TV client. |
-| Hosting location for go2rtc + edge | Decided 2026-11-08: `503-web-ubuntu`, deployed with deployctl; one address `https://uitkijk.mrmevius.nl` with login ([docs/deployment.md](docs/deployment.md)). | Install the NUC kiosk (own viewer account, AdGuard DNS). |
+| Hosting location for go2rtc + edge | Decided 2026-11-08: `503-web-ubuntu`, deployed with deployctl; one address `https://uitkijk.mrmevius.nl` with login ([docs/deployment.md](docs/deployment.md)). | Install the NUC kiosk (own viewer account). |
 | Camera account | Operator decision (2026-11-08): go2rtc uses the existing camera administrator account. Accepted trade-off: the credential stays server-side (`.env`, mode 600, go2rtc only). | None. |
 | Frigate alert timing | Frigate keeps alerts open for `cutoff_time` (40 s) after activity; focus lasts about 40 s + 15 s. | Decide whether that is acceptable or adjust Frigate (production change). |
 | Frigate API authentication | Done 2026-11-08: authenticated API with a dedicated viewer account and a pinned certificate. Port 5000 stays open for other consumers. | Optionally close port 5000 once monitoring uses authentication too. |

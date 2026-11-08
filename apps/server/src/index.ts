@@ -1,4 +1,4 @@
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { buildApp } from './app.ts';
 import { AuthStore } from './auth/store.ts';
@@ -45,8 +45,16 @@ const ai =
         log: (msg) => app.log.warn(msg),
       })
     : undefined;
+const version = (() => {
+  try {
+    return readFileSync('VERSION', 'utf8').trim();
+  } catch {
+    return undefined;
+  }
+})();
 const app = buildApp({
   hub,
+  ...(version ? { version } : {}),
   ...(config.devApi && mock ? { mock } : {}),
   ...(store ? { auth: { store, publicUrl: config.publicUrl } } : {}),
   ...(highlightStore && clips && config.frigate ? { highlights: { store: highlightStore, clips, frigateUrl: config.frigate.url, ...(ai ? { aiStatus: () => ai.status() } : {}) } } : {}),

@@ -48,6 +48,8 @@ interface Row {
   ai_real: number | null;
   ai_status: string | null;
   ai_attempts: number;
+  base_score: number | null;
+  feedback_adj: number;
 }
 
 export interface StoredCandidate extends CandidateRecord {
@@ -60,10 +62,14 @@ export interface StoredCandidate extends CandidateRecord {
   aiRealEvent: boolean | null;
   aiStatus: 'done' | 'failed' | null;
   aiAttempts: number;
+  /** Rule-based score before feedback learning. */
+  baseScore: number;
+  /** Adjustment learned from feedback on similar highlights (part of `score`). */
+  feedbackAdj: number;
 }
 
 const COLUMNS =
-  'id, start_time, end_time, cameras, camera, frigate_camera, rep_event, clip_start, clip_end, event_start, event_end, labels, sub_labels, score, reasons, description, selected, feedback, deleted, thumbnail IS NOT NULL AS has_thumbnail, ai_description, ai_real, ai_status, ai_attempts';
+  'id, start_time, end_time, cameras, camera, frigate_camera, rep_event, clip_start, clip_end, event_start, event_end, labels, sub_labels, score, reasons, description, selected, feedback, deleted, thumbnail IS NOT NULL AS has_thumbnail, ai_description, ai_real, ai_status, ai_attempts, base_score, feedback_adj';
 
 const fromRow = (r: Row): StoredCandidate => ({
   id: r.id,
@@ -90,6 +96,8 @@ const fromRow = (r: Row): StoredCandidate => ({
   aiRealEvent: r.ai_real === null ? null : r.ai_real === 1,
   aiStatus: r.ai_status === 'done' || r.ai_status === 'failed' ? r.ai_status : null,
   aiAttempts: Number(r.ai_attempts),
+  baseScore: r.base_score ?? r.score,
+  feedbackAdj: Number(r.feedback_adj ?? 0),
 });
 
 export const toSummary = (c: StoredCandidate): HighlightSummary => ({
@@ -104,7 +112,7 @@ export const toSummary = (c: StoredCandidate): HighlightSummary => ({
   aiDescribed: c.aiDescription !== null,
   aiNoise: c.aiRealEvent === false,
   score: c.score,
-  reasons: c.reasons,
+  reasons: c.feedbackAdj ? [...c.reasons, `feedback ${c.feedbackAdj > 0 ? '+' : ''}${c.feedbackAdj.toFixed(1)}`] : c.reasons,
   feedback: c.feedback,
   hasThumbnail: c.hasThumbnail,
 });
@@ -167,6 +175,10 @@ export class HighlightStore {
       ['ai_status', 'TEXT'],
       ['ai_attempts', 'INTEGER NOT NULL DEFAULT 0'],
       ['ai_updated', 'REAL'],
+      // Added in 0.7.0 (feedback learning).
+      ['base_score', 'REAL'],
+      ['feedback_adj', 'REAL NOT NULL DEFAULT 0'],
+      ['feedback_at', 'REAL'],
     ] as const) {
       if (!columns.has(name)) this.db.exec(`ALTER TABLE candidates ADD COLUMN ${name} ${type}`);
     }
@@ -196,13 +208,13 @@ export class HighlightStore {
       this.db
         .prepare(
           `INSERT INTO candidates (id, start_time, end_time, cameras, camera, frigate_camera, rep_event, clip_start, clip_end,
-             event_start, event_end, labels, sub_labels, score, reasons, description)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             event_start, event_end, labels, sub_labels, score, reasons, description, base_score)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           c.id, c.startTime, c.endTime, JSON.stringify(c.cameras), c.camera, c.frigateCamera, c.repEvent, c.clipStart,
           c.clipEnd, c.eventStart, c.eventEnd, JSON.stringify(c.labels), JSON.stringify(c.subLabels), c.score,
-          JSON.stringify(c.reasons), c.description,
+          JSON.stringify(c.reasons), c.description, c.score,
         );
       const mark = this.db.prepare('INSERT OR IGNORE INTO processed_reviews (review_id, candidate_id) VALUES (?, ?)');
       for (const id of reviewIds) mark.run(id, c.id);
@@ -240,8 +252,30 @@ export class HighlightStore {
     return row?.thumbnail ?? undefined;
   }
 
-  setFeedback(id: string, value: -1 | 1 | null): void {
-    this.db.prepare('UPDATE candidates SET feedback = ? WHERE id = ?').run(value, id);
+  setFeedback(id: string, value: -1 | 1 | null, at: number = Date.now() / 1000): void {
+    this.db.prepare('UPDATE candidates SET feedback = ?, feedback_at = ? WHERE id = ?').run(value, value === null ? null : at, id);
+  }
+
+  /**
+   * Feedback signals since `since`, per representative camera and start time: 👍 = +1, 👎 = -1,
+   * deleted without 👍 = -1.
+   */
+  feedbackSignals(since: number): { camera: string; startTime: number; value: number }[] {
+    return (
+      this.db
+        .prepare(
+          `SELECT camera, start_time AS startTime, CASE WHEN feedback = 1 THEN 1 ELSE -1 END AS value FROM candidates
+             WHERE start_time >= ? AND (feedback IN (1, -1) OR deleted = 1)`,
+        )
+        .all(since) as { camera: string; startTime: number; value: number }[]
+    ).map((r) => ({ ...r, value: Number(r.value) }));
+  }
+
+  /** Stores the feedback adjustment; `score` becomes base score plus adjustment. */
+  setFeedbackAdjustment(id: string, adjustment: number): void {
+    this.db
+      .prepare('UPDATE candidates SET base_score = COALESCE(base_score, score), feedback_adj = ?, score = ROUND(COALESCE(base_score, score) + ?, 2) WHERE id = ?')
+      .run(adjustment, adjustment, id);
   }
 
   /** Deletes a highlight: keeps a tombstone (no thumbnail, never selected) so it is not re-imported. */
@@ -275,11 +309,11 @@ export class HighlightStore {
       .run(at, maxAttempts, id);
   }
 
-  /** Highlights for the dashboard: selected in the window, not judged noise by the AI, best first. */
+  /** Highlights for the dashboard: selected in the window, not judged noise by the AI nor 👎, best first. */
   rotation(since: number, limit: number): StoredCandidate[] {
     return (
       this.db
-        .prepare(`SELECT ${COLUMNS} FROM candidates WHERE selected = 1 AND deleted = 0 AND (ai_real IS NULL OR ai_real = 1) AND start_time >= ? ORDER BY score DESC, start_time DESC LIMIT ?`)
+        .prepare(`SELECT ${COLUMNS} FROM candidates WHERE selected = 1 AND deleted = 0 AND (ai_real IS NULL OR ai_real = 1) AND (feedback IS NULL OR feedback = 1) AND start_time >= ? ORDER BY score DESC, start_time DESC LIMIT ?`)
         .all(since, limit) as unknown as Row[]
     ).map(fromRow);
   }

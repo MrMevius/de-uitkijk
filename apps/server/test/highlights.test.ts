@@ -248,3 +248,39 @@ describe('highlight API', () => {
     expect((await t.app.inject({ url: '/api/highlights/h1/clip.mp4', headers: { cookie: admin.cookie } })).statusCode).toBe(404);
   });
 });
+
+describe('feedback learning', () => {
+  it('maps feedback to a capped adjustment per camera and time-of-day period', async () => {
+    const { feedbackAdjustment, periodOf } = await import('../src/highlights/selection.ts');
+    expect(feedbackAdjustment(0)).toBe(0);
+    expect(feedbackAdjustment(2)).toBe(0.8);
+    expect(feedbackAdjustment(5)).toBe(1);
+    expect(feedbackAdjustment(-2)).toBe(-0.8);
+    expect(feedbackAdjustment(-10)).toBe(-1.5);
+    expect([periodOf(2), periodOf(23), periodOf(20), periodOf(12)]).toEqual(['nacht', 'nacht', 'avond', 'dag']);
+  });
+
+  it('lowers similar highlights after 👎 or deletion and takes a 👎 highlight out of the rotation', async () => {
+    const reviews = [
+      review('n1', TUIN, at(2, 10), at(2, 10) + 20),
+      review('n2', TUIN, at(3, 10), at(3, 10) + 20),
+      review('n3', TUIN, at(4, 10), at(4, 10) + 20),
+      review('v1', VOORDEUR, at(4, 20), at(4, 20) + 20),
+    ];
+    const t2 = setupImporter(reviews);
+    t2.store.setMeta('activated_at', String(at(1)));
+    t2.setClock(at(5));
+    await t2.importer.runOnce();
+    const before = Object.fromEntries(t2.store.candidatesSince(0).map((c) => [c.id, c.score]));
+    expect(before.n3).toBeGreaterThanOrEqual(2);
+
+    t2.store.setFeedback('n1', -1, at(5));
+    t2.store.tombstone('n2');
+    await t2.importer.runOnce();
+    const after = Object.fromEntries(t2.store.candidatesSince(0).map((c) => [c.id, c]));
+    expect(after.n3!.feedbackAdj).toBe(-0.8);
+    expect(after.n3!.score).toBe(Math.round((before.n3! - 0.8) * 100) / 100);
+    expect(after.v1!.feedbackAdj).toBe(0);
+    expect(t2.store.rotation(0, 15).map((c) => c.id)).not.toContain('n1');
+  });
+});

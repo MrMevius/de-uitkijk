@@ -140,3 +140,22 @@ export function selectHighlights(
   }
   return new Set(kept.map((c) => c.id));
 }
+
+/** Time-of-day period used to learn from feedback: similar events happen at similar times. */
+export function periodOf(hour: number): 'nacht' | 'avond' | 'dag' {
+  if (hour >= 23 || hour < 6) return 'nacht';
+  if (hour >= 19) return 'avond';
+  return 'dag';
+}
+
+export const feedbackKey = (camera: string, hour: number) => `${camera}|${periodOf(hour)}`;
+
+/**
+ * Score adjustment learned from administrator feedback on earlier highlights with the same camera and
+ * time-of-day period (last 90 days): +0.4 per 👍, -0.4 per 👎 or deletion, capped at +1.0 / -1.5.
+ */
+export function feedbackAdjustment(sum: number): number {
+  return Math.round(Math.max(-1.5, Math.min(1, 0.4 * sum)) * 100) / 100;
+}
+
+export const FEEDBACK_WINDOW_S = 90 * 86400;

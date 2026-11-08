@@ -5,6 +5,7 @@ import { ActivatePage, AdminPage, LoginPage } from './Account.tsx';
 import { ArchivePage } from './Archive.tsx';
 import { Dashboard } from './Dashboard.tsx';
 import { DevPanel } from './DevPanel.tsx';
+import { useSelfHealing } from './self-healing.ts';
 import { useDashboardState } from './use-dashboard-state.ts';
 import './styles.css';
 
@@ -21,6 +22,7 @@ function useSessionRenewal() {
 function DashboardPage() {
   useSessionRenewal();
   const { state, connected } = useDashboardState();
+  useSelfHealing(Boolean(state?.focus.length));
   const profile = displayProfile(new URLSearchParams(location.search).get('profile'));
   return <Dashboard state={state} connected={connected} profile={profile} />;
 }

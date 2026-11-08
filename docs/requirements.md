@@ -130,7 +130,7 @@ Consolidated specification for De Uitkijk. Each requirement has a phase:
 
 | ID | Requirement | Phase |
 | --- | --- | --- |
-| SEC-1 | Public HTTPS access through the existing SWAG reverse proxy. Local access must work without internet; local DNS through AdGuard Home. | Done 2026-11-08 (one address; local DNS rewrite on both AdGuard Home instances) |
+| SEC-1 | Public HTTPS access through the existing SWAG reverse proxy. Local access must work without internet; local DNS through AdGuard Home. | Partly: public HTTPS done 2026-11-08; local access through hairpin NAT still needs internet (a local rewrite needs SWAG on 10.0.0.171:443 first) |
 | SEC-2 | Own user accounts with administrator and viewer roles. No MFA (neither mandatory nor optional). | Done (2026-11-08; login everywhere, sessions without expiry) |
 | SEC-3 | Accounts activated and passwords recovered through administrator-generated one-time links; emergency administrator recovery through a secured server CLI. | Done (2026-11-08) |
 | SEC-4 | All authenticated users may access the full highlight archive; only administrators manage settings, feedback and deletion. | Later |
