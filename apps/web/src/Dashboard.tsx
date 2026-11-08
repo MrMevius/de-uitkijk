@@ -45,18 +45,21 @@ export function Dashboard({ state, connected, profile }: Props) {
   const cameras = state?.cameras ?? [];
   const cameraIds = useMemo(() => cameras.map((c) => c.id), [cameras]);
   const focusedIds = useMemo(() => state?.focus.map((f) => f.cameraId) ?? [], [state?.focus]);
-  const rects = useMemo(
-    () =>
-      computeLayout(cameraIds, focusedIds, {
-        width,
-        height,
-        gap: profile.gapPx,
-        minOtherWidthFraction: profile.minOtherWidthFraction,
-      }),
-    [cameraIds, focusedIds, width, height, profile],
-  );
-  const health = summarizeHealth(state, connected);
   const scale = profile.overlayScale * (height / 1080);
+  // On a landscape screen the status bar sits in the space around the 16:9 tiles. A portrait screen
+  // (phone) has no such space, so reserve a band at the top for it.
+  const topBand = height > width ? Math.round(18 * scale * 2.6) : 0;
+  const rects = useMemo(() => {
+    const layout = computeLayout(cameraIds, focusedIds, {
+      width,
+      height: height - topBand,
+      gap: profile.gapPx,
+      minOtherWidthFraction: profile.minOtherWidthFraction,
+    });
+    if (!topBand) return layout;
+    return Object.fromEntries(Object.entries(layout).map(([id, r]) => [id, { ...r, y: r.y + topBand }]));
+  }, [cameraIds, focusedIds, width, height, topBand, profile]);
+  const health = summarizeHealth(state, connected);
 
   return (
     <main className={pointerIdle ? 'dashboard dashboard--idle' : 'dashboard'} style={{ '--scale': scale } as CSSProperties}>

@@ -14,7 +14,7 @@ The SWAG vhost must disable response buffering (`proxy_buffering off`). Otherwis
 
 TVs: log in once in the kiosk browser. The session does not expire, and the dashboard renews the cookie daily.
 
-Phones: iPhones need iOS 17.1 or later (the player falls back to Safari's `ManagedMediaSource`). Android phones depend on the device's H.265 decoding in Chrome. The layout is made for a 16:9 screen, so a phone works best in landscape.
+Phones: verified on an iPhone (Brave, which uses WebKit) on 2026-11-08: all four cameras play live through `ManagedMediaSource`; iOS 17.1 or later is needed. On a portrait screen the tiles stack vertically below the date bar. Android phones depend on the device's H.265 decoding in Chrome. The layout is made for a 16:9 screen, so a phone works best in landscape.
 
 ## Delivery
 

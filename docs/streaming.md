@@ -76,6 +76,10 @@ Operator's Windows 11 PC (remote, not in front of the cameras), Chrome, live das
 - All four tiles played live with smooth motion; go2rtc held exactly one RTSP session per camera. go2rtc does not transcode, so Chrome decoded H.265 itself.
 - Not yet measured on this client: end-to-end latency (needs the operator on site), exact dropped-frame counts and main-stream playback in a focused tile. These remain acceptance steps on the NUC itself.
 
+### iPhone result (2026-11-08)
+
+The operator's iPhone (Brave browser, WebKit) played all four real H.265 substreams live through `https://uitkijk.mrmevius.nl` after login, using the player's `ManagedMediaSource` path.
+
 ## Design targets (not yet measured with cameras)
 
 - Local end-to-end latency 1–2 s.
