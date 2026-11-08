@@ -48,7 +48,7 @@ Environment: development VM on the LAN; go2rtc 1.9.15 in Docker connecting direc
 | Achter het huis 1 network path | Ping from the development VM: average 160 ms RTT, maximum 566 ms, while the other cameras answer in 1–2 ms. This camera's network link explains its slow start; the cause (wireless/cabling/switch port) is not yet investigated. |
 | Browser playback (WebKit GTK, HEVC via GStreamer) | Page navigation → all four substreams playing in 2.2 s. After ~12 s: 69–74 decoded frames per tile, 0–1 dropped. |
 | Buffer ahead of playback position | 0.54–0.72 s per tile. |
-| End-to-end latency | **Not measured.** The camera OSD clocks were ~51 minutes ahead of real time at the time (set by the hardware NVR, see PROJECT.md), and the test browsers could not provide a comparable display clock. Use the stopwatch method in the procedure below. |
+| End-to-end latency | **Not measured.** The camera OSD clocks were ~51 minutes ahead of real time at the time (set by the hardware NVR; corrected later that day), and the test browsers could not provide a comparable display clock. Use the stopwatch method in the procedure below. |
 | Upstream camera connections | One RTSP session per camera per watched stream type, with 1 or 2 consumers per stream (8 consumers on 4 substreams → 4 sessions). Zero sessions when nobody watches; sessions close immediately when the last viewer leaves. |
 | go2rtc resources | 4 substreams with 8 consumers: ~1 % CPU, 24 MiB RAM. 4 main streams: ~5.5 % CPU, 27 MiB RAM (development VM). Backend 38 MiB, edge 4 MiB. |
 | Effect on Frigate | Frigate camera FPS 5.0/5.0/5.0/5.0 during the test, identical to the baseline before it. |
@@ -61,14 +61,14 @@ Still open: end-to-end latency, HEVC support on the actual TV client (Intel NUC 
 
 Browser HEVC support decides whether the default path (no transcoding) works. Sources disagree on stock Chrome on Linux: HEVC through MSE depends on VAAPI and the build, and recent reports show `isTypeSupported('…hvc1…')` failing. Chrome on Windows with a GPU that decodes HEVC in hardware is the most widely reported working path. go2rtc and Frigate both describe browser HEVC as dependent on browser, OS and hardware decoder.
 
-Recommendation (2026-11-08, to be verified on the device):
+Decision (operator, 2026-11-08): the existing Intel NUC gets Windows 11 with a Chromium browser; acceptance tests run on a Windows 11 machine with Chrome. To be verified on the device:
 
 1. **Hardware:** a mini PC with a recent Intel iGPU (hardware HEVC decode) and wired Ethernet.
-2. **OS and browser:** Windows 11 with Google Chrome in kiosk mode, for example `chrome.exe --kiosk --autoplay-policy=no-user-gesture-required http://<dashboard>/?profile=shop`. Use automatic sign-in to a local account, disable sleep/screen-off, and schedule Windows updates outside viewing hours.
+2. **OS and browser:** Windows 11 with Google Chrome in kiosk mode, for example `chrome.exe --kiosk --autoplay-policy=no-user-gesture-required http://<dashboard>/?profile=shop`. Use automatic sign-in to a local account, disable sleep/screen-off, and schedule Windows updates outside viewing hours. Prefer Chrome over Edge: Edge's HEVC support has historically depended on the separate HEVC Video Extensions package.
 3. **Acceptance before buying a second unit:** `MediaSource.isTypeSupported('video/mp4; codecs="hvc1.1.6.L153.B0"')` returns `true`; four substreams play without dropped frames; stopwatch latency is recorded; main-stream decoding in a focused tile is tested.
 4. **Fallback** if HEVC fails: a Linux kiosk with WebKit and GStreamer, which played the real H.265 streams in this repository's test, or per-stream H.264 transcoding of the substream in go2rtc.
 
-
+## Design targets (not yet measured with cameras)
 
 - Local end-to-end latency 1–2 s.
 - Startup to first frame under 2 s per tile.
@@ -87,7 +87,7 @@ Run this only on a trusted network. Nothing on the cameras, the NVR or Frigate i
    ```
    Record browser, version, OS and GPU. Repeat with `?profile=` variants. To test the main stream, temporarily set a profile's `streamQuality` to `main`.
 4. **Startup latency.** DevTools → Network → WS: time from the `/stream/ws` request to the first binary frame, and to the tile showing video (status changes to live).
-5. **End-to-end latency.** Hold a running phone stopwatch in front of the camera (the camera OSD clocks are not NTP-synced, see above). Photograph the TV and the clock together and compare. Take at least five samples per stream and record the median. Alternatively use the mock stream's burned-in time against a synced screen clock.
+5. **End-to-end latency.** Hold a running phone stopwatch in front of the camera; since 2026-11-08 the camera OSD clocks are NTP-synced, so comparing the OSD time with a synced clock next to the TV is a quick first check. Photograph the TV and the clock together and compare. Take at least five samples per stream and record the median. Alternatively use the mock stream's burned-in time against a synced screen clock.
 6. **CPU and RAM.** `docker stats` for `go2rtc`, `server` and `web` with 0, 1 and 2 dashboards open; browser task manager on the client. Record the values with substream and with main stream.
 7. **Upstream connections.** `docker compose exec go2rtc sh -c 'netstat -tn | grep :554'` (count per camera address) with one and with two dashboards open. Expect one session per watched stream per camera, regardless of the number of dashboards.
 8. **Quality changes.** Compare sub and main on the shop and bedroom TVs at their viewing distances. Record client CPU/GPU, dropped frames (`video.getVideoPlaybackQuality()`) and latency.
