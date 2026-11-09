@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { FactStore } from '../ai/facts.ts';
-import { SELECTION, selectHighlights, THRESHOLD_RANGE } from './selection.ts';
+import { REPLAY_MINUTES, SELECTION, selectHighlights, THRESHOLD_RANGE } from './selection.ts';
 import { sendFileWithRanges, type ClipCache } from './clips.ts';
 import { toSummary, type HighlightStore } from './store.ts';
 
@@ -28,6 +28,9 @@ export function registerHighlights(app: FastifyInstance, { store, clips, frigate
   app.get('/api/highlights/rotation', async () =>
     store.rotation(now() - SELECTION.rotationWindowS, SELECTION.maxRotation).map(toSummary),
   );
+
+  // Playback settings for the dashboard.
+  app.get('/api/highlights/settings', async () => ({ replayMinutes: store.replayMinutes() }));
 
   app.get<{ Querystring: Record<string, string> }>('/api/highlights', async (request) => {
     const q = request.query;
@@ -92,16 +95,28 @@ export function registerHighlights(app: FastifyInstance, { store, clips, frigate
     const current = store.threshold();
     const asked = num(request.query.threshold);
     const probe = asked !== undefined && asked >= THRESHOLD_RANGE.min && asked <= THRESHOLD_RANGE.max ? asked : current;
-    return { threshold: current, default: SELECTION.threshold, ...THRESHOLD_RANGE, preview: { threshold: probe, ...preview(probe) } };
+    return {
+      threshold: current,
+      default: SELECTION.threshold,
+      ...THRESHOLD_RANGE,
+      preview: { threshold: probe, ...preview(probe) },
+      replayMinutes: store.replayMinutes(),
+      replay: REPLAY_MINUTES,
+    };
   });
-  app.put<{ Body: { threshold?: unknown } }>('/api/admin/highlights/settings', async (request, reply) => {
-    const v = request.body?.threshold;
-    if (typeof v !== 'number' || !Number.isFinite(v) || v < THRESHOLD_RANGE.min || v > THRESHOLD_RANGE.max) {
+  app.put<{ Body: { threshold?: unknown; replayMinutes?: unknown } }>('/api/admin/highlights/settings', async (request, reply) => {
+    const { threshold, replayMinutes } = request.body ?? {};
+    if (threshold === undefined && replayMinutes === undefined) return reply.code(400).send({ error: 'Niets om op te slaan' });
+    if (threshold !== undefined && (typeof threshold !== 'number' || !Number.isFinite(threshold) || threshold < THRESHOLD_RANGE.min || threshold > THRESHOLD_RANGE.max)) {
       return reply.code(400).send({ error: `Drempel moet tussen ${THRESHOLD_RANGE.min} en ${THRESHOLD_RANGE.max} liggen` });
     }
-    store.setThreshold(v);
-    request.log.info({ by: request.user?.username, threshold: store.threshold() }, 'highlight threshold changed');
-    return { threshold: store.threshold() };
+    if (replayMinutes !== undefined && (!Number.isInteger(replayMinutes) || (replayMinutes as number) < REPLAY_MINUTES.min || (replayMinutes as number) > REPLAY_MINUTES.max)) {
+      return reply.code(400).send({ error: `Opnieuw afspelen: hele minuten van ${REPLAY_MINUTES.min} tot ${REPLAY_MINUTES.max}` });
+    }
+    if (typeof threshold === 'number') store.setThreshold(threshold);
+    if (typeof replayMinutes === 'number') store.setReplayMinutes(replayMinutes);
+    request.log.info({ by: request.user?.username, threshold: store.threshold(), replayMinutes: store.replayMinutes() }, 'highlight settings changed');
+    return { threshold: store.threshold(), replayMinutes: store.replayMinutes() };
   });
 
   if (facts) {

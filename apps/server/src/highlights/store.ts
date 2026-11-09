@@ -1,6 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
 import type { HighlightSummary } from '@uitkijk/shared';
-import { SELECTION, THRESHOLD_RANGE } from './selection.ts';
+import { REPLAY_MINUTES, SELECTION, THRESHOLD_RANGE } from './selection.ts';
 
 /** A scored group of Frigate alerts. Highlights are the selected candidates. */
 export interface CandidateRecord {
@@ -258,6 +258,16 @@ export class HighlightStore {
 
   setThreshold(value: number): void {
     this.setMeta('threshold', String(Math.round(value * 10) / 10));
+  }
+
+  /** Minutes between two plays of a highlight on the TV, set by an administrator, or the default. */
+  replayMinutes(): number {
+    const v = Number(this.getMeta('replay_minutes'));
+    return Number.isInteger(v) && v >= REPLAY_MINUTES.min && v <= REPLAY_MINUTES.max ? v : REPLAY_MINUTES.default;
+  }
+
+  setReplayMinutes(value: number): void {
+    this.setMeta('replay_minutes', String(Math.round(value)));
   }
 
   isProcessed(reviewId: string): boolean {

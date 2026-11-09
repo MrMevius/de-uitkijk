@@ -66,55 +66,81 @@ export function highlightTime(epochS: number, nowMs = Date.now()): string {
 
 /** A highlight that failed to play is skipped for this long (others play meanwhile). */
 const FAILED_SKIP_MS = 10 * 60_000;
+/** Until the server says otherwise: play a highlight again after this many minutes. */
+const DEFAULT_REPLAY_MINUTES = 10;
+const TICK_MS = 5_000;
 
 interface Slot {
   highlight: HighlightSummary;
+  /** Identifies the tile instance; changes only when the tile gets another highlight. */
   play: number;
+  /** Counts plays of the same highlight on this tile; a new round replays the clip in place. */
+  round: number;
+  /** Date.now() when the current round started. */
+  startedAt: number;
 }
 
 /**
  * The highlights to show now: one entry per tile (`slots` tiles), null for an empty tile.
  *
- * - Polls the rotation (the best 0–15 of the last 24 h) every minute.
- * - Every tile plays its clip once and then takes the next highlight that is not on another tile; with no
- *   more highlights than tiles, each tile keeps its own (the tile replays it in place). New highlights go first.
- * - While `paused` (active alert) nothing is shown; afterwards the tiles continue with the next highlights.
+ * - Polls the rotation (the best 0–15 of the last 24 h) and the replay interval every minute.
+ * - A tile plays its clip once and then keeps the last frame. Every `replayMinutes` (set in the admin page,
+ *   default 10) it plays again: the highlight that has been off screen longest, or the same one when all
+ *   others are on screen.
+ * - A highlight that arrives while all tiles are in use takes over the tile that started longest ago, at once.
+ * - While `paused` (active alert) nothing is shown; afterwards the tiles fill again and play.
  * - A highlight that fails to play is skipped for ten minutes when another one can take its tile; otherwise its
  *   still stays visible.
  */
-export function useHighlightRotation(paused: boolean, slots = 1, url = '/api/highlights/rotation') {
+export function useHighlightRotation(
+  paused: boolean,
+  slots = 1,
+  url = '/api/highlights/rotation',
+  settingsUrl = '/api/highlights/settings',
+) {
   const [list, setList] = useState<HighlightSummary[]>([]);
+  const [replayMs, setReplayMs] = useState(DEFAULT_REPLAY_MINUTES * 60_000);
   const [shown, setShown] = useState<(Slot | null)[]>([]);
   const queue = useRef<string[]>([]);
   const seen = useRef(new Set<string>());
+  const arrived = useRef<string[]>([]);
   const failedUntil = useRef(new Map<string, number>());
   const plays = useRef(0);
 
   useEffect(() => {
     let disposed = false;
-    const load = () =>
+    const load = () => {
       fetch(url)
         .then((r) => (r.ok ? (r.json() as Promise<HighlightSummary[]>) : []))
         .then((items) => !disposed && setList(items), () => {});
-    void load();
+      fetch(settingsUrl)
+        .then((r) => (r.ok ? (r.json() as Promise<{ replayMinutes?: number }>) : {}))
+        .then((s: { replayMinutes?: number }) => {
+          if (!disposed && typeof s.replayMinutes === 'number' && s.replayMinutes > 0) setReplayMs(s.replayMinutes * 60_000);
+        }, () => {});
+    };
+    load();
     const timer = setInterval(load, POLL_MS);
     return () => {
       disposed = true;
       clearInterval(timer);
     };
-  }, [url]);
+  }, [url, settingsUrl]);
 
   // Keep the queue in sync with the list: new highlights first, removed ones dropped.
   useEffect(() => {
     const ids = list.map((h) => h.id);
+    const first = seen.current.size === 0;
     const fresh = ids.filter((id) => !seen.current.has(id));
     for (const id of fresh) seen.current.add(id);
+    // Highlights that arrive later (not the first load) take over a tile at once.
+    if (!first) arrived.current = [...arrived.current, ...fresh];
     queue.current = [...fresh, ...queue.current.filter((id) => ids.includes(id) && !fresh.includes(id))];
   }, [list]);
 
-  /** The next highlight for tile `index`, given what the other tiles show. */
+  /** The next highlight for tile `index`, given what the other tiles show; may be the tile's own. */
   const pick = useCallback(
-    (current: (Slot | null)[], index: number): Slot | null => {
+    (current: (Slot | null)[], index: number): HighlightSummary | null => {
       const now = Date.now();
       const elsewhere = new Set(current.flatMap((s, i) => (s && i !== index ? [s.highlight.id] : [])));
       const free = list.filter((h) => (failedUntil.current.get(h.id) ?? 0) <= now && !elsewhere.has(h.id));
@@ -129,12 +155,28 @@ export function useHighlightRotation(paused: boolean, slots = 1, url = '/api/hig
       if (!queue.current.some(wanted)) queue.current = [...queue.current, ...ids];
       const id = queue.current.find(wanted)!;
       queue.current = [...queue.current.filter((q) => q !== id), id];
-      return { highlight: free.find((h) => h.id === id)!, play: ++plays.current };
+      return free.find((h) => h.id === id)!;
     },
     [list],
   );
 
-  // Fill empty tiles; drop highlights that left the rotation or failed.
+  const place = (highlight: HighlightSummary): Slot => ({ highlight, play: ++plays.current, round: 0, startedAt: Date.now() });
+
+  /** Tile `index` plays again: another highlight, or the same one in place. */
+  const advance = useCallback(
+    (cur: (Slot | null)[], index: number): (Slot | null)[] => {
+      const s = cur[index];
+      if (!s) return cur;
+      const picked = pick(cur, index);
+      const out = [...cur];
+      out[index] =
+        !picked || picked.id === s.highlight.id ? { ...s, round: s.round + 1, startedAt: Date.now() } : place(picked);
+      return out;
+    },
+    [pick],
+  );
+
+  // Fill empty tiles, drop highlights that left the rotation, and give newly arrived highlights a tile.
   useEffect(() => {
     if (paused) {
       setShown([]);
@@ -146,25 +188,41 @@ export function useHighlightRotation(paused: boolean, slots = 1, url = '/api/hig
         const s = cur[i] ?? null;
         return s && ids.has(s.highlight.id) ? s : null;
       });
-      for (let i = 0; i < out.length; i++) if (!out[i]) out[i] = pick(out, i);
+      for (let i = 0; i < out.length; i++) if (!out[i]) out[i] = (() => {
+        const h = pick(out, i);
+        return h ? place(h) : null;
+      })();
+      for (const id of arrived.current.splice(0)) {
+        const h = list.find((x) => x.id === id);
+        if (!h || out.some((s) => s?.highlight.id === id) || !out.length) continue;
+        let oldest = 0;
+        out.forEach((s, i) => {
+          if (s && s.startedAt < (out[oldest]?.startedAt ?? Infinity)) oldest = i;
+        });
+        queue.current = [...queue.current.filter((q) => q !== id), id];
+        out[oldest] = place(h);
+      }
       return out.length === cur.length && out.every((s, i) => s === cur[i]) ? cur : out;
     });
   }, [paused, list, slots, pick]);
 
-  /** Tile `index` finished its clip: another highlight takes over, or the same one stays (and replays in place). */
-  const next = useCallback(
-    (index: number) =>
-      setShown((cur) => {
-        const s = cur[index];
-        if (!s) return cur;
-        const picked = pick(cur, index);
-        if (!picked || picked.highlight.id === s.highlight.id) return cur;
-        const out = [...cur];
-        out[index] = picked;
-        return out;
-      }),
-    [pick],
-  );
+  // Every few seconds: tiles whose interval has passed play again.
+  useEffect(() => {
+    if (paused) return;
+    const timer = setInterval(
+      () =>
+        setShown((cur) => {
+          let out = cur;
+          for (let i = 0; i < out.length; i++) if (out[i] && Date.now() - out[i]!.startedAt >= replayMs) out = advance(out, i);
+          return out;
+        }),
+      TICK_MS,
+    );
+    return () => clearInterval(timer);
+  }, [paused, replayMs, advance]);
+
+  /** Plays tile `index` again now (also used by tests). */
+  const next = useCallback((index: number) => setShown((cur) => advance(cur, index)), [advance]);
 
   /** Tile `index` could not play its clip: skip it for a while if another highlight can take over; else keep it (still image). */
   const fail = useCallback(
@@ -174,9 +232,9 @@ export function useHighlightRotation(paused: boolean, slots = 1, url = '/api/hig
         if (!s) return cur;
         failedUntil.current.set(s.highlight.id, Date.now() + FAILED_SKIP_MS);
         const picked = pick(cur, index);
-        if (!picked || picked.highlight.id === s.highlight.id) return cur;
+        if (!picked || picked.id === s.highlight.id) return cur;
         const out = [...cur];
-        out[index] = picked;
+        out[index] = place(picked);
         return out;
       }),
     [pick],
@@ -184,7 +242,7 @@ export function useHighlightRotation(paused: boolean, slots = 1, url = '/api/hig
 
   const tiles = paused ? [] : shown;
   return {
-    tiles: tiles.map((s) => (s ? { highlight: s.highlight, playKey: `${s.highlight.id}:${s.play}` } : null)),
+    tiles: tiles.map((s) => (s ? { highlight: s.highlight, playKey: `${s.highlight.id}:${s.play}`, round: s.round } : null)),
     next,
     fail,
   };
@@ -194,25 +252,35 @@ interface TileProps {
   highlight: HighlightSummary;
   rect: Rect;
   cameraName: string;
-  onDone: () => void;
+  /** A higher round plays the clip again from the start, in place. */
+  round?: number;
   onFail: () => void;
 }
 
 /**
- * Shows one highlight: its still right away, then the clip, muted, with time and description. When the clip
- * ends the tile asks for the next highlight; if there is none, the same clip plays again in place (no reload),
- * so the tile stays visible until another highlight takes its place.
+ * Shows one highlight: its still right away, then the clip once, muted, with time and description. After the
+ * clip the last frame stays; a new `round` plays it again in place (no reload).
  */
-export function HighlightTile({ highlight, rect, cameraName, onDone, onFail }: TileProps) {
+export function HighlightTile({ highlight, rect, cameraName, round = 0, onFail }: TileProps) {
   const [playing, setPlaying] = useState(false);
-  const [round, setRound] = useState(0);
+  const video = useRef<HTMLVideoElement>(null);
+  const endedRound = useRef(-1);
   const failRef = useRef(onFail);
   failRef.current = onFail;
+
+  useEffect(() => {
+    const v = video.current;
+    if (round === 0 || !v) return;
+    v.currentTime = 0;
+    void v.play()?.catch(() => {});
+  }, [round]);
 
   // Safety net: a clip that does not start or stalls counts as failed (another highlight may take over).
   // Restarts for every round, not when the dashboard re-renders.
   useEffect(() => {
-    const timer = setTimeout(() => failRef.current(), (highlight.clipDuration + 20) * 1000);
+    const timer = setTimeout(() => {
+      if (endedRound.current !== round) failRef.current();
+    }, (highlight.clipDuration + 20) * 1000);
     return () => clearTimeout(timer);
   }, [highlight.id, highlight.clipDuration, round]);
 
@@ -222,20 +290,14 @@ export function HighlightTile({ highlight, rect, cameraName, onDone, onFail }: T
       {highlight.hasThumbnail && <img className="tile__video" src={`/api/highlights/${id}/thumb.webp`} alt="" />}
       <video
         key={highlight.id}
+        ref={video}
         className={playing ? 'tile__video' : 'tile__video tile__video--hidden'}
         src={`/api/highlights/${id}/clip.mp4`}
         autoPlay
         muted
         playsInline
         onPlaying={() => setPlaying(true)}
-        onEnded={(e) => {
-          const video = e.currentTarget;
-          onDone();
-          // Still on screen (no other highlight available): play again from the start.
-          video.currentTime = 0;
-          void video.play().catch(() => {});
-          setRound((n) => n + 1);
-        }}
+        onEnded={() => (endedRound.current = round)}
         onError={() => onFail()}
       />
       {!playing && !highlight.hasThumbnail && <div className="tile__placeholder">Highlight laden…</div>}

@@ -45,7 +45,7 @@ describe('highlight rotation', () => {
     expect(ids(result.current)).toEqual([null, null, null, null, null]);
   });
 
-  it('plays in order, puts newly arrived highlights next, and continues after an alert with the next one', async () => {
+  it('gives a newly arrived highlight a tile at once, and fills the tiles again after an alert', async () => {
     rotation = [h('a', 4), h('b', 3)];
     const { result, rerender } = renderHook(({ paused }) => useHighlightRotation(paused), { initialProps: { paused: false } });
     await flush();
@@ -53,7 +53,6 @@ describe('highlight rotation', () => {
 
     rotation = [h('a', 4), h('c', 3.5), h('b', 3)];
     await act(async () => void (await vi.advanceTimersByTimeAsync(60_000)));
-    act(() => result.current.next(0));
     expect(ids(result.current)).toEqual(['c']);
 
     rerender({ paused: true });
@@ -61,6 +60,19 @@ describe('highlight rotation', () => {
     rerender({ paused: false });
     await flush();
     expect(ids(result.current)).toEqual(['b']);
+  });
+
+  it('plays a highlight once and again after the interval from the admin page, moving on when others wait', async () => {
+    rotation = [h('a'), h('b'), h('c')];
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => new Response(JSON.stringify(url.endsWith('/settings') ? { replayMinutes: 5 } : rotation))));
+    const { result } = renderHook(() => useHighlightRotation(false, 2));
+    await flush();
+    expect(ids(result.current)).toEqual(['a', 'b']);
+    await act(async () => void (await vi.advanceTimersByTimeAsync(4 * 60_000)));
+    expect(ids(result.current)).toEqual(['a', 'b']);
+    await act(async () => void (await vi.advanceTimersByTimeAsync(60_000 + 5_000)));
+    // Tile 0 takes 'c' (waiting longest); tile 1 then takes 'a', which just left tile 0.
+    expect(ids(result.current)).toEqual(['c', 'a']);
   });
 
   it('shows several different highlights at once and moves each tile on to one that is not shown', async () => {
@@ -77,17 +89,16 @@ describe('highlight rotation', () => {
     expect(new Set(ids(result.current)).size).toBe(5);
   });
 
-  it('with fewer highlights than tiles keeps each on its tile (the tile replays it in place)', async () => {
+  it('with fewer highlights than tiles keeps each on its tile and replays it in place', async () => {
     rotation = [h('a'), h('b')];
     const { result } = renderHook(() => useHighlightRotation(false, 5));
     await flush();
     expect(ids(result.current)).toEqual(['a', 'b', null, null, null]);
-    const first = result.current.tiles[0]!.playKey;
+    const first = result.current.tiles[0]!;
     act(() => result.current.next(0));
     expect(ids(result.current)).toEqual(['a', 'b', null, null, null]);
-    // Same play key: the tile is not rebuilt, so the clip is not loaded again.
-    expect(result.current.tiles[0]!.playKey).toBe(first);
-    // A new highlight arrives: an empty tile shows it, and after its round tile 0 moves on to nothing else (stays).
+    // Same play key: the tile is not rebuilt, so the clip is not loaded again; the round plays it again.
+    expect(result.current.tiles[0]).toMatchObject({ playKey: first.playKey, round: first.round + 1 });
     rotation = [h('a'), h('b'), h('c')];
     await act(async () => void (await vi.advanceTimersByTimeAsync(60_000)));
     expect(ids(result.current)).toEqual(['a', 'b', 'c', null, null]);
@@ -105,8 +116,8 @@ describe('highlight rotation', () => {
     act(() => result.current.fail(0));
     await flush();
     expect(ids(result.current)).toEqual(['b']);
-    await act(async () => void (await vi.advanceTimersByTimeAsync(11 * 60_000)));
-    act(() => result.current.next(0));
+    // At the next play (after ten minutes) 'a' may play again.
+    await act(async () => void (await vi.advanceTimersByTimeAsync(10 * 60_000 + 5_000)));
     expect(ids(result.current)).toEqual(['a']);
   });
 

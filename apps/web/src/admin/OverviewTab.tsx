@@ -27,18 +27,24 @@ interface ThresholdSettings {
   min: number;
   max: number;
   preview: { threshold: number; last24h: number; perDay7d: number };
+  replayMinutes: number;
+  replay: { default: number; min: number; max: number };
 }
 
-/** The selection threshold: lower gives more highlights, higher only the most unusual ones. */
+/** The selection threshold (lower gives more highlights) and how often a highlight on the TV plays again. */
 function ThresholdSetting() {
   const [settings, setSettings] = useState<ThresholdSettings | null>(null);
   const [value, setValue] = useState('');
+  const [replay, setReplay] = useState('');
   const [message, setMessage] = useState<string | null>(null);
 
   const load = (probe?: number) =>
     api<ThresholdSettings>('GET', `/api/admin/highlights/settings${probe === undefined ? '' : `?threshold=${probe}`}`).then((s) => {
       setSettings(s);
-      if (probe === undefined) setValue(String(s.threshold));
+      if (probe === undefined) {
+        setValue(String(s.threshold));
+        setReplay(String(s.replayMinutes));
+      }
     }, () => {});
 
   useEffect(() => {
@@ -48,12 +54,18 @@ function ThresholdSetting() {
   if (!settings) return null;
   const n = Number(value.replace(',', '.'));
   const valid = Number.isFinite(n) && n >= settings.min && n <= settings.max;
+  const m = Number(replay);
+  const replayValid = Number.isInteger(m) && m >= settings.replay.min && m <= settings.replay.max;
+  const changed = n !== settings.threshold || m !== settings.replayMinutes;
 
   const save = async () => {
     setMessage(null);
     try {
-      const res = await api<{ threshold: number }>('PUT', '/api/admin/highlights/settings', { threshold: n });
-      setMessage(`Opgeslagen: ${res.threshold}. De tv past zich binnen twee minuten aan.`);
+      const res = await api<{ threshold: number; replayMinutes: number }>('PUT', '/api/admin/highlights/settings', {
+        threshold: n,
+        replayMinutes: m,
+      });
+      setMessage(`Opgeslagen: drempel ${res.threshold}, opnieuw afspelen elke ${res.replayMinutes} min. De tv past zich binnen twee minuten aan.`);
       void load();
     } catch (err) {
       setMessage((err as Error).message);
@@ -82,9 +94,25 @@ function ThresholdSetting() {
         {settings.preview.perDay7d} per dag deze week. Lager geeft meer highlights (ook gewone dingen), hoger alleen het
         meest ongewone.
       </p>
+      <label className="admin__field">
+        Highlight opnieuw afspelen elke … minuten ({settings.replay.min}–{settings.replay.max}, standaard {settings.replay.default})
+        <input
+          type="number"
+          step={1}
+          min={settings.replay.min}
+          max={settings.replay.max}
+          value={replay}
+          onChange={(e) => setReplay(e.target.value)}
+        />
+      </label>
+      <p className="admin__muted">
+        Op de tv speelt elke highlight één keer af en blijft daarna stilstaan. Na deze tijd speelt het vak opnieuw af: een
+        highlight die nog niet in beeld was, of dezelfde als alle andere al in beeld zijn. Een nieuwe highlight verschijnt
+        meteen.
+      </p>
       <div className="admin__row">
-        <button disabled={!valid || n === settings.threshold} onClick={() => void save()}>
-          Drempel opslaan
+        <button disabled={!valid || !replayValid || !changed} onClick={() => void save()}>
+          Opslaan
         </button>
       </div>
       {message && <p className="admin__muted">{message}</p>}

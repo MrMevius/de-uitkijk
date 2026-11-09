@@ -53,7 +53,7 @@ export function Dashboard({ state, connected, profile }: Props) {
   // Up to five highlights in a column beside the cameras (fewer in a row on a phone), except while a camera has
   // an alert (then live cameras get all space).
   const capacity = highlightCapacity(width, height - topBand, profile.gapPx);
-  const { tiles, next: nextHighlight, fail: failHighlight } = useHighlightRotation(focusedIds.length > 0, capacity);
+  const { tiles, fail: failHighlight } = useHighlightRotation(focusedIds.length > 0, capacity);
   const playing = tiles.filter((t) => t !== null).length;
   const { rects, highlightRects } = useMemo(() => {
     const available = height - topBand;
@@ -93,9 +93,9 @@ export function Dashboard({ state, connected, profile }: Props) {
           <HighlightTile
             key={t.playKey}
             highlight={t.highlight}
+            round={t.round}
             rect={highlightRects[position]!}
             cameraName={cameras.find((c) => c.id === t.highlight.cameraId)?.name ?? ''}
-            onDone={() => nextHighlight(t.index)}
             onFail={() => failHighlight(t.index)}
           />
         ))}

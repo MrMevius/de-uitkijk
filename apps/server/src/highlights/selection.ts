@@ -44,6 +44,9 @@ export const SELECTION = {
 /** Allowed values for the administrator's threshold setting. */
 export const THRESHOLD_RANGE = { min: 1.0, max: 5.0 } as const;
 
+/** How often a highlight on the TV plays again (minutes); administrators can change it. */
+export const REPLAY_MINUTES = { default: 10, min: 1, max: 120 } as const;
+
 /**
  * Score multiplier for known people and vehicles: a face Frigate recognised, a vehicle the AI matched to a
  * household fact, or a highlight an administrator identified as a resident, visitor or vehicle owner.

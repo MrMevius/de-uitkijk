@@ -264,8 +264,19 @@ describe('highlight API', () => {
     expect((await put(viewer.cookie, 3)).statusCode).toBe(403);
     expect((await put(admin.cookie, 0.5)).statusCode).toBe(400);
     expect((await put(admin.cookie, '3')).statusCode).toBe(400);
-    expect((await put(admin.cookie, 2.54)).json()).toEqual({ threshold: 2.5 });
+    expect((await put(admin.cookie, 2.54)).json()).toEqual({ threshold: 2.5, replayMinutes: 10 });
     expect(t.store.threshold()).toBe(2.5);
+
+    // How often a highlight plays again on the TV (minutes); the dashboard reads it with a session.
+    const setReplay = (cookie: string, replayMinutes: unknown) =>
+      t.app.inject({ method: 'PUT', url: '/api/admin/highlights/settings', headers: { cookie, origin }, payload: { replayMinutes } });
+    expect((await t.app.inject({ url: '/api/highlights/settings', headers: { cookie: viewer.cookie } })).json()).toEqual({ replayMinutes: 10 });
+    expect((await setReplay(admin.cookie, 0)).statusCode).toBe(400);
+    expect((await setReplay(admin.cookie, 2.5)).statusCode).toBe(400);
+    expect((await setReplay(viewer.cookie, 5)).statusCode).toBe(403);
+    expect((await setReplay(admin.cookie, 5)).json()).toEqual({ threshold: 2.5, replayMinutes: 5 });
+    expect((await t.app.inject({ url: '/api/highlights/settings', headers: { cookie: viewer.cookie } })).json()).toEqual({ replayMinutes: 5 });
+    expect((await get()).replayMinutes).toBe(5);
   });
 });
 
