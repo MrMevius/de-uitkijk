@@ -29,6 +29,7 @@ describe('AI answer handling', () => {
     expect(buildPrompt({ cameraName: 'Voordeur', time: 't', objects: ['person'], annotation: 'Tineke Mevius (bewoner)' })).toContain(
       'gaf aan wie of wat het is (betrouwbaar): Tineke Mevius (bewoner).',
     );
+    expect(buildPrompt({ cameraName: 'Voordeur', time: 't', objects: ['person'], annotation: 'Tineke Mevius (bewoner)' })).toContain('noem de naam');
     expect(parseVerdict('{"description":"x","real_event":true,"person_marker":true}').personMarker).toBe(true);
   });
 

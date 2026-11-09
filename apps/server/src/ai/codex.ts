@@ -53,7 +53,12 @@ export function buildPrompt(context: AiContext): string {
     `Camera: ${context.cameraName}. Tijd: ${context.time}. Frigate detecteerde: ${context.objects.join(', ') || 'beweging'}.`,
   ];
   if (context.recognized?.length) lines.push(`Frigate's gezichtsherkenning herkende: ${context.recognized.join(', ')}.`);
-  if (context.annotation) lines.push(`Een bewoner heeft dit beeld bekeken en gaf aan wie of wat het is (betrouwbaar): ${context.annotation}.`);
+  if (context.annotation) {
+    lines.push(
+      `Een bewoner heeft dit beeld bekeken en gaf aan wie of wat het is (betrouwbaar): ${context.annotation}.`,
+      'Gebruik dit in de beschrijving: noem de naam (zonder de rol tussen haakjes) in plaats van "een persoon" of "een auto", bijvoorbeeld "Tineke loopt naar de container". Staat er "onbekend", beschrijf dan neutraal.',
+    );
+  }
   if (context.facts?.length) {
     lines.push('Bekende feiten van de bewoners (betrouwbaar):');
     for (const fact of context.facts) lines.push(`- ${fact}`);
