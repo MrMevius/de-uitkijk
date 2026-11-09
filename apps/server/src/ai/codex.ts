@@ -68,7 +68,7 @@ export function buildPrompt(context: AiContext): string {
   if (context.annotation) {
     lines.push(
       `Een bewoner heeft dit beeld bekeken en gaf aan wie of wat het is (betrouwbaar): ${context.annotation}.`,
-      'Gebruik dit in de beschrijving: noem de voornaam (zonder achternaam en zonder de rol tussen haakjes) in plaats van "een persoon", "een auto" of "een fiets", bijvoorbeeld "Tineke loopt naar de container" of "Jasper fietst het erf af". Staat er "onbekend", beschrijf dan neutraal.',
+      'Gebruik dit in de beschrijving: noem de voornaam (zonder achternaam en zonder de rol tussen haakjes) in plaats van "een persoon", "een auto" of "een fiets", bijvoorbeeld "Tineke loopt naar de container" of "Jasper fietst het erf af". Gaat het om een voertuig ("auto van Mark"), noem de eigenaar bij dat voertuig ("De auto van Mark rijdt de oprit op"); een voertuig loopt niet, en loopt er iemand anders door het beeld, beschrijf dan wat die persoon doet. Staat er "onbekend", beschrijf dan neutraal.',
     );
   }
   if (context.facts?.length) {

@@ -3,7 +3,7 @@ import type { FactStore } from '../ai/facts.ts';
 import { ATTEMPT_FILE, matchFaceName, type FaceLibrary } from '../faces/library.ts';
 import type { HighlightStore } from '../highlights/store.ts';
 import type { QuestionStore } from './store.ts';
-import { vehicleNoun } from './vehicles.ts';
+import { normalizeVehicle, vehicleNoun } from './vehicles.ts';
 
 export interface QuestionRouteOptions {
   questions: QuestionStore;
@@ -56,6 +56,18 @@ export function applyPersonAnswer(
   return { fact, face };
 }
 
+/**
+ * Whether a vehicle question is about the vehicle the event is about (the AI's `vehicle`), and nobody has said
+ * who the person in it is: then the answer may label the highlight and make it count as known.
+ */
+export function vehicleIsSubject(h: { aiVehicle: string | null; annotation: string | null }, vehicle: unknown): boolean {
+  if (typeof vehicle !== 'string' || !h.aiVehicle || normalizeVehicle(h.aiVehicle) !== normalizeVehicle(vehicle)) return false;
+  return !h.annotation || VEHICLE_ANNOTATION.test(h.annotation);
+}
+
+/** Labels written by vehicle answers ("auto van Mark", "onbekende fiets"). */
+export const VEHICLE_ANNOTATION = /^(auto|fiets|scooter|motor) van |^onbekende (auto|fiets|scooter|motor)$/;
+
 const clean = (v: unknown, max: number) =>
   typeof v === 'string' ? v.replace(/<[^>]*>/g, ' ').replace(/[\r\n\t<>]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max) : '';
 
@@ -105,11 +117,14 @@ export function registerQuestions(app: FastifyInstance, options: QuestionRouteOp
 
     if (q.kind === 'vehicle') {
       const noun = vehicleNoun(clean(q.data.vehicle, 120));
+      // Only the vehicle the event is about labels the highlight; one parked in the background only goes into
+      // the vehicle database ("De auto van Bert loopt over het erf" came from Bert's parked van behind a passer-by).
+      const subject = h && vehicleIsSubject(h, q.data.vehicle) ? h : undefined;
       if (body.category === 'onbekend') {
         const label = noun === 'auto' ? 'onbekende auto' : `onbekende ${noun}`;
         questions.resolve(q.id, 'answered', label, by, now());
         questions.setFact(q.id, 'none');
-        if (h) highlights.setAnnotation(h.id, label, false);
+        if (subject) highlights.setAnnotation(subject.id, label, false);
         return { answer: label };
       }
       const owner = person(clean(body.owner, 60));
@@ -118,10 +133,9 @@ export function registerQuestions(app: FastifyInstance, options: QuestionRouteOp
       const text = `${vehicle.charAt(0).toUpperCase()}${vehicle.slice(1)} is van ${owner}`.slice(0, 200);
       // The owner's own words are the most reliable fact: stored directly, no AI step.
       const stored = facts?.add(text, `${by} (vraag ${q.id})`, now());
-      if (h) {
-        highlights.setAnnotation(h.id, `${vehicleNoun(vehicle)} van ${owner}`, true);
-        if (autoFacts) highlights.requestRedescribe(h.id);
-      }
+      if (subject) highlights.setAnnotation(subject.id, `${vehicleNoun(vehicle)} van ${owner}`, true);
+      // Described again in any case: the new fact lets the AI name the owner of a vehicle it mentions.
+      if (h && autoFacts) highlights.requestRedescribe(h.id);
       questions.resolve(q.id, 'answered', text, by, now());
       questions.setFact(q.id, stored ? 'done' : 'none', stored?.text ?? null);
       return { answer: text, fact: stored ? 'done' : 'none' };

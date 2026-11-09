@@ -15,7 +15,7 @@ import { HighlightImporter } from './highlights/importer.ts';
 import { HighlightStore, type StoredCandidate } from './highlights/store.ts';
 import { FactWorker } from './questions/fact-worker.ts';
 import { QuestionGenerator } from './questions/generator.ts';
-import { applyPersonAnswer } from './questions/routes.ts';
+import { applyPersonAnswer, VEHICLE_ANNOTATION, vehicleIsSubject } from './questions/routes.ts';
 import { QuestionStore } from './questions/store.ts';
 import { loadConfig } from './config.ts';
 import { frigateFetch, readFrigateAuth } from './frigate/client.ts';
@@ -88,6 +88,17 @@ if (highlightStore && ai && !highlightStore.getMeta('vehicles_backfill')) {
     if (c.selected && c.aiStatus === 'done' && c.aiVehicles.length === 0) highlightStore.requestRedescribe(c.id);
   }
   highlightStore.setMeta('vehicles_backfill', '1');
+}
+// Before 0.19.2 an answer about any vehicle in view labelled the highlight ("auto van Bert") and made it count as
+// known, also for a vehicle parked in the background. Such labels are removed once and the highlight is described again.
+if (questionStore && highlightStore && !highlightStore.getMeta('vehicle_labels_fix')) {
+  for (const q of questionStore.list('all')) {
+    const h = q.kind === 'vehicle' && q.status === 'answered' && q.highlightId ? highlightStore.get(q.highlightId) : undefined;
+    if (!h?.annotation || !VEHICLE_ANNOTATION.test(h.annotation) || vehicleIsSubject({ ...h, annotation: null }, q.data.vehicle)) continue;
+    highlightStore.setAnnotation(h.id, null, false);
+    if (ai) highlightStore.requestRedescribe(h.id);
+  }
+  highlightStore.setMeta('vehicle_labels_fix', '1');
 }
 // Per-camera picture check for monitoring (live mode only; mock streams are synthetic).
 const cameraProbe = config.mode === 'live' && config.go2rtcUrl ? new CameraVideoProbe(config.cameras, config.go2rtcUrl) : undefined;

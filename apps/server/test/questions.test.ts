@@ -11,7 +11,7 @@ import { moments, personRect, RecordingFaces, singlePeople, type PersonTrack } f
 import { HighlightStore, type CandidateRecord } from '../src/highlights/store.ts';
 import { StateHub } from '../src/hub.ts';
 import { OPEN_LIMITS, QuestionGenerator } from '../src/questions/generator.ts';
-import { applyPersonAnswer, parsePersonAnswer } from '../src/questions/routes.ts';
+import { applyPersonAnswer, parsePersonAnswer, vehicleIsSubject } from '../src/questions/routes.ts';
 import { askableVehicle } from '../src/questions/vehicles.ts';
 import { QuestionStore } from '../src/questions/store.ts';
 
@@ -176,6 +176,21 @@ describe('answering questions', () => {
       answer: 'Zwarte Gazelle e-bike met fietstassen is van Jasper Mevius',
     });
     expect(t.highlights.get(b)).toMatchObject({ annotation: 'fiets van Jasper Mevius', annotationKnown: true, aiRedo: true });
+  });
+
+  it('does not label a highlight with a vehicle parked in the background (0.19.2)', async () => {
+    const t = await api();
+    // A neighbour walks by; Bert's van happens to stand in the background (not the AI's `vehicle`).
+    const h = t.add({ ai: { real: true } });
+    t.highlights.setAiResult(h, 'Een meisje loopt over het erf.', true, NOW, null, false, false, [{ description: 'witte Mercedes-Benz Sprinter-bestelbus', known: false }]);
+    t.questions.add({ kind: 'vehicle', key: 'vehicle:bus', highlightId: h, title: 'Van wie is deze auto?', body: 'x', data: { vehicle: 'witte Mercedes-Benz Sprinter-bestelbus', noun: 'auto' } }, NOW);
+    const q = t.questions.list('open').find((x) => x.kind === 'vehicle' && x.highlightId === h)!;
+    expect((await t.answer(q.id, { owner: 'Bert', vehicle: 'witte Mercedes-Benz Sprinter-bestelbus' })).json()).toMatchObject({ fact: 'done' });
+    expect(t.facts.list().map((f) => f.text)).toContain('Witte Mercedes-Benz Sprinter-bestelbus is van Bert');
+    expect(t.highlights.get(h)).toMatchObject({ annotation: null, annotationKnown: false, aiRedo: true });
+    // The vehicle the event is about does label it, unless someone already said who the person is.
+    expect(vehicleIsSubject({ aiVehicle: 'Witte Mercedes-Benz Sprinter-bestelbus', annotation: null }, 'witte mercedes benz sprinter bestelbus')).toBe(true);
+    expect(vehicleIsSubject({ aiVehicle: 'witte Mercedes-Benz Sprinter-bestelbus', annotation: 'Bert (bezoeker)' }, 'witte Mercedes-Benz Sprinter-bestelbus')).toBe(false);
   });
 
   it('turns a highlight answer into feedback, dismisses suggestions and counts open questions', async () => {
