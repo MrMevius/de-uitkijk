@@ -149,6 +149,15 @@ export class QuestionStore {
       .run(error.slice(0, 200), maxAttempts, id);
   }
 
+  /** Named residents and visitors whose face could not be learned (no crop kept by Frigate): try again. */
+  retryFacesWithoutCrop(): number {
+    return Number(
+      this.db
+        .prepare("UPDATE questions SET face_status = 'pending', face_attempts = 0 WHERE status = 'answered' AND face_status = 'none' AND face_name IS NOT NULL")
+        .run().changes,
+    );
+  }
+
   /** Answered person questions from before 0.11/0.13 that never had a fact or face step. */
   legacyPersonAnswers(): Question[] {
     return (

@@ -9,6 +9,7 @@ import { FactStore } from './ai/facts.ts';
 import { AiWorker, ffmpegToJpeg } from './ai/worker.ts';
 import { FaceLibrary } from './faces/library.ts';
 import { FaceWorker } from './faces/worker.ts';
+import { RecordingFaces } from './faces/recording.ts';
 import { ClipCache } from './highlights/clips.ts';
 import { HighlightImporter } from './highlights/importer.ts';
 import { HighlightStore, type StoredCandidate } from './highlights/store.ts';
@@ -142,7 +143,16 @@ const questionGenerator =
       })
     : undefined;
 questionGenerator?.start();
-faceWorker = faces && questionStore && highlightStore ? new FaceWorker(questionStore, highlightStore, faces, { log: (msg) => app.log.warn(msg) }) : undefined;
+// Since 0.19.0 faces also come from the 4K recording when Frigate kept no crop; earlier answers get that chance once.
+if (faces && questionStore && highlightStore && !highlightStore.getMeta('faces_from_recording')) {
+  questionStore.retryFacesWithoutCrop();
+  highlightStore.setMeta('faces_from_recording', '1');
+}
+const recordingFaces = faces && config.frigate ? new RecordingFaces({ frigateUrl: config.frigate.url, ...(frigateHttp ? { fetch: frigateHttp } : {}) }) : undefined;
+faceWorker =
+  faces && questionStore && highlightStore
+    ? new FaceWorker(questionStore, highlightStore, faces, { ...(recordingFaces ? { recording: recordingFaces } : {}), log: (msg) => app.log.warn(msg) })
+    : undefined;
 faceWorker?.start();
 // Facts from answers about people (only with AI enabled; vehicle answers become facts directly).
 const factWorker =

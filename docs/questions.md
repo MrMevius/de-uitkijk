@@ -24,6 +24,8 @@ The vehicle question needs two extra AI fields (since 0.10.0): `vehicle`, an exa
 
 Frigate keeps about the last 100 unrecognised face crops (`save_attempts`), roughly two weeks at the 2026-11 rate of about 7 a day. A crop is only there when Frigate found a face of at least `min_area` (500 px²) in the 640×360 detection stream, so people seen from behind, far away or at night usually have none.
 
+**Faces from the recording (since 0.19.0).** When Frigate kept no crop, the face worker looks at the 4K recording instead: for each person in the highlight's detections who stood at least a quarter of the frame tall and was alone on that camera at the time, up to 8 frames around where Frigate saw them best are fetched (`/api/<camera>/recordings/<time>/snapshot.jpg`) and cropped to the person. Each crop goes to `POST /api/faces/recognize`. Crops without a face are dropped. Of the rest, at most 3 are stored through `POST /api/faces/<name>/register`; Frigate finds the face in the crop itself. Faces Frigate is unsure about or puts the wrong name on go first, because they teach it most. On 2026-11-09 Frigate saw none of the faces in the 640×360 stream, while the recording showed them clearly; on the back camera it took Tineke for Johan, Mark and Jasper at 0.97. The handled-questions list shows "N gezichtsfoto's uit de opname toegevoegd aan <naam>". Named answers that found no face before 0.19.0 get this attempt once at startup.
+
 Answers given before 0.11.0/0.13.0 go through these steps once at startup.
 
 ## Who is who (since 0.14.0)

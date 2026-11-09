@@ -7,6 +7,7 @@ import { hashPassword } from '../src/auth/passwords.ts';
 import { AuthStore } from '../src/auth/store.ts';
 import { FaceLibrary, matchFaceName, parseAttempt, type FaceAttempt } from '../src/faces/library.ts';
 import { FaceWorker } from '../src/faces/worker.ts';
+import { moments, personRect, RecordingFaces, singlePeople, type PersonTrack } from '../src/faces/recording.ts';
 import { HighlightStore, type CandidateRecord } from '../src/highlights/store.ts';
 import { StateHub } from '../src/hub.ts';
 import { OPEN_LIMITS, QuestionGenerator } from '../src/questions/generator.ts';
@@ -346,6 +347,67 @@ describe('learning from answers (0.13)', () => {
     const byHighlight = Object.fromEntries(t.questions.list('all').map((q) => [q.highlightId, q]));
     expect(byHighlight[withFace]).toMatchObject({ faceStatus: 'failed', faceResult: expect.stringContaining('HTTP 403') });
     expect(byHighlight[without]).toMatchObject({ faceStatus: 'none' });
+  });
+
+  it('learns faces from the 4K recording when Frigate kept no crop, those Frigate gets wrong first', async () => {
+    const t = setup();
+    const [tineke, car] = ['1794217773.521578-2d3ytl', '1794217773.9-car'];
+    const id = t.add({ ai: { real: true }, detections: [tineke, car] });
+    t.questions.add({ kind: 'person', key: 'person:x', highlightId: id, title: 'Wie is dit?', body: 'x' }, NOW);
+    const q = t.questions.list('all')[0]!;
+    t.questions.resolve(q.id, 'answered', 'Tineke (bewoner)', 'mark', NOW);
+    t.questions.setFace(q.id, 'none', 'Tineke', 'Geen bruikbaar gezicht bewaard door Frigate');
+    expect(t.questions.retryFacesWithoutCrop()).toBe(1);
+
+    const path = [0.45, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99].map((y, i) => [[0.55, y], 1794217774 + i]);
+    // Frigate's answer per frame (by second): no face, wrong person, unsure, sure.
+    const guess: Record<string, object> = {
+      '1794217774': { status: 400, body: { success: false, message: 'No face was detected.' } },
+      '1794217778': { body: { success: true, face_name: 'Mark Mevius', score: 0.98 } },
+      '1794217780': { body: { success: true, face_name: 'unknown', score: 0.6 } },
+    };
+    const calls: string[] = [];
+    const registered: string[] = [];
+    let frame = '';
+    const fetchStub = (async (url: string, init?: RequestInit) => {
+      const u = decodeURIComponent(url);
+      calls.push(u);
+      if (u.endsWith('/api/faces')) return Response.json({ 'Tineke Mevius': [], 'Mark Mevius': [], train: [] });
+      if (u.endsWith(`/events/${tineke}`)) return Response.json({ label: 'person', camera: 'cam1', start_time: 1794217773, end_time: 1794217790, data: { box: [0.44, 0.53, 0.18, 0.46], path_data: path } });
+      if (u.endsWith(`/events/${car}`)) return Response.json({ label: 'car', camera: 'cam1', start_time: 1794217773, end_time: 1794217790, data: { box: [0, 0, 0.5, 0.5], path_data: [] } });
+      if (u.includes('/recordings/')) return (frame = u.split('/recordings/')[1]!.split('.')[0]!, new Response(new Uint8Array([0xff, 0xd8, 1])));
+      if (u.endsWith('/faces/recognize')) {
+        expect(new Headers(init?.headers).get('content-type')).toMatch(/^multipart\/form-data; boundary=/);
+        const g = (guess[(init!.body as Buffer).toString().split('|')[1]!] ?? { body: { success: true, face_name: 'Tineke Mevius', score: 0.97 } }) as { status?: number; body: object };
+        return Response.json(g.body, { status: g.status ?? 200 });
+      }
+      if (u.endsWith('/register')) return (registered.push((init!.body as Buffer).toString().split('|')[1]!), Response.json({ success: true }));
+      return new Response(null, { status: 404 });
+    }) as typeof fetch;
+    const crop = async (_: Uint8Array, r: { y: number }) => (expect(r.y).toBeGreaterThanOrEqual(0), new TextEncoder().encode(`|${frame}|`));
+    const faces = new FaceLibrary({ frigateUrl: 'https://f', fetch: fetchStub });
+    await new FaceWorker(t.questions, t.highlights, faces, {
+      recording: new RecordingFaces({ frigateUrl: 'https://f', fetch: fetchStub, crop, perPerson: 4 }),
+      maxFromRecording: 2,
+    }).runOnce();
+
+    // Four moments (1774, 1776, 1778, 1780); no face at 1774, Frigate sure it is Tineke at 1776.
+    expect(calls.filter((c) => c.includes('/recordings/')).map((c) => c.split('/recordings/')[1])).toEqual(['1794217774.00/snapshot.jpg', '1794217776.00/snapshot.jpg', '1794217778.00/snapshot.jpg', '1794217780.00/snapshot.jpg']);
+    expect(calls.filter((c) => c.endsWith('/register'))).toEqual(Array(2).fill('https://f/api/faces/Tineke Mevius/register'));
+    expect(registered).toEqual(['1794217778', '1794217780']);
+    expect(t.questions.get(q.id)).toMatchObject({ faceStatus: 'done', faceResult: "2 gezichtsfoto's uit de opname toegevoegd aan Tineke Mevius" });
+  });
+
+  it('only looks at people tall enough and alone on their camera, around where they were seen best', () => {
+    const person = (id: string, camera: string, start: number, end: number, h = 0.4): PersonTrack => ({
+      id, camera, start, end, box: [0.4, 0.5, 0.2, h], path: [{ x: 0.5, y: 0.9, t: start }],
+    });
+    const tracks = [person('a', 'oprit', 0, 10), person('b', 'oprit', 5, 15), person('c', 'voordeur', 5, 15), person('d', 'achter', 0, 10, 0.1)];
+    expect(singlePeople(tracks, 0.25).map((t) => t.id)).toEqual(['c']);
+    expect(personRect([0.4, 0.5, 0.2, 0.4], { x: 0.5, y: 0.9 })).toEqual({ x: expect.closeTo(0.34), y: expect.closeTo(0.46), w: expect.closeTo(0.32), h: expect.closeTo(0.44) });
+    expect(personRect([0.9, 0.1, 0.2, 0.95], { x: 0.98, y: 0.5 })).toMatchObject({ x: expect.closeTo(0.68), y: 0 });
+    const track = { ...person('e', 'oprit', 0, 10), path: [0.2, 0.4, 0.6, 0.8, 0.9, 0.85, 0.7].map((y, t) => ({ x: 0.5, y, t })) };
+    expect(moments(track, 2).map((p) => p.y)).toEqual([0.8, 0.85]);
   });
 
   it('parses Frigate train attempts and matches typed names to the library', () => {

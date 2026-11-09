@@ -102,6 +102,43 @@ export class FaceLibrary {
     if (!this.names.includes(name)) this.names = [...this.names, name].sort();
   }
 
+  /** Frigate's guess for the face in an image (name null for "unknown"), or null when it finds no face. */
+  async recognize(jpeg: Uint8Array): Promise<{ name: string | null; score: number } | null> {
+    const res = await this.upload(`${this.url}/api/faces/recognize`, jpeg);
+    const body = (await res.json().catch(() => ({}))) as { success?: boolean; face_name?: string; score?: number };
+    // 400 "No face was detected"; 500 "Could not process request" for an image Frigate cannot read.
+    if (res.status === 400 || res.status === 500 || !body.success) return null;
+    if (!res.ok) throw new Error(`Frigate face recognition HTTP ${res.status}`);
+    return { name: !body.face_name || body.face_name === 'unknown' ? null : body.face_name, score: body.score ?? 0 };
+  }
+
+  /** Adds the face Frigate finds in an image to the library under `name` (Frigate creates the person when new). */
+  async register(name: string, jpeg: Uint8Array): Promise<void> {
+    const res = await this.upload(`${this.url}/api/faces/${encodeURIComponent(name)}/register`, jpeg);
+    if (!res.ok) {
+      const text = (await res.text().catch(() => '')).slice(0, 200);
+      throw new Error(`Frigate face registration HTTP ${res.status}${text ? `: ${text}` : ''}`);
+    }
+    await res.body?.cancel();
+    if (!this.names.includes(name)) this.names = [...this.names, name].sort();
+  }
+
+  /** Multipart upload of one JPEG as `file`, built by hand: the pinned-certificate fetch sends only bytes. */
+  private upload(url: string, jpeg: Uint8Array): Promise<Response> {
+    const boundary = `uitkijk${Math.random().toString(36).slice(2)}`;
+    const body = Buffer.concat([
+      Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="face.jpg"\r\nContent-Type: image/jpeg\r\n\r\n`),
+      jpeg,
+      Buffer.from(`\r\n--${boundary}--\r\n`),
+    ]);
+    return this.fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': `multipart/form-data; boundary=${boundary}`, 'x-csrf-token': '1' },
+      body,
+      signal: AbortSignal.timeout(30_000),
+    });
+  }
+
   /** The face crop of a train attempt (WebP), for the questions tab. */
   async image(file: string): Promise<Uint8Array | undefined> {
     if (!ATTEMPT_FILE.test(file)) return undefined;

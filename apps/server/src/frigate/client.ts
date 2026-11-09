@@ -34,7 +34,7 @@ function pinnedFetch(certificate: string): Fetch {
   return ((input: string | URL, init: RequestInit = {}) =>
     new Promise<Response>((resolve, reject) => {
       const headers = new Headers(init.headers);
-      const body = typeof init.body === 'string' ? init.body : undefined;
+      const body = typeof init.body === 'string' || init.body instanceof Uint8Array ? init.body : undefined;
       const req = httpsRequest(
         String(input),
         {
