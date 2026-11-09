@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api.ts';
+import { highlightTime } from '../highlights.tsx';
+import { Card, Empty, Icon, Notice, PageHeader, Stat } from './ui.tsx';
 
 interface AiStatus {
   enabled: boolean;
@@ -17,9 +19,6 @@ interface Fact {
   createdBy: string;
   createdAt: number;
 }
-
-const when = (epochS: number | null | undefined) =>
-  epochS ? new Date(epochS * 1000).toLocaleString('nl-NL', { timeZone: 'Europe/Amsterdam', dateStyle: 'short', timeStyle: 'short' }) : 'nog niet';
 
 /** AI status and the household facts the AI may use. */
 export function AiTab() {
@@ -49,60 +48,55 @@ export function AiTab() {
     });
 
   return (
-    <div className="admin__stack">
-      <section className={`admin__card admin__card--${!ai?.enabled ? 'off' : ai.lastError ? 'warn' : 'ok'}`}>
-        <h3>AI-beschrijvingen</h3>
+    <>
+      <PageHeader title="AI" description="Beschrijvingen van highlights door Codex, en de feiten die de AI daarbij mag gebruiken." />
+      <div className="ui-stack">
         {!ai ? (
-          <p className="admin__muted">Laden…</p>
+          <p className="ui-muted">Laden…</p>
         ) : ai.enabled ? (
-          <dl className="admin__facts">
-            <dt>Aanbieder</dt>
-            <dd>Codex met je ChatGPT-login</dd>
-            <dt>Model</dt>
-            <dd>{ai.model}</dd>
-            <dt>Vandaag</dt>
-            <dd>
-              {ai.callsToday} van max. {ai.dailyCap} beschrijvingen
-            </dd>
-            <dt>Wachtend</dt>
-            <dd>{ai.pending}</dd>
-            <dt>Laatste gelukt</dt>
-            <dd>{when(ai.lastSuccessAt)}</dd>
-            {ai.lastError && (
-              <>
-                <dt>Laatste fout</dt>
-                <dd className="account__error">{ai.lastError}</dd>
-              </>
-            )}
-          </dl>
+          <div className="ui-stats">
+            <Stat label="Vandaag" value={`${ai.callsToday} / ${ai.dailyCap}`} hint="beschrijvingen van het dagmaximum" />
+            <Stat label="Wachtend" value={ai.pending ?? 0} hint="highlights in de wachtrij" />
+            <Stat label="Laatste gelukt" value={ai.lastSuccessAt ? highlightTime(ai.lastSuccessAt) : 'nog niet'} level={ai.lastError ? 'warn' : 'ok'} hint={ai.lastError ? 'met een fout daarna' : 'zonder fouten'} />
+            <Stat label="Model" value={ai.model} hint="Codex met je ChatGPT-login" />
+          </div>
         ) : (
-          <p>Uit. Beschrijvingen zijn op regels gebaseerd.</p>
+          <Card title="AI-beschrijvingen" icon="ai" level={{ level: 'off', text: 'Uit' }}>
+            <p>Uit. Beschrijvingen zijn op regels gebaseerd.</p>
+          </Card>
         )}
-      </section>
+        {ai?.lastError && <Notice level="warn">Laatste fout: {ai.lastError}</Notice>}
 
-      {facts && (
-        <section className="admin__card admin__card--ok">
-          <h3>Feiten voor de AI ({facts.length})</h3>
-          <p className="admin__muted">
-            De feiten ontstaan vanzelf uit je antwoorden op het tabblad <a href="#vragen">Vragen</a>: een antwoord over een
-            auto wordt direct een feit; bij een antwoord over een persoon schrijft de AI een feit op basis van zichtbare, vaste
-            kenmerken (auto, bus, logo, uniform), of niets als er niets bruikbaars te zien is. De AI noemt een naam alleen als
-            het beeld zo'n feit duidelijk laat zien. Feiten gaan bij elke beschrijving naar OpenAI (Codex). Klopt een feit
-            niet, verwijder het dan.
-          </p>
-          <ul className="admin__factlist">
-            {facts.map((f) => (
-              <li key={f.id}>
-                <span className="admin__grow">{f.text}</span>
-                <span className="admin__muted">{f.createdBy}</span>
-                <button onClick={() => void remove(f)}>Verwijderen</button>
-              </li>
-            ))}
-            {facts.length === 0 && <li className="admin__muted">Nog geen feiten. Beantwoord vragen om ze op te bouwen.</li>}
-          </ul>
-        </section>
-      )}
-      {error && <p className="account__error">{error}</p>}
-    </div>
+        {facts && (
+          <Card title={`Feiten voor de AI (${facts.length})`} icon="ai">
+            <p className="ui-muted">
+              Feiten ontstaan vanzelf uit je antwoorden op <a className="ui-link" href="#vragen">Vragen</a>: een antwoord over een
+              voertuig wordt direct een feit; bij een persoon schrijft de AI een feit op basis van zichtbare, vaste kenmerken, of
+              niets. De AI noemt een naam alleen als het beeld zo'n feit duidelijk laat zien. Feiten gaan bij elke beschrijving
+              naar OpenAI (Codex). Klopt een feit niet, verwijder het dan.
+            </p>
+            {facts.length === 0 ? (
+              <Empty>Nog geen feiten. Beantwoord vragen om ze op te bouwen.</Empty>
+            ) : (
+              <ul className="ui-list">
+                {facts.map((f) => (
+                  <li key={f.id}>
+                    <div className="ui-grow">
+                      <div>{f.text}</div>
+                      <div className="ui-muted ui-small">{f.createdBy}</div>
+                    </div>
+                    <button className="ui-btn ui-btn--small ui-btn--danger" onClick={() => void remove(f)}>
+                      <Icon name="trash" size={14} />
+                      Verwijderen
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+        )}
+        {error && <Notice>{error}</Notice>}
+      </div>
+    </>
   );
 }

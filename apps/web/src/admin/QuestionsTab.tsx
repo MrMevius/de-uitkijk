@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api.ts';
 import { highlightTime } from '../highlights.tsx';
+import { Empty, Icon, Notice, PageHeader, Pill, type Level } from './ui.tsx';
 
 interface Question {
   id: number;
@@ -35,17 +36,22 @@ const PERSON_BUTTONS = [
   ['onbekend', 'Onbekend'],
 ] as const;
 
+const KIND_LEVEL: Record<Question['kind'], Level> = { person: 'info', vehicle: 'info', highlight: 'info', noise: 'warn', system: 'bad' };
+
 function Media({ highlight }: { highlight: Question['highlight'] }) {
   const [play, setPlay] = useState(false);
   if (!highlight) return null;
   const id = encodeURIComponent(highlight.id);
   return (
-    <div className="admin__qmedia">
+    <div className="ui-question__media">
       {play ? (
         <video src={`/api/highlights/${id}/clip.mp4`} controls autoPlay playsInline />
       ) : (
-        <button className="archive__thumb" onClick={() => setPlay(true)} aria-label="Clip afspelen">
-          {highlight.hasThumbnail ? <img src={`/api/highlights/${id}/thumb.webp`} alt="" /> : <span>▶</span>}
+        <button className="ui-thumb" onClick={() => setPlay(true)} aria-label="Clip afspelen">
+          {highlight.hasThumbnail && <img src={`/api/highlights/${id}/thumb.webp`} alt="" />}
+          <span className="ui-thumb__play">
+            <Icon name="play" size={16} />
+          </span>
         </button>
       )}
     </div>
@@ -56,7 +62,7 @@ function Media({ highlight }: { highlight: Question['highlight'] }) {
 function Faces({ files }: { files: string[] }) {
   if (!files.length) return null;
   return (
-    <div className="admin__faces">
+    <div className="ui-faces">
       {files.map((f) => (
         <img key={f} src={`/api/admin/faces/train/${encodeURIComponent(f)}`} alt="Gezicht" />
       ))}
@@ -65,12 +71,12 @@ function Faces({ files }: { files: string[] }) {
 }
 
 /** One-click names from Frigate's face library, so the same person always gets the same name. */
-function NameChips({ names, onPick }: { names: string[]; onPick: (name: string) => void }) {
+function NameChips({ names, value, onPick }: { names: string[]; value: string; onPick: (name: string) => void }) {
   if (!names.length) return null;
   return (
-    <div className="admin__row">
+    <div className="ui-chips">
       {names.map((n) => (
-        <button key={n} className="admin__subtle" onClick={() => onPick(n)}>
+        <button key={n} type="button" className={n === value ? 'ui-chip ui-chip--on' : 'ui-chip'} onClick={() => onPick(n)}>
           {n.split(' ')[0]}
         </button>
       ))}
@@ -94,34 +100,31 @@ function QuestionCard({ q, names, onDone }: { q: Question; names: string[]; onDo
     }
   };
 
-  const level = q.kind === 'system' ? 'bad' : q.kind === 'noise' ? 'warn' : 'ok';
   return (
-    <section className={`admin__card admin__card--${level} admin__question`}>
+    <section className={`ui-card ui-question${q.highlight ? '' : ' ui-question--plain'}`}>
       <Media highlight={q.highlight} />
-      <div className="admin__qbody">
-        <p className="admin__muted">
-          {KIND_LABEL[q.kind]} · {highlightTime(q.createdAt)}
-        </p>
+      <div className="ui-question__body">
+        <div className="ui-question__meta">
+          <Pill level={KIND_LEVEL[q.kind]}>{KIND_LABEL[q.kind]}</Pill>
+          <span className="ui-muted">{highlightTime(q.createdAt)}</span>
+        </div>
         <h3>{q.title}</h3>
-        <p>{q.body}</p>
+        <p className="ui-question__text">{q.body}</p>
 
         {q.kind === 'person' && (
           <>
             <Faces files={q.data.faces ?? []} />
-            <input
-              placeholder="Naam (optioneel), bijv. Oma of PostNL"
-              maxLength={60}
-              list="known-faces"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-            <NameChips names={names} onPick={setName} />
+            <label className="ui-field">
+              <span className="ui-field__label">Naam (optioneel)</span>
+              <input placeholder="bijv. Oma of PostNL" maxLength={60} list="known-faces" value={name} onChange={(e) => setName(e.target.value)} />
+            </label>
+            <NameChips names={names} value={name} onPick={setName} />
             {(q.data.faces?.length ?? 0) > 0 && (
-              <p className="admin__muted">Met een naam en Bewoner of Bezoeker leert Frigate dit gezicht herkennen.</p>
+              <p className="ui-field__help">Met een naam en Bewoner of Bezoeker leert Frigate dit gezicht herkennen.</p>
             )}
-            <div className="admin__row">
+            <div className="ui-segment" role="group" aria-label="Wie is het?">
               {PERSON_BUTTONS.map(([category, label]) => (
-                <button key={category} onClick={() => void send('answer', { category, name })}>
+                <button key={category} className="ui-btn" onClick={() => void send('answer', { category, name })}>
                   {label}
                 </button>
               ))}
@@ -131,38 +134,57 @@ function QuestionCard({ q, names, onDone }: { q: Question; names: string[]; onDo
 
         {q.kind === 'vehicle' && (
           <>
-            <label className="admin__field">
-              Omschrijving
-              <input maxLength={120} value={vehicle} onChange={(e) => setVehicle(e.target.value)} />
-            </label>
-            <label className="admin__field">
-              Van wie?
-              <input placeholder="bijv. Tini" maxLength={60} list="known-faces" value={owner} onChange={(e) => setOwner(e.target.value)} />
-            </label>
-            <NameChips names={names} onPick={setOwner} />
-            <div className="admin__row">
-              <button onClick={() => void send('answer', { owner, vehicle })}>Opslaan als feit voor de AI</button>
-              <button onClick={() => void send('answer', { category: 'onbekend' })}>Onbekende {q.data.noun ?? 'auto'}</button>
+            <div className="ui-form-grid">
+              <label className="ui-field">
+                <span className="ui-field__label">Omschrijving</span>
+                <input maxLength={120} value={vehicle} onChange={(e) => setVehicle(e.target.value)} />
+              </label>
+              <label className="ui-field">
+                <span className="ui-field__label">Van wie?</span>
+                <input placeholder="bijv. Tini" maxLength={60} list="known-faces" value={owner} onChange={(e) => setOwner(e.target.value)} />
+              </label>
+            </div>
+            <NameChips names={names} value={owner} onPick={setOwner} />
+            <div className="ui-actions">
+              <button className="ui-btn ui-btn--primary" onClick={() => void send('answer', { owner, vehicle })}>
+                Opslaan als feit voor de AI
+              </button>
+              <button className="ui-btn" onClick={() => void send('answer', { category: 'onbekend' })}>
+                Onbekende {q.data.noun ?? 'auto'}
+              </button>
             </div>
           </>
         )}
 
         {q.kind === 'highlight' && (
-          <div className="admin__row">
-            <button onClick={() => void send('answer', { value: 1 })}>👍 Goed</button>
-            <button onClick={() => void send('answer', { value: -1 })}>👎 Niet goed</button>
+          <div className="ui-actions">
+            <button className="ui-btn" onClick={() => void send('answer', { value: 1 })}>
+              👍 Goed
+            </button>
+            <button className="ui-btn" onClick={() => void send('answer', { value: -1 })}>
+              👎 Niet goed
+            </button>
           </div>
         )}
 
-        <div className="admin__row">
-          <button className="admin__subtle" onClick={() => void send('dismiss')}>
+        <div className="ui-question__foot">
+          <button className="ui-btn ui-btn--ghost" onClick={() => void send('dismiss')}>
             {q.kind === 'noise' || q.kind === 'system' ? 'Gezien' : 'Overslaan'}
           </button>
         </div>
-        {error && <p className="account__error">{error}</p>}
+        {error && <Notice>{error}</Notice>}
       </div>
     </section>
   );
+}
+
+/** What happened after an answer: fact and face learning. */
+function Outcome({ q }: { q: Question }) {
+  const parts = [
+    q.factStatus === 'done' ? `Feit: ${q.fact}` : q.factStatus === 'pending' ? 'AI schrijft een feit…' : q.factStatus === 'failed' ? 'Feit mislukt' : null,
+    q.faceStatus === 'done' ? q.faceResult : q.faceStatus === 'pending' ? 'Gezicht wordt aan Frigate geleerd…' : q.faceStatus === 'failed' ? 'Gezicht leren mislukt' : null,
+  ].filter(Boolean);
+  return <>{parts.map((p) => <div key={p}>{p}</div>)}</>;
 }
 
 /** Questions and suggestions from the system; answers improve highlights and the AI. */
@@ -187,55 +209,78 @@ export function QuestionsTab({ onCountChange }: { onCountChange?: (open: number)
     if (showHistory) void api<Question[]>('GET', '/api/admin/questions?status=all').then((qs) => setHistory(qs.filter((q) => q.status !== 'open')), () => {});
   }, [showHistory, open]);
 
-  if (!open) return <p className="admin__muted">Laden…</p>;
-
   return (
-    <div className="admin__stack">
-      <p className="admin__muted">
-        Het systeem stelt hier vragen over wat het nog niet weet, en doet suggesties. Uit je antwoorden bouwt het zelf de
-        feiten voor de AI op (zie het tabblad AI) en leert Frigate gezichten van bewoners en bezoekers herkennen. Kies bij
-        een persoon, auto of fiets steeds dezelfde naam (de knoppen met voornamen), dan weet het systeem wie wie is en noemt
-        de AI die naam in de highlights. Je antwoord komt bij de highlight te staan, de AI beschrijft hem opnieuw, en bekende
-        mensen, auto's en fietsen tellen daarna laag mee. Een
-        oordeel over een highlight stuurt de selectie bij. Nieuwe vragen verschijnen vanzelf, hooguit een paar tegelijk.
-      </p>
+    <>
+      <PageHeader
+        title="Vragen"
+        description={
+          <>
+            Het systeem vraagt hier wat het nog niet weet. Uit je antwoorden bouwt het de feiten voor de AI op en leert Frigate
+            gezichten herkennen. Kies voor een persoon, auto of fiets steeds dezelfde naam (de voornaamknoppen), dan weet het
+            systeem wie wie is. Bekende mensen, auto's en fietsen tellen daarna laag mee; een oordeel over een highlight stuurt
+            de selectie bij.
+          </>
+        }
+      />
       <datalist id="known-faces">
         {names.map((n) => (
           <option key={n} value={n} />
         ))}
       </datalist>
-      {open.length === 0 && <p>Geen open vragen. 🎉</p>}
-      {open.map((q) => (
-        <QuestionCard key={q.id} q={q} names={names} onDone={() => void load()} />
-      ))}
-      <button className="admin__subtle" onClick={() => setShowHistory((v) => !v)}>
-        {showHistory ? 'Verberg afgehandelde vragen' : 'Toon afgehandelde vragen'}
-      </button>
-      {showHistory && history && (
-        <table className="account__table">
-          <tbody>
-            {history.map((q) => (
-              <tr key={q.id}>
-                <td className="admin__muted">{q.answeredAt ? highlightTime(q.answeredAt) : ''}</td>
-                <td>{q.title}</td>
-                <td>{q.status === 'answered' ? q.answer : <span className="admin__muted">overgeslagen</span>}</td>
-                <td className="admin__muted">
-                  {q.factStatus === 'done' ? `Feit: ${q.fact}` : q.factStatus === 'pending' ? 'AI schrijft een feit…' : q.factStatus === 'failed' ? 'Feit mislukt' : ''}
-                  {q.faceStatus === 'done' && <div>{q.faceResult}</div>}
-                  {q.faceStatus === 'pending' && <div>Gezicht wordt aan Frigate geleerd…</div>}
-                  {q.faceStatus === 'failed' && <div>Gezicht leren mislukt</div>}
-                </td>
-                <td className="admin__muted">{q.answeredBy}</td>
-              </tr>
-            ))}
-            {history.length === 0 && (
-              <tr>
-                <td className="admin__muted">Nog niets afgehandeld.</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+      {!open ? (
+        <p className="ui-muted">Laden…</p>
+      ) : (
+        <div className="ui-stack">
+          {open.length === 0 && (
+            <div className="ui-card">
+              <Empty>Geen open vragen. Nieuwe vragen verschijnen vanzelf, hooguit een paar tegelijk.</Empty>
+            </div>
+          )}
+          {open.map((q) => (
+            <QuestionCard key={q.id} q={q} names={names} onDone={() => void load()} />
+          ))}
+          <div>
+            <button className="ui-btn ui-btn--ghost" onClick={() => setShowHistory((v) => !v)}>
+              {showHistory ? 'Verberg afgehandelde vragen' : 'Toon afgehandelde vragen'}
+            </button>
+          </div>
+          {showHistory && history && (
+            <div className="ui-card ui-card--flush">
+              <table className="ui-table">
+                <thead>
+                  <tr>
+                    <th>Wanneer</th>
+                    <th>Vraag</th>
+                    <th>Antwoord</th>
+                    <th>Resultaat</th>
+                    <th>Door</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {history.map((q) => (
+                    <tr key={q.id}>
+                      <td className="ui-muted ui-nowrap">{q.answeredAt ? highlightTime(q.answeredAt) : ''}</td>
+                      <td>{q.title}</td>
+                      <td>{q.status === 'answered' ? q.answer : <span className="ui-muted">overgeslagen</span>}</td>
+                      <td className="ui-muted">
+                        <Outcome q={q} />
+                      </td>
+                      <td className="ui-muted">{q.answeredBy}</td>
+                    </tr>
+                  ))}
+                  {history.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="ui-muted">
+                        Nog niets afgehandeld.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       )}
-    </div>
+    </>
   );
 }

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { Camera, DashboardState, HighlightSummary } from '@uitkijk/shared';
 import { highlightTime } from './highlights.tsx';
+import { Empty, Icon, Notice, PageHeader, Pill } from './admin/ui.tsx';
 
 const PAGE = 30;
 const HIGH_RELEVANCE = 3;
@@ -106,17 +107,20 @@ export function ArchiveView({ embedded = false }: { embedded?: boolean }) {
   const nameOf = (id: string) => cameras.find((c) => c.id === id)?.name ?? id;
 
   return (
-    <div className={embedded ? 'archive' : 'account archive'}>
-      {!embedded && (
-        <>
-          <h1>De Uitkijk</h1>
-          <h2>Highlights</h2>
-          <p>
-            <a href="/">Dashboard</a> · <a href="/beheer">{role === 'admin' ? 'Beheer' : 'Mijn account'}</a>
-          </p>
-        </>
+    <div className={embedded ? 'archive' : 'archive archive--page'}>
+      {embedded ? (
+        <PageHeader title="Highlights" description="Alle highlights van de afgelopen tijd, ook die niet meer op de tv staan." />
+      ) : (
+        <PageHeader
+          title="Highlights"
+          description={
+            <>
+              <a className="ui-link" href="/">Dashboard</a> · <a className="ui-link" href="/beheer">{role === 'admin' ? 'Beheer' : 'Mijn account'}</a>
+            </>
+          }
+        />
       )}
-      <div className="archive__filters">
+      <div className="ui-toolbar">
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} aria-label="Datum" />
         <select value={camera} onChange={(e) => setCamera(e.target.value)} aria-label="Camera">
           <option value="">Alle camera's</option>
@@ -126,58 +130,79 @@ export function ArchiveView({ embedded = false }: { embedded?: boolean }) {
             </option>
           ))}
         </select>
-        <label className="archive__check">
+        <label className="ui-check">
           <input type="checkbox" checked={high} onChange={(e) => setHigh(e.target.checked)} /> Alleen hoge relevantie
         </label>
+        <span className="ui-toolbar__count">{total === 0 ? '' : `${total} highlight${total === 1 ? '' : 's'}`}</span>
       </div>
-      {error && <p className="account__error">{error}</p>}
-      <p className="archive__count">{total === 0 ? 'Geen highlights gevonden.' : `${total} highlight${total === 1 ? '' : 's'}`}</p>
+      {error && <Notice>{error}</Notice>}
+      {total === 0 && items.length === 0 && (
+        <div className="ui-card">
+          <Empty>Geen highlights gevonden.</Empty>
+        </div>
+      )}
       <ul className="archive__list">
         {items.map((h) => (
-          <li key={h.id} className="archive__item">
+          <li key={h.id} className="ui-card archive__item">
             {open === h.id ? (
-              <video
-                className="archive__video"
-                src={`/api/highlights/${encodeURIComponent(h.id)}/clip.mp4`}
-                controls
-                autoPlay
-                playsInline
-              />
+              <video className="archive__video" src={`/api/highlights/${encodeURIComponent(h.id)}/clip.mp4`} controls autoPlay playsInline />
             ) : (
-              <button className="archive__thumb" onClick={() => setOpen(h.id)} aria-label="Afspelen">
-                {h.hasThumbnail ? <img src={`/api/highlights/${encodeURIComponent(h.id)}/thumb.webp`} alt="" loading="lazy" /> : <span>▶</span>}
+              <button className="ui-thumb" onClick={() => setOpen(h.id)} aria-label="Afspelen">
+                {h.hasThumbnail && <img src={`/api/highlights/${encodeURIComponent(h.id)}/thumb.webp`} alt="" loading="lazy" />}
+                <span className="ui-thumb__play">
+                  <Icon name="play" size={16} />
+                </span>
               </button>
             )}
             <div className="archive__meta">
-              <strong>
-                {h.description}
-                {h.aiDescribed && <span className="archive__tag">AI</span>}
-              </strong>
-              {h.annotation && <span className="archive__annotation">Volgens beheer: {h.annotation}</span>}
-              {h.aiNoise && <span className="archive__noise">Volgens de AI geen echte gebeurtenis; niet in de rotatie op de tv.</span>}
-              <span>
-                {highlightTime(h.startTime)} · {h.cameras.map(nameOf).join(', ')} · relevantie {h.score.toFixed(1)}
-              </span>
-              <span className="archive__actions">
-                <a href={`/api/highlights/${encodeURIComponent(h.id)}/clip.mp4?download=1`}>Clip downloaden</a>
-                <a href={`/api/highlights/${encodeURIComponent(h.id)}/event.mp4?download=1`}>Hele gebeurtenis</a>
+              <div className="archive__title">
+                <strong>{h.description}</strong>
+              </div>
+              <div className="archive__sub">
+                {highlightTime(h.startTime)} · {h.cameras.map(nameOf).join(', ')}
+              </div>
+              <div className="archive__tags">
+                <Pill level={h.score >= HIGH_RELEVANCE ? 'info' : 'off'}>relevantie {h.score.toFixed(1)}</Pill>
+                {h.aiDescribed && <Pill level="info">AI</Pill>}
+                {h.annotation && <Pill level="ok">Volgens beheer: {h.annotation}</Pill>}
+                {h.aiNoise && <Pill level="warn">Volgens de AI geen echte gebeurtenis; niet op de tv</Pill>}
+              </div>
+              <div className="archive__actions">
+                <a className="ui-btn ui-btn--small" href={`/api/highlights/${encodeURIComponent(h.id)}/clip.mp4?download=1`}>
+                  <Icon name="download" size={14} />
+                  Clip downloaden
+                </a>
+                <a className="ui-btn ui-btn--small" href={`/api/highlights/${encodeURIComponent(h.id)}/event.mp4?download=1`}>
+                  <Icon name="download" size={14} />
+                  Hele gebeurtenis
+                </a>
                 {role === 'admin' && (
                   <>
-                    <button className={h.feedback === 1 ? 'is-on' : ''} onClick={() => feedback(h, 1)} title="Goede keuze">
+                    <span className="archive__sep" />
+                    <button className={h.feedback === 1 ? 'ui-btn ui-btn--small ui-btn--on' : 'ui-btn ui-btn--small'} onClick={() => feedback(h, 1)} title="Goede keuze">
                       👍
                     </button>
-                    <button className={h.feedback === -1 ? 'is-on' : ''} onClick={() => feedback(h, -1)} title="Geen goede keuze">
+                    <button className={h.feedback === -1 ? 'ui-btn ui-btn--small ui-btn--on' : 'ui-btn ui-btn--small'} onClick={() => feedback(h, -1)} title="Geen goede keuze">
                       👎
                     </button>
-                    <button onClick={() => remove(h)}>Verwijderen</button>
+                    <button className="ui-btn ui-btn--small ui-btn--danger" onClick={() => remove(h)}>
+                      <Icon name="trash" size={14} />
+                      Verwijderen
+                    </button>
                   </>
                 )}
-              </span>
+              </div>
             </div>
           </li>
         ))}
       </ul>
-      {items.length < total && <button onClick={() => void more()}>Meer laden</button>}
+      {items.length < total && (
+        <div className="ui-center">
+          <button className="ui-btn" onClick={() => void more()}>
+            Meer laden
+          </button>
+        </div>
+      )}
     </div>
   );
 }
