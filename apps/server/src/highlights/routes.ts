@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { FactStore } from '../ai/facts.ts';
-import { SELECTION } from './selection.ts';
+import { SELECTION, selectHighlights, THRESHOLD_RANGE } from './selection.ts';
 import { sendFileWithRanges, type ClipCache } from './clips.ts';
 import { toSummary, type HighlightStore } from './store.ts';
 
@@ -77,6 +77,31 @@ export function registerHighlights(app: FastifyInstance, { store, clips, frigate
     const day = store.archive({ from: t - 86400, limit: 1, offset: 0 }).total;
     const week = store.archive({ from: t - 7 * 86400, limit: 1, offset: 0 }).total;
     return { last24h: day, last7d: week, rotation: store.rotation(t - SELECTION.rotationWindowS, SELECTION.maxRotation).length };
+  });
+
+  // Selection threshold (administrators). The importer applies it to the last two days within a minute.
+  const preview = (threshold: number) => {
+    const t = now();
+    const recent = store.candidatesSince(t - 7 * 86400);
+    const picked = selectHighlights(recent, threshold);
+    // Like the rotation: AI noise and highlights marked "not good" are not shown.
+    const shown = recent.filter((c) => picked.has(c.id) && c.aiRealEvent !== false && c.feedback !== -1);
+    return { last24h: shown.filter((c) => c.startTime >= t - 86400).length, perDay7d: Math.round((shown.length / 7) * 10) / 10 };
+  };
+  app.get<{ Querystring: { threshold?: string } }>('/api/admin/highlights/settings', async (request) => {
+    const current = store.threshold();
+    const asked = num(request.query.threshold);
+    const probe = asked !== undefined && asked >= THRESHOLD_RANGE.min && asked <= THRESHOLD_RANGE.max ? asked : current;
+    return { threshold: current, default: SELECTION.threshold, ...THRESHOLD_RANGE, preview: { threshold: probe, ...preview(probe) } };
+  });
+  app.put<{ Body: { threshold?: unknown } }>('/api/admin/highlights/settings', async (request, reply) => {
+    const v = request.body?.threshold;
+    if (typeof v !== 'number' || !Number.isFinite(v) || v < THRESHOLD_RANGE.min || v > THRESHOLD_RANGE.max) {
+      return reply.code(400).send({ error: `Drempel moet tussen ${THRESHOLD_RANGE.min} en ${THRESHOLD_RANGE.max} liggen` });
+    }
+    store.setThreshold(v);
+    request.log.info({ by: request.user?.username, threshold: store.threshold() }, 'highlight threshold changed');
+    return { threshold: store.threshold() };
   });
 
   if (facts) {

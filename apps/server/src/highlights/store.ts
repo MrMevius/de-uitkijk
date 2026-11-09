@@ -1,5 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
 import type { HighlightSummary } from '@uitkijk/shared';
+import { SELECTION, THRESHOLD_RANGE } from './selection.ts';
 
 /** A scored group of Frigate alerts. Highlights are the selected candidates. */
 export interface CandidateRecord {
@@ -247,6 +248,16 @@ export class HighlightStore {
 
   setMeta(key: string, value: string): void {
     this.db.prepare('INSERT INTO highlight_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(key, value);
+  }
+
+  /** Selection threshold set by an administrator, or the default. */
+  threshold(): number {
+    const v = Number(this.getMeta('threshold'));
+    return Number.isFinite(v) && v >= THRESHOLD_RANGE.min && v <= THRESHOLD_RANGE.max ? v : SELECTION.threshold;
+  }
+
+  setThreshold(value: number): void {
+    this.setMeta('threshold', String(Math.round(value * 10) / 10));
   }
 
   isProcessed(reviewId: string): boolean {

@@ -244,7 +244,10 @@ export class HighlightImporter {
       if (adjustment !== c.feedbackAdj || known !== c.knownFactor) this.store.setScoreParts(c.id, adjustment, known);
     }
     const recent = this.store.candidatesSince(now - 2 * 86400);
-    const selected = selectHighlights(recent.map((c) => ({ id: c.id, startTime: c.startTime, cameras: c.cameras, score: c.score })));
+    const selected = selectHighlights(
+      recent.map((c) => ({ id: c.id, startTime: c.startTime, cameras: c.cameras, score: c.score })),
+      this.store.threshold(),
+    );
     for (const c of recent) {
       const want = selected.has(c.id);
       if (want !== c.selected) this.store.setSelected(c.id, want);

@@ -698,3 +698,14 @@ body,
 .archive__annotation {
   color: #8ab4ff !important;
 }
+
+.admin__threshold {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.admin__threshold input {
+  max-width: 8rem;
+}

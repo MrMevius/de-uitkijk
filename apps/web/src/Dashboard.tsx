@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { computeLayout, summarizeHealth, type DashboardState, type DisplayProfile, type Rect } from '@uitkijk/shared';
 import { CameraTile } from './CameraTile.tsx';
 import { StatusBar } from './StatusBar.tsx';
-import { highlightStrip, HighlightTile, useHighlightRotation } from './highlights.tsx';
+import { highlightCapacity, highlightStrip, HighlightTile, useHighlightRotation } from './highlights.tsx';
 
 interface Props {
   state: DashboardState | null;
@@ -46,21 +46,18 @@ export function Dashboard({ state, connected, profile }: Props) {
   const cameras = state?.cameras ?? [];
   const cameraIds = useMemo(() => cameras.map((c) => c.id), [cameras]);
   const focusedIds = useMemo(() => state?.focus.map((f) => f.cameraId) ?? [], [state?.focus]);
-  // Highlights get a smaller tile beside the cameras, except while a camera has an alert (then live cameras get
-  // all space).
-  const { current: highlight, playKey, next: nextHighlight, fail: failHighlight } = useHighlightRotation(focusedIds.length > 0);
-  // Stable callback: the tile's safety timer must not restart on every dashboard render.
-  const onHighlightFail = useCallback(() => {
-    if (highlight) failHighlight(highlight.id);
-  }, [highlight, failHighlight]);
   const scale = profile.overlayScale * (height / 1080);
   // On a landscape screen the status bar sits in the space around the 16:9 tiles. A portrait screen
   // (phone) has no such space, so reserve a band at the top for it.
   const topBand = height > width ? Math.round(18 * scale * 2.6) : 0;
-  const hasHighlight = highlight !== null;
-  const { rects, highlightRect } = useMemo(() => {
+  // Up to five highlights in a column beside the cameras (fewer in a row on a phone), except while a camera has
+  // an alert (then live cameras get all space).
+  const capacity = highlightCapacity(width, height - topBand, profile.gapPx);
+  const { tiles, next: nextHighlight, fail: failHighlight } = useHighlightRotation(focusedIds.length > 0, capacity);
+  const playing = tiles.filter((t) => t !== null).length;
+  const { rects, highlightRects } = useMemo(() => {
     const available = height - topBand;
-    const strip = hasHighlight ? highlightStrip(width, available, profile.gapPx) : undefined;
+    const strip = playing > 0 ? highlightStrip(width, available, profile.gapPx, playing, capacity) : undefined;
     const layout = computeLayout(cameraIds, focusedIds, {
       width: strip?.cameras.width ?? width,
       height: strip?.cameras.height ?? available,
@@ -70,9 +67,9 @@ export function Dashboard({ state, connected, profile }: Props) {
     const shift = (r: Rect): Rect => ({ ...r, y: r.y + topBand });
     return {
       rects: Object.fromEntries(Object.entries(layout).map(([id, r]) => [id, shift(r)])),
-      highlightRect: strip ? shift(strip.highlight) : undefined,
+      highlightRects: strip?.highlights.map(shift) ?? [],
     };
-  }, [cameraIds, focusedIds, width, height, topBand, profile, hasHighlight]);
+  }, [cameraIds, focusedIds, width, height, topBand, profile, playing, capacity]);
   const health = summarizeHealth(state, connected);
 
   return (
@@ -88,16 +85,20 @@ export function Dashboard({ state, connected, profile }: Props) {
           showObjectType={profile.showObjectType}
         />
       ))}
-      {highlight && highlightRect && (
-        <HighlightTile
-          key={playKey}
-          highlight={highlight}
-          rect={highlightRect}
-          cameraName={cameras.find((c) => c.id === highlight.cameraId)?.name ?? ''}
-          onDone={nextHighlight}
-          onFail={onHighlightFail}
-        />
-      )}
+      {/* Filled tiles take the centred positions in order; each keeps its key while its clip plays. */}
+      {tiles
+        .map((t, index) => (t ? { ...t, index } : null))
+        .filter((t) => t !== null)
+        .map((t, position) => (
+          <HighlightTile
+            key={t.playKey}
+            highlight={t.highlight}
+            rect={highlightRects[position]!}
+            cameraName={cameras.find((c) => c.id === t.highlight.cameraId)?.name ?? ''}
+            onDone={() => nextHighlight(t.index)}
+            onFail={() => failHighlight(t.index)}
+          />
+        ))}
       {!state && <div className="dashboard__empty">Verbinden met De Uitkijk…</div>}
       <StatusBar health={health} />
     </main>

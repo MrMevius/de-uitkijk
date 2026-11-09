@@ -31,6 +31,7 @@ export interface ScoredGroup {
 export const SELECTION = {
   /** Items on any camera that start within this many seconds after the previous item ended form one group. */
   groupGapS: 30,
+  /** Default; administrators can change it (see `THRESHOLD_RANGE` and the store's `threshold()`). */
   threshold: 2.0,
   /** Same-camera highlights closer together than this keep only the best one. */
   burstWindowS: 30 * 60,
@@ -39,6 +40,9 @@ export const SELECTION = {
   /** Days of history used for the camera/hour baseline. */
   baselineDays: 7,
 } as const;
+
+/** Allowed values for the administrator's threshold setting. */
+export const THRESHOLD_RANGE = { min: 1.0, max: 5.0 } as const;
 
 /**
  * Score multiplier for known people and vehicles: a face Frigate recognised, a vehicle the AI matched to a

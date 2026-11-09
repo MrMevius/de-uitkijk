@@ -21,6 +21,77 @@ interface Stats {
 
 type Level = 'ok' | 'warn' | 'bad' | 'off';
 
+interface ThresholdSettings {
+  threshold: number;
+  default: number;
+  min: number;
+  max: number;
+  preview: { threshold: number; last24h: number; perDay7d: number };
+}
+
+/** The selection threshold: lower gives more highlights, higher only the most unusual ones. */
+function ThresholdSetting() {
+  const [settings, setSettings] = useState<ThresholdSettings | null>(null);
+  const [value, setValue] = useState('');
+  const [message, setMessage] = useState<string | null>(null);
+
+  const load = (probe?: number) =>
+    api<ThresholdSettings>('GET', `/api/admin/highlights/settings${probe === undefined ? '' : `?threshold=${probe}`}`).then((s) => {
+      setSettings(s);
+      if (probe === undefined) setValue(String(s.threshold));
+    }, () => {});
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  if (!settings) return null;
+  const n = Number(value.replace(',', '.'));
+  const valid = Number.isFinite(n) && n >= settings.min && n <= settings.max;
+
+  const save = async () => {
+    setMessage(null);
+    try {
+      const res = await api<{ threshold: number }>('PUT', '/api/admin/highlights/settings', { threshold: n });
+      setMessage(`Opgeslagen: ${res.threshold}. De tv past zich binnen twee minuten aan.`);
+      void load();
+    } catch (err) {
+      setMessage((err as Error).message);
+    }
+  };
+
+  return (
+    <div className="admin__threshold">
+      <label className="admin__field">
+        Drempel (relevantie {settings.min}–{settings.max}, standaard {settings.default})
+        <input
+          type="number"
+          step={0.1}
+          min={settings.min}
+          max={settings.max}
+          value={value}
+          onChange={(e) => {
+            setValue(e.target.value);
+            const v = Number(e.target.value);
+            if (Number.isFinite(v) && v >= settings.min && v <= settings.max) void load(v);
+          }}
+        />
+      </label>
+      <p className="admin__muted">
+        Met {settings.preview.threshold}: {settings.preview.last24h} highlights in de afgelopen 24 uur, gemiddeld{' '}
+        {settings.preview.perDay7d} per dag deze week. Lager geeft meer highlights (ook gewone dingen), hoger alleen het
+        meest ongewone.
+      </p>
+      <div className="admin__row">
+        <button disabled={!valid || n === settings.threshold} onClick={() => void save()}>
+          Drempel opslaan
+        </button>
+      </div>
+      {message && <p className="admin__muted">{message}</p>}
+    </div>
+  );
+}
+
 const ago = (epochS: number | null | undefined) => {
   if (!epochS) return 'nog niet';
   const s = Math.max(0, Math.round(Date.now() / 1000 - epochS));
@@ -102,6 +173,7 @@ export function OverviewTab() {
             {stats.last24h} in 24 uur · {stats.last7d} in 7 dagen · {stats.rotation} nu op de tv
           </p>
         )}
+        {status.highlights.enabled && <ThresholdSetting />}
       </Card>
       <Card title="AI-beschrijvingen" level={aiLevel}>
         {status.ai.enabled ? (

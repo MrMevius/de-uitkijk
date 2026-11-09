@@ -247,6 +247,26 @@ describe('highlight API', () => {
     expect(del.statusCode).toBe(204);
     expect((await t.app.inject({ url: '/api/highlights/h1/clip.mp4', headers: { cookie: admin.cookie } })).statusCode).toBe(404);
   });
+
+  it('lets administrators set the selection threshold, with a preview of how many highlights it gives', async () => {
+    const t = await setupApi();
+    const viewer = await t.login('kijker', 'viewer');
+    const admin = await t.login('beheer', 'admin');
+    const origin = 'https://uitkijk.example.nl';
+    const put = (cookie: string, threshold: unknown) =>
+      t.app.inject({ method: 'PUT', url: '/api/admin/highlights/settings', headers: { cookie, origin }, payload: { threshold } });
+    const get = async (q = '') => (await t.app.inject({ url: `/api/admin/highlights/settings${q}`, headers: { cookie: admin.cookie } })).json();
+
+    expect(await get()).toMatchObject({ threshold: 2, default: 2, min: 1, max: 5, preview: { threshold: 2 } });
+    // h1 (score 3) falls below 3.5; h2 (score 4) stays.
+    expect((await get('?threshold=3.5')).preview).toMatchObject({ threshold: 3.5, last24h: 1 });
+    expect((await get('?threshold=9')).preview.threshold).toBe(2);
+    expect((await put(viewer.cookie, 3)).statusCode).toBe(403);
+    expect((await put(admin.cookie, 0.5)).statusCode).toBe(400);
+    expect((await put(admin.cookie, '3')).statusCode).toBe(400);
+    expect((await put(admin.cookie, 2.54)).json()).toEqual({ threshold: 2.5 });
+    expect(t.store.threshold()).toBe(2.5);
+  });
 });
 
 describe('feedback learning', () => {
@@ -297,6 +317,22 @@ describe('feedback learning', () => {
     expect(after.v1).toMatchObject({ knownFactor: 0.4, score: Math.round(base.v1! * 0.4 * 100) / 100 });
     expect(after.v2).toMatchObject({ knownFactor: 0.4, score: Math.round(base.v2! * 0.4 * 100) / 100 });
     expect(toSummaryReasons(after.v1!)).toContain('bekend volgens beheer of AI');
+  });
+
+  it('selects with the threshold an administrator set', async () => {
+    const t2 = setupImporter([review('v1', VOORDEUR, at(4, 20), at(4, 20) + 20)]);
+    t2.store.setMeta('activated_at', String(at(1)));
+    t2.setClock(at(5));
+    await t2.importer.runOnce();
+    const score = t2.store.get('v1')!.score;
+    expect(score).toBeGreaterThanOrEqual(1);
+    expect(score).toBeLessThan(5);
+    t2.store.setThreshold(5);
+    await t2.importer.runOnce();
+    expect(t2.store.get('v1')!.selected).toBe(false);
+    t2.store.setThreshold(1);
+    await t2.importer.runOnce();
+    expect(t2.store.get('v1')!.selected).toBe(true);
   });
 });
 

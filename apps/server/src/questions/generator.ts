@@ -163,10 +163,11 @@ export class QuestionGenerator {
       });
     }
 
+    const threshold = this.highlights.threshold();
     // Borderline highlights without feedback: a quick 👍/👎 teaches the selection the most here.
     const borderline = recent
       .filter((c) => c.selected && c.hasThumbnail && c.startTime > now - 3 * 86400 && c.feedback === null && c.aiRealEvent !== false)
-      .filter((c) => c.score >= 2 && c.score < 2.6 && freeHighlight(c))
+      .filter((c) => c.score >= threshold && c.score < threshold + 0.6 && freeHighlight(c))
       .sort((a, b) => a.score - b.score);
     for (const c of borderline.slice(0, Math.max(0, room('highlight')))) {
       add({
