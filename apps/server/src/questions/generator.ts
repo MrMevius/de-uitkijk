@@ -6,6 +6,7 @@ import { hourInAmsterdam } from '../highlights/importer.ts';
 import { periodOf } from '../highlights/selection.ts';
 import type { HighlightStore, StoredCandidate } from '../highlights/store.ts';
 import type { QuestionStore } from './store.ts';
+import { askableVehicle, normalizeVehicle, vehicleNoun } from './vehicles.ts';
 
 export interface GeneratorOptions {
   cameras: Camera[];
@@ -38,15 +39,12 @@ export function isoWeek(epochS: number): string {
   return `${date.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
 }
 
-const normalizeVehicle = (v: string) => v.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-/** Not a vehicle with an owner to ask about (the AI is told to leave these out; older answers may still have them). */
-const NOT_A_CAR = /\b(e-?)?(fiets|bike|bicycle|scooter|step|skateboard)\w*/i;
 /** "Een persoon loopt." + ". Voordeur" must not become "loopt.. Voordeur". */
 const sentence = (text: string) => `${text.trim().replace(/[.!?…]+$/, '')}.`;
 
 /**
  * Turns what the system does not know (yet) into questions and suggestions for administrators:
- * unknown people and vehicles, borderline highlights, recurring false alarms and system problems.
+ * unknown people and vehicles (cars, bicycles, scooters), borderline highlights, recurring false alarms and system problems.
  * Every question has a key that is used once, so nothing is asked twice.
  */
 export class QuestionGenerator {
@@ -114,8 +112,7 @@ export class QuestionGenerator {
     // Open questions that no longer apply are withdrawn.
     for (const q of this.questions.list('open', 1000)) {
       const h = q.highlightId ? this.highlights.get(q.highlightId) : undefined;
-      if (q.kind === 'vehicle' && NOT_A_CAR.test(String(q.data.vehicle ?? ''))) this.questions.withdraw(q.id, now);
-      else if (q.kind === 'person' && h && faces.ready && !learnable(h)) this.questions.withdraw(q.id, now);
+      if (q.kind === 'person' && h && faces.ready && !learnable(h)) this.questions.withdraw(q.id, now);
     }
 
     // Unknown people: real events with a person, no face recognised, not yet labelled, something to learn. Best first.
@@ -143,10 +140,10 @@ export class QuestionGenerator {
       });
     }
 
-    // Vehicles the AI described but could not match to a fact. One question per distinct vehicle.
+    // Cars, bicycles, scooters and motorbikes the AI described but could not match to a fact. One question per distinct vehicle.
     const seenVehicles = new Set<string>();
     const vehicles = recent
-      .filter((c) => c.hasThumbnail && c.aiVehicle && !c.aiVehicleKnown && !NOT_A_CAR.test(c.aiVehicle) && freeHighlight(c))
+      .filter((c) => c.hasThumbnail && c.aiVehicle && !c.aiVehicleKnown && askableVehicle(c.aiVehicle) && freeHighlight(c))
       .sort((a, b) => b.startTime - a.startTime)
       .filter((c) => {
         const key = normalizeVehicle(c.aiVehicle!);
@@ -155,13 +152,14 @@ export class QuestionGenerator {
         return true;
       });
     for (const c of vehicles.slice(0, Math.max(0, room('vehicle')))) {
+      const noun = vehicleNoun(c.aiVehicle!);
       add({
         kind: 'vehicle',
         key: `vehicle:${normalizeVehicle(c.aiVehicle!)}`,
         highlightId: c.id,
-        title: 'Van wie is deze auto?',
+        title: `Van wie is deze ${noun}?`,
         body: `De AI ziet: ${sentence(c.aiVehicle!)} ${this.name(c.camera)}, ${timeText(c.startTime)}. Klopt de omschrijving niet precies, pas hem dan aan.`,
-        data: { vehicle: c.aiVehicle },
+        data: { vehicle: c.aiVehicle, noun },
       });
     }
 

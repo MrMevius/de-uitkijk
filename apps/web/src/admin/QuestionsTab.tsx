@@ -7,7 +7,7 @@ interface Question {
   kind: 'person' | 'vehicle' | 'highlight' | 'noise' | 'system';
   title: string;
   body: string;
-  data: { vehicle?: string; faces?: string[]; guess?: string };
+  data: { vehicle?: string; noun?: string; faces?: string[]; guess?: string };
   status: 'open' | 'answered' | 'dismissed';
   answer: string | null;
   answeredBy: string | null;
@@ -22,7 +22,7 @@ interface Question {
 
 const KIND_LABEL: Record<Question['kind'], string> = {
   person: 'Persoon',
-  vehicle: 'Auto',
+  vehicle: 'Voertuig',
   highlight: 'Highlight',
   noise: 'Suggestie',
   system: 'Melding',
@@ -59,6 +59,20 @@ function Faces({ files }: { files: string[] }) {
     <div className="admin__faces">
       {files.map((f) => (
         <img key={f} src={`/api/admin/faces/train/${encodeURIComponent(f)}`} alt="Gezicht" />
+      ))}
+    </div>
+  );
+}
+
+/** One-click names from Frigate's face library, so the same person always gets the same name. */
+function NameChips({ names, onPick }: { names: string[]; onPick: (name: string) => void }) {
+  if (!names.length) return null;
+  return (
+    <div className="admin__row">
+      {names.map((n) => (
+        <button key={n} className="admin__subtle" onClick={() => onPick(n)}>
+          {n.split(' ')[0]}
+        </button>
       ))}
     </div>
   );
@@ -101,11 +115,7 @@ function QuestionCard({ q, names, onDone }: { q: Question; names: string[]; onDo
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
-            <datalist id="known-faces">
-              {names.map((n) => (
-                <option key={n} value={n} />
-              ))}
-            </datalist>
+            <NameChips names={names} onPick={setName} />
             {(q.data.faces?.length ?? 0) > 0 && (
               <p className="admin__muted">Met een naam en Bewoner of Bezoeker leert Frigate dit gezicht herkennen.</p>
             )}
@@ -127,11 +137,12 @@ function QuestionCard({ q, names, onDone }: { q: Question; names: string[]; onDo
             </label>
             <label className="admin__field">
               Van wie?
-              <input placeholder="bijv. Tini" maxLength={60} value={owner} onChange={(e) => setOwner(e.target.value)} />
+              <input placeholder="bijv. Tini" maxLength={60} list="known-faces" value={owner} onChange={(e) => setOwner(e.target.value)} />
             </label>
+            <NameChips names={names} onPick={setOwner} />
             <div className="admin__row">
               <button onClick={() => void send('answer', { owner, vehicle })}>Opslaan als feit voor de AI</button>
-              <button onClick={() => void send('answer', { category: 'onbekend' })}>Onbekende auto</button>
+              <button onClick={() => void send('answer', { category: 'onbekend' })}>Onbekende {q.data.noun ?? 'auto'}</button>
             </div>
           </>
         )}
@@ -182,10 +193,17 @@ export function QuestionsTab({ onCountChange }: { onCountChange?: (open: number)
     <div className="admin__stack">
       <p className="admin__muted">
         Het systeem stelt hier vragen over wat het nog niet weet, en doet suggesties. Uit je antwoorden bouwt het zelf de
-        feiten voor de AI op (zie het tabblad AI) en leert Frigate gezichten van bewoners en bezoekers herkennen. Je antwoord
-        komt bij de highlight te staan, de AI beschrijft hem opnieuw, en bekende mensen en auto's tellen daarna laag mee. Een
+        feiten voor de AI op (zie het tabblad AI) en leert Frigate gezichten van bewoners en bezoekers herkennen. Kies bij
+        een persoon, auto of fiets steeds dezelfde naam (de knoppen met voornamen), dan weet het systeem wie wie is en noemt
+        de AI die naam in de highlights. Je antwoord komt bij de highlight te staan, de AI beschrijft hem opnieuw, en bekende
+        mensen, auto's en fietsen tellen daarna laag mee. Een
         oordeel over een highlight stuurt de selectie bij. Nieuwe vragen verschijnen vanzelf, hooguit een paar tegelijk.
       </p>
+      <datalist id="known-faces">
+        {names.map((n) => (
+          <option key={n} value={n} />
+        ))}
+      </datalist>
       {open.length === 0 && <p>Geen open vragen. 🎉</p>}
       {open.map((q) => (
         <QuestionCard key={q.id} q={q} names={names} onDone={() => void load()} />

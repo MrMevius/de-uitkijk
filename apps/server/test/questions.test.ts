@@ -125,12 +125,12 @@ describe('question generator', () => {
 });
 
 describe('answering questions', () => {
-  async function api() {
+  async function api(faces?: FaceLibrary) {
     const t = setup();
     const facts = new FactStore(':memory:');
     const auth = new AuthStore(':memory:');
     const hub = new StateHub('live', cameras, 15_000);
-    const app = buildApp({ hub, auth: { store: auth, publicUrl: 'https://u.example' }, questions: { questions: t.questions, highlights: t.highlights, facts, autoFacts: true, now: () => NOW } });
+    const app = buildApp({ hub, auth: { store: auth, publicUrl: 'https://u.example' }, questions: { questions: t.questions, highlights: t.highlights, facts, autoFacts: true, faces, now: () => NOW } });
     cleanup.push(() => app.close(), () => hub.stop(), () => auth.close(), () => facts.close());
     const user = auth.createUser('mark', 'admin');
     auth.redeemLink(auth.createLink(user.id, 'activate'), await hashPassword('correct horse battery'));
@@ -160,6 +160,20 @@ describe('answering questions', () => {
     expect(t.facts.list()).toMatchObject([{ text: 'Zwarte Volkswagen up!, kenteken XX-123-Y is van Tini', createdBy: `mark (vraag ${vehicle.id})` }]);
     expect(t.questions.get(vehicle.id)).toMatchObject({ factStatus: 'done', fact: 'Zwarte Volkswagen up!, kenteken XX-123-Y is van Tini' });
     expect(t.highlights.get(v)).toMatchObject({ annotation: 'auto van Tini', annotationKnown: true, aiRedo: true });
+  });
+
+  it('asks whose bicycle it is and keeps one spelling per person (0.14)', async () => {
+    const library = { ready: true, knownNames: () => ['Jasper Mevius', 'Mark Mevius'] } as unknown as FaceLibrary;
+    const t = await api(library);
+    const b = t.add({ labels: ['bicycle'], ai: { real: true, vehicle: 'zwarte Gazelle e-bike met fietstassen' } });
+    t.generator().runOnce();
+    const q = t.questions.list('open').find((x) => x.highlightId === b)!;
+    expect(q).toMatchObject({ kind: 'vehicle', title: 'Van wie is deze fiets?', data: { vehicle: 'zwarte Gazelle e-bike met fietstassen', noun: 'fiets' } });
+
+    expect((await t.answer(q.id, { owner: 'jasper', vehicle: 'zwarte Gazelle e-bike met fietstassen' })).json()).toMatchObject({
+      answer: 'Zwarte Gazelle e-bike met fietstassen is van Jasper Mevius',
+    });
+    expect(t.highlights.get(b)).toMatchObject({ annotation: 'fiets van Jasper Mevius', annotationKnown: true, aiRedo: true });
   });
 
   it('turns a highlight answer into feedback, dismisses suggestions and counts open questions', async () => {
@@ -229,14 +243,15 @@ describe('learning from answers (0.13)', () => {
     t.add({ ai: { real: true }, score: 3 }); // unrecognisable: no face kept, no stable feature
     const both = t.add({ ai: { real: true, marker: true, vehicle: 'grijze Toyota Yaris' }, score: 2.5 });
     const bike = t.add({ labels: ['bicycle'], ai: { real: true, vehicle: 'fiets' } });
+    const step = t.add({ labels: ['person'], ai: { real: true, vehicle: 'rode step van Micro' } });
     const faces = t.faceStub({ [`ev-${face}`]: { guess: 'Tineke Mevius', score: 0.82 } });
     t.generator({ faces }).runOnce();
 
     const open = t.questions.list('open');
     expect(open.filter((q) => q.kind === 'person').map((q) => q.highlightId).sort()).toEqual([face, marker, both].sort());
-    // The person question already covers the highlight with the Yaris; bicycles are never vehicle questions.
+    // The person question already covers the highlight with the Yaris; "fiets" alone is too vague and steps are never asked.
     expect(open.filter((q) => q.kind === 'vehicle')).toHaveLength(0);
-    expect(open.some((q) => q.highlightId === bike)).toBe(false);
+    expect(open.some((q) => q.highlightId === bike || q.highlightId === step)).toBe(false);
     const fq = open.find((q) => q.highlightId === face)!;
     expect(fq.data).toEqual({ faces: [`ev-${face}.webp`], guess: 'Tineke Mevius' });
     expect(fq.body).toBe('Iemand bij de deur. Voordeur, zo 8 nov, 20:00. Frigate denkt aan Tineke Mevius (82%), maar weet het niet zeker.'.replace('20:00', fq.body.match(/\d\d:\d\d/)![0]));
@@ -250,14 +265,6 @@ describe('learning from answers (0.13)', () => {
     t.add({ ai: { real: true, marker: true }, score: 6 });
     t.generator({ faces: t.faceStub({}, false) }).runOnce();
     expect(t.questions.list('open')).toHaveLength(before);
-  });
-
-  it('withdraws an open "whose car" question about a bicycle from before the prompt change', () => {
-    const t = setup();
-    const id = t.add({ ai: { real: true } });
-    t.questions.add({ kind: 'vehicle', key: 'vehicle:fiets', highlightId: id, title: 'Van wie is deze auto?', body: 'x', data: { vehicle: 'fiets' } }, NOW);
-    t.generator().runOnce();
-    expect(t.questions.list('open')).toHaveLength(0);
   });
 
   it('annotates, describes again, queues a fact and teaches Frigate the face of a named resident or visitor', () => {

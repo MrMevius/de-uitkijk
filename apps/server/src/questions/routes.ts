@@ -1,8 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import type { FactStore } from '../ai/facts.ts';
-import { ATTEMPT_FILE, type FaceLibrary } from '../faces/library.ts';
+import { ATTEMPT_FILE, matchFaceName, type FaceLibrary } from '../faces/library.ts';
 import type { HighlightStore } from '../highlights/store.ts';
 import type { QuestionStore } from './store.ts';
+import { vehicleNoun } from './vehicles.ts';
 
 export interface QuestionRouteOptions {
   questions: QuestionStore;
@@ -61,6 +62,8 @@ const clean = (v: unknown, max: number) =>
 /** Questions for administrators (`/api/admin/`, admin role). Answers feed back into highlights and facts. */
 export function registerQuestions(app: FastifyInstance, options: QuestionRouteOptions): void {
   const { questions, highlights, facts, autoFacts = false, faces, onFaceQueued, now = () => Date.now() / 1000 } = options;
+  // One spelling per person across faces, vehicles and highlights ("Jasper" → "Jasper Mevius"), so the AI can tell who is who.
+  const person = (typed: string) => (typed && faces?.ready ? matchFaceName(typed, faces.knownNames()) : typed);
   app.get<{ Querystring: { status?: string } }>('/api/admin/questions', async (request) => {
     const status = request.query.status === 'all' ? 'all' : 'open';
     return questions.list(status, status === 'all' ? 200 : 100).map((q) => {
@@ -92,7 +95,7 @@ export function registerQuestions(app: FastifyInstance, options: QuestionRouteOp
     if (q.kind === 'person') {
       const category = body.category as keyof typeof PERSON_CATEGORIES;
       if (!(category in PERSON_CATEGORIES)) return reply.code(400).send({ error: 'Kies wie het is' });
-      const name = clean(body.name, 60);
+      const name = person(clean(body.name, 60));
       const label = name ? `${name} (${PERSON_CATEGORIES[category]})` : PERSON_CATEGORIES[category];
       questions.resolve(q.id, 'answered', label, by, now());
       const result = applyPersonAnswer(q, label, options);
@@ -101,20 +104,22 @@ export function registerQuestions(app: FastifyInstance, options: QuestionRouteOp
     }
 
     if (q.kind === 'vehicle') {
+      const noun = vehicleNoun(clean(q.data.vehicle, 120));
       if (body.category === 'onbekend') {
-        questions.resolve(q.id, 'answered', 'onbekende auto', by, now());
+        const label = noun === 'auto' ? 'onbekende auto' : `onbekende ${noun}`;
+        questions.resolve(q.id, 'answered', label, by, now());
         questions.setFact(q.id, 'none');
-        if (h) highlights.setAnnotation(h.id, 'onbekende auto', false);
-        return { answer: 'onbekende auto' };
+        if (h) highlights.setAnnotation(h.id, label, false);
+        return { answer: label };
       }
-      const owner = clean(body.owner, 60);
+      const owner = person(clean(body.owner, 60));
       const vehicle = clean(body.vehicle, 120) || clean(q.data.vehicle, 120);
       if (owner.length < 2 || vehicle.length < 3) return reply.code(400).send({ error: 'Vul de eigenaar en de omschrijving in' });
       const text = `${vehicle.charAt(0).toUpperCase()}${vehicle.slice(1)} is van ${owner}`.slice(0, 200);
       // The owner's own words are the most reliable fact: stored directly, no AI step.
       const stored = facts?.add(text, `${by} (vraag ${q.id})`, now());
       if (h) {
-        highlights.setAnnotation(h.id, `auto van ${owner}`, true);
+        highlights.setAnnotation(h.id, `${vehicleNoun(vehicle)} van ${owner}`, true);
         if (autoFacts) highlights.requestRedescribe(h.id);
       }
       questions.resolve(q.id, 'answered', text, by, now());
