@@ -10,7 +10,7 @@ import { AiWorker, ffmpegToJpeg } from './ai/worker.ts';
 import { FaceLibrary } from './faces/library.ts';
 import { FaceWorker } from './faces/worker.ts';
 import { RecordingFaces } from './faces/recording.ts';
-import { ClipCache } from './highlights/clips.ts';
+import { ClipCache, ffmpegThumbnail } from './highlights/clips.ts';
 import { HighlightImporter } from './highlights/importer.ts';
 import { HighlightStore, type StoredCandidate } from './highlights/store.ts';
 import { FactWorker } from './questions/fact-worker.ts';
@@ -101,6 +101,14 @@ if (questionStore && highlightStore && !highlightStore.getMeta('vehicle_labels_f
   }
   highlightStore.setMeta('vehicle_labels_fix', '1');
 }
+// Since 0.20.3 a person Frigate reported is never noise; highlights of the last two days that the AI called noise
+// while a person was there (a car's moment can miss them) are described once more.
+if (highlightStore && ai && !highlightStore.getMeta('person_noise_recheck')) {
+  for (const c of highlightStore.candidatesSince(Date.now() / 1000 - 2 * 86400)) {
+    if (c.selected && c.aiRealEvent === false && c.labels.includes('person')) highlightStore.requestRedescribe(c.id);
+  }
+  highlightStore.setMeta('person_noise_recheck', '1');
+}
 // Per-camera picture check for monitoring (live mode only; mock streams are synthetic).
 const cameraProbe = config.mode === 'live' && config.go2rtcUrl ? new CameraVideoProbe(config.cameras, config.go2rtcUrl) : undefined;
 let importer: HighlightImporter | undefined;
@@ -141,6 +149,10 @@ importer =
         frigateUrl: config.frigate.url,
         cameras: config.cameras,
         ...(frigateHttp ? { fetch: frigateHttp } : {}),
+        recordingThumbnail: async (c) => {
+          const jpeg = await highlightStill(c);
+          return jpeg ? ffmpegThumbnail(jpeg) : undefined;
+        },
         log: (msg) => app.log.warn(msg),
       })
     : undefined;

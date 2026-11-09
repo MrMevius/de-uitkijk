@@ -9,7 +9,7 @@ import { buildApp } from '../src/app.ts';
 import { AuthStore } from '../src/auth/store.ts';
 import { hashPassword } from '../src/auth/passwords.ts';
 import { ClipCache } from '../src/highlights/clips.ts';
-import { describe as describeGroup, HighlightImporter, hourInAmsterdam, platesOf } from '../src/highlights/importer.ts';
+import { describe as describeGroup, HighlightImporter, hourInAmsterdam, personMoment, platesOf } from '../src/highlights/importer.ts';
 import { buildBaseline, groupItems, scoreGroup, selectHighlights, type ReviewItem } from '../src/highlights/selection.ts';
 import { HighlightStore, toSummary } from '../src/highlights/store.ts';
 import { StateHub } from '../src/hub.ts';
@@ -71,6 +71,18 @@ describe('selection', () => {
     expect(known.reasons).toContain('bekende persoon');
   });
 
+  it('takes the AI still where the person is seen best, on the representative camera (2026-11-09 arrival)', () => {
+    const cam = 'Vriezenveen_achter_thuis_1';
+    const person = {
+      id: 'qhzhw2', label: 'person', camera: cam,
+      data: { top_score: 0.754, box: [0.734, 0.531, 0.126, 0.451], path_data: [[[0.189, 0.632], 1794256012.46], [[0.219, 0.54], 1794256013.44], [[0.326, 0.797], 1794256018.29], [[0.769, 0.96], 1794256019.9]] as [[number, number], number][] },
+    };
+    const car = { id: 'pwgoma', label: 'car', camera: cam, data: { top_score: 0.824, box: [0.064, 0.3, 0.266, 0.269], path_data: [[[0.545, 0.589], 1794255994.16]] as [[number, number], number][] } };
+    expect(personMoment([car, person], cam)).toBe(1794256019.9);
+    expect(personMoment([car, person], 'Vriezenveen_voordeur')).toBeUndefined();
+    expect(personMoment([car], cam)).toBeUndefined();
+  });
+
   it('collects the plates Frigate read, in one spelling', () => {
     expect(
       platesOf([
@@ -112,7 +124,7 @@ interface FakeReview {
   data: { objects: string[]; sub_labels: string[]; detections: string[] };
 }
 
-function fakeFrigate(reviews: FakeReview[], scores: Record<string, number> = {}) {
+function fakeFrigate(reviews: FakeReview[], scores: Record<string, number> = {}, gone = new Set<string>()) {
   const calls: string[] = [];
   const fetchImpl = (async (input: string | URL) => {
     const url = new URL(String(input));
@@ -121,11 +133,13 @@ function fakeFrigate(reviews: FakeReview[], scores: Record<string, number> = {})
       const after = Number(url.searchParams.get('after'));
       return Response.json(reviews.filter((r) => r.start_time >= after));
     }
-    if (url.pathname === '/api/events') {
-      const ids = (url.searchParams.get('ids') ?? '').split(',');
-      return Response.json(ids.map((id) => ({ id, data: { top_score: scores[id] ?? 0.7 } })));
+    // Like Frigate 0.17: one event per request (its /api/events list has no id filter).
+    const event = /^\/api\/events\/([^/]+)$/.exec(url.pathname);
+    if (event) return Response.json({ id: decodeURIComponent(event[1]!), data: { top_score: scores[decodeURIComponent(event[1]!)] ?? 0.7 } });
+    if (url.pathname.endsWith('/snapshot-clean.webp')) {
+      const id = decodeURIComponent(url.pathname.split('/')[3]!);
+      return gone.has(id) ? new Response('not found', { status: 404 }) : new Response(new Uint8Array([0xff, 0xd8, 0xff, 0xd9]));
     }
-    if (url.pathname.endsWith('/snapshot-clean.webp')) return new Response(new Uint8Array([0xff, 0xd8, 0xff, 0xd9]));
     return new Response('not found', { status: 404 });
   }) as typeof fetch;
   return { fetchImpl, calls };
@@ -150,6 +164,28 @@ function setupImporter(reviews: FakeReview[], scores: Record<string, number> = {
 }
 
 describe('importer', () => {
+  it('takes the thumbnail from another detection, else from the recording, when Frigate dropped the snapshot', async () => {
+    const reviews = [review('a', VOORDEUR, at(3) - 600, at(3) - 590, { detections: ['a-1', 'a-2'] }), review('b', OPRIT, at(3) - 3000, at(3) - 2990)];
+    const store = new HighlightStore(':memory:');
+    cleanup.push(() => store.close());
+    const frigate = fakeFrigate(reviews, { 'a-1': 0.9, 'a-2': 0.6 }, new Set(['a-1', 'b-d']));
+    const fromRecording: string[] = [];
+    const importer = new HighlightImporter(store, {
+      frigateUrl: 'http://frigate:5000',
+      cameras,
+      fetch: frigate.fetchImpl,
+      now: () => at(3),
+      recordingThumbnail: async (c) => (fromRecording.push(c.id), new Uint8Array([1, 2, 3])),
+    });
+    store.setMeta('activated_at', String(at(3) - 86400));
+    await importer.runOnce();
+    expect(frigate.calls).toEqual(expect.arrayContaining(['/api/events/a-1/snapshot-clean.webp', '/api/events/a-2/snapshot-clean.webp']));
+    expect(store.get('a')).toMatchObject({ repEvent: 'a-1', hasThumbnail: true });
+    expect(store.thumbnail('a')).toEqual(new Uint8Array([0xff, 0xd8, 0xff, 0xd9]));
+    expect(fromRecording).toEqual(['b']);
+    expect(store.thumbnail('b')).toEqual(new Uint8Array([1, 2, 3]));
+  });
+
   it('imports nothing from before activation, then settled alerts once, grouped, with a representative camera', async () => {
     const reviews = [review('old', VOORDEUR, at(2), at(2) + 10)];
     const t = setupImporter(reviews, { 'b-d': 0.9, 'a-d': 0.7 });

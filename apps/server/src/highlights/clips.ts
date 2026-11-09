@@ -116,3 +116,14 @@ export async function sendFileWithRanges(
   reply.header('content-length', size);
   return reply.send(createReadStream(file));
 }
+
+/** A 640-px wide WebP thumbnail from a (4K) JPEG still, with ffmpeg through pipes (no files). */
+export const ffmpegThumbnail = (jpeg: Uint8Array): Promise<Uint8Array> =>
+  new Promise((resolve, reject) => {
+    const proc = spawn('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-i', 'pipe:0', '-vf', 'scale=640:-2', '-f', 'webp', '-quality', '80', 'pipe:1']);
+    const out: Buffer[] = [];
+    proc.stdout.on('data', (d: Buffer) => out.push(d));
+    proc.on('error', reject);
+    proc.on('close', (code) => (code === 0 ? resolve(Buffer.concat(out)) : reject(new Error(`ffmpeg exited ${code}`))));
+    proc.stdin.end(Buffer.from(jpeg));
+  });

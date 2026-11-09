@@ -12,7 +12,7 @@ import {
   type Baseline,
   type ReviewItem,
 } from './selection.ts';
-import type { CandidateRecord, HighlightStore } from './store.ts';
+import type { CandidateRecord, HighlightStore, StoredCandidate } from './store.ts';
 
 export interface ImporterOptions {
   frigateUrl: string;
@@ -24,6 +24,11 @@ export interface ImporterOptions {
   /** Epoch seconds. */
   now?: () => number;
   log?: (msg: string) => void;
+  /**
+   * Thumbnail from the recording (WebP) when Frigate no longer has a snapshot of any of the highlight's
+   * detections: Frigate drops short tracked objects, its recordings stay much longer (2026-11-09).
+   */
+  recordingThumbnail?: (c: StoredCandidate) => Promise<Uint8Array | undefined>;
 }
 
 interface FrigateReview {
@@ -40,7 +45,28 @@ interface FrigateEvent {
   top_score?: number | null;
   /** For a vehicle with a known plate (`lpr.known_plates`): its name. */
   sub_label?: string | [string, number] | null;
-  data?: { top_score?: number | null; recognized_license_plate?: string | null };
+  label?: string;
+  camera?: string;
+  start_time?: number;
+  data?: {
+    top_score?: number | null;
+    recognized_license_plate?: string | null;
+    box?: number[];
+    path_data?: [[number, number], number][];
+  };
+}
+
+/**
+ * The moment the AI still is taken from when the group has a person: where that person stood closest to their
+ * best detection (path points are the bottom centre over time). A car's thumbnail time can be before the
+ * person walked into view (2026-11-09: "a parked hatchback" while somebody walked past it).
+ */
+export function personMoment(events: FrigateEvent[], camera: string): number | undefined {
+  const people = events.filter((e) => e.label === 'person' && e.camera === camera && e.data?.path_data?.length);
+  const best = people.sort((a, b) => (b.data?.top_score ?? 0) - (a.data?.top_score ?? 0))[0];
+  if (!best) return undefined;
+  const bottom = (best.data!.box?.[1] ?? 0) + (best.data!.box?.[3] ?? 1);
+  return [...best.data!.path_data!].sort((a, b) => Math.abs(a[0][1] - bottom) - Math.abs(b[0][1] - bottom))[0]![1];
 }
 
 /** Plates Frigate's LPR read on these detections, upper case without spaces or dashes, deduplicated. */
@@ -77,7 +103,7 @@ export function describe(items: ReviewItem[], cameraName: (frigate: string) => s
  */
 export class HighlightImporter {
   private readonly store: HighlightStore;
-  private readonly opts: Required<Omit<ImporterOptions, 'cameras'>>;
+  private readonly opts: Required<Omit<ImporterOptions, 'cameras' | 'recordingThumbnail'>> & Pick<ImporterOptions, 'recordingThumbnail'>;
   private readonly byFrigate: Map<string, Camera>;
   private baseline: Baseline = new Map();
   private baselineAt = 0;
@@ -191,9 +217,11 @@ export class HighlightImporter {
   private async importGroup(items: ReviewItem[]): Promise<void> {
     const scored = scoreGroup(items, this.baseline, hourInAmsterdam);
     const detectionIds = items.flatMap((i) => i.detections);
-    const events = detectionIds.length
-      ? await this.get<FrigateEvent[]>(`/api/events?ids=${detectionIds.map(encodeURIComponent).join(',')}&limit=100`)
-      : [];
+    // One request per detection: Frigate's /api/events has no id filter (an `ids` parameter is ignored and
+    // returns the latest events of all cameras; found 2026-11-09). A detection Frigate removed is skipped.
+    const events = (
+      await Promise.all(detectionIds.map((id) => this.get<FrigateEvent>(`/api/events/${encodeURIComponent(id)}`).catch(() => undefined)))
+    ).filter((e): e is FrigateEvent => e !== undefined);
     const scoreOf = new Map(events.map((e) => [e.id, e.data?.top_score ?? e.top_score ?? 0]));
     // Representative: the alert with the most confident detection; on a tie the longer one.
     let rep = items[0]!;
@@ -225,7 +253,7 @@ export class HighlightImporter {
       detections: [...new Set(items.flatMap((i) => i.detections))],
       clipStart,
       clipEnd,
-      frameTime: rep.thumbTime ?? rep.startTime + 1,
+      frameTime: personMoment(events, rep.camera) ?? rep.thumbTime ?? rep.startTime + 1,
       eventStart: Math.max(rep.startTime - 5, groupStart - 5),
       eventEnd: Math.min(groupEnd + 5, rep.startTime + 600),
       labels: [...new Set(items.flatMap((i) => i.objects))],
@@ -236,6 +264,19 @@ export class HighlightImporter {
       description: describe(items, (f) => this.byFrigate.get(f)?.name ?? f),
     };
     this.store.insert(record, items.map((i) => i.id));
+  }
+
+  /** Frigate's snapshot of the best detection, else of another one, else a frame from the recording. Retried next cycle. */
+  private async thumbnail(c: StoredCandidate): Promise<Uint8Array | undefined> {
+    for (const id of [c.repEvent, ...c.detections.filter((d) => d !== c.repEvent)]) {
+      const res = await this.opts.fetch(`${this.opts.frigateUrl}/api/events/${encodeURIComponent(id)}/snapshot-clean.webp`, {
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (res.ok) return new Uint8Array(await res.arrayBuffer());
+      await res.body?.cancel();
+      if (res.status !== 404) return undefined;
+    }
+    return this.opts.recordingThumbnail?.(c);
   }
 
   /** Re-runs selection over the last two days and stores thumbnails of newly selected highlights. */
@@ -261,14 +302,8 @@ export class HighlightImporter {
       const want = selected.has(c.id);
       if (want !== c.selected) this.store.setSelected(c.id, want);
       if (want && !c.hasThumbnail && c.repEvent) {
-        try {
-          const res = await this.opts.fetch(`${this.opts.frigateUrl}/api/events/${encodeURIComponent(c.repEvent)}/snapshot-clean.webp`, {
-            signal: AbortSignal.timeout(15_000),
-          });
-          if (res.ok) this.store.setThumbnail(c.id, new Uint8Array(await res.arrayBuffer()));
-        } catch {
-          // Retried on the next cycle.
-        }
+        const thumb = await this.thumbnail(c).catch(() => undefined);
+        if (thumb) this.store.setThumbnail(c.id, thumb);
       }
     }
   }

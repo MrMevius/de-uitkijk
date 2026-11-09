@@ -49,27 +49,30 @@ export function Dashboard({ state, connected, profile }: Props) {
   const scale = profile.overlayScale * (height / 1080);
   // On a landscape screen the status bar sits in the space around the 16:9 tiles. A portrait screen
   // (phone) has no such space, so reserve a band at the top for it.
-  const topBand = height > width ? Math.round(18 * scale * 2.6) : 0;
+  const band = Math.round(18 * scale * 2.6);
+  const topBand = height > width ? band : 0;
+  // In landscape the highlight column runs along the right edge, where the status bar is: it starts below it.
+  const stripBand = height > width ? 0 : band;
   // Up to five highlights in a column beside the cameras (fewer in a row on a phone), except while a camera has
   // an alert (then live cameras get all space).
-  const capacity = highlightCapacity(width, height - topBand, profile.gapPx);
+  const capacity = highlightCapacity(width, height - topBand - stripBand, profile.gapPx);
   const { tiles, fail: failHighlight } = useHighlightRotation(focusedIds.length > 0, capacity);
   const playing = tiles.filter((t) => t !== null).length;
   const { rects, highlightRects } = useMemo(() => {
     const available = height - topBand;
-    const strip = playing > 0 ? highlightStrip(width, available, profile.gapPx, playing, capacity) : undefined;
+    const strip = playing > 0 ? highlightStrip(width, available - stripBand, profile.gapPx, playing, capacity) : undefined;
     const layout = computeLayout(cameraIds, focusedIds, {
       width: strip?.cameras.width ?? width,
-      height: strip?.cameras.height ?? available,
+      height: strip ? strip.cameras.height + stripBand : available,
       gap: profile.gapPx,
       minOtherWidthFraction: profile.minOtherWidthFraction,
     });
     const shift = (r: Rect): Rect => ({ ...r, y: r.y + topBand });
     return {
       rects: Object.fromEntries(Object.entries(layout).map(([id, r]) => [id, shift(r)])),
-      highlightRects: strip?.highlights.map(shift) ?? [],
+      highlightRects: strip?.highlights.map((r) => ({ ...r, y: r.y + topBand + stripBand })) ?? [],
     };
-  }, [cameraIds, focusedIds, width, height, topBand, profile, playing, capacity]);
+  }, [cameraIds, focusedIds, width, height, topBand, stripBand, profile, playing, capacity]);
   const health = summarizeHealth(state, connected);
 
   return (
