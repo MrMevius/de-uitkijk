@@ -77,10 +77,10 @@ interface Slot {
  *
  * - Polls the rotation (the best 0–15 of the last 24 h) every minute.
  * - Every tile plays its clip once and then takes the next highlight that is not on another tile; with no
- *   more highlights than tiles, each tile replays its own. A highlight that was not there before goes first.
+ *   more highlights than tiles, each tile keeps its own (the tile replays it in place). New highlights go first.
  * - While `paused` (active alert) nothing is shown; afterwards the tiles continue with the next highlights.
- * - Every turn gets a new `playKey`, so the same highlight replays.
- * - A highlight that fails to play is hidden and skipped for ten minutes; nothing retries in a tight loop.
+ * - A highlight that fails to play is skipped for ten minutes when another one can take its tile; otherwise its
+ *   still stays visible.
  */
 export function useHighlightRotation(paused: boolean, slots = 1, url = '/api/highlights/rotation') {
   const [list, setList] = useState<HighlightSummary[]>([]);
@@ -141,36 +141,42 @@ export function useHighlightRotation(paused: boolean, slots = 1, url = '/api/hig
       return;
     }
     setShown((cur) => {
-      const now = Date.now();
       const ids = new Set(list.map((h) => h.id));
       const out = Array.from({ length: slots }, (_, i) => {
         const s = cur[i] ?? null;
-        return s && ids.has(s.highlight.id) && (failedUntil.current.get(s.highlight.id) ?? 0) <= now ? s : null;
+        return s && ids.has(s.highlight.id) ? s : null;
       });
       for (let i = 0; i < out.length; i++) if (!out[i]) out[i] = pick(out, i);
       return out.length === cur.length && out.every((s, i) => s === cur[i]) ? cur : out;
     });
   }, [paused, list, slots, pick]);
 
+  /** Tile `index` finished its clip: another highlight takes over, or the same one stays (and replays in place). */
   const next = useCallback(
     (index: number) =>
       setShown((cur) => {
-        if (!cur[index]) return cur;
+        const s = cur[index];
+        if (!s) return cur;
+        const picked = pick(cur, index);
+        if (!picked || picked.highlight.id === s.highlight.id) return cur;
         const out = [...cur];
-        out[index] = pick(cur, index);
+        out[index] = picked;
         return out;
       }),
     [pick],
   );
 
+  /** Tile `index` could not play its clip: skip it for a while if another highlight can take over; else keep it (still image). */
   const fail = useCallback(
     (index: number) =>
       setShown((cur) => {
         const s = cur[index];
         if (!s) return cur;
         failedUntil.current.set(s.highlight.id, Date.now() + FAILED_SKIP_MS);
-        const out = cur.map((x) => (x?.highlight.id === s.highlight.id ? null : x));
-        for (let i = 0; i < out.length; i++) if (!out[i]) out[i] = pick(out, i);
+        const picked = pick(cur, index);
+        if (!picked || picked.highlight.id === s.highlight.id) return cur;
+        const out = [...cur];
+        out[index] = picked;
         return out;
       }),
     [pick],
@@ -192,34 +198,47 @@ interface TileProps {
   onFail: () => void;
 }
 
-/** Plays one highlight clip once, muted, with time and description; then asks for the next. */
+/**
+ * Shows one highlight: its still right away, then the clip, muted, with time and description. When the clip
+ * ends the tile asks for the next highlight; if there is none, the same clip plays again in place (no reload),
+ * so the tile stays visible until another highlight takes its place.
+ */
 export function HighlightTile({ highlight, rect, cameraName, onDone, onFail }: TileProps) {
   const [playing, setPlaying] = useState(false);
+  const [round, setRound] = useState(0);
   const failRef = useRef(onFail);
   failRef.current = onFail;
 
-  // Safety net: a clip that does not start or stalls counts as failed, so the rotation never gets stuck.
-  // The timer only restarts for a new clip, not when the dashboard re-renders.
+  // Safety net: a clip that does not start or stalls counts as failed (another highlight may take over).
+  // Restarts for every round, not when the dashboard re-renders.
   useEffect(() => {
-    setPlaying(false);
     const timer = setTimeout(() => failRef.current(), (highlight.clipDuration + 20) * 1000);
     return () => clearTimeout(timer);
-  }, [highlight.id, highlight.clipDuration]);
+  }, [highlight.id, highlight.clipDuration, round]);
 
+  const id = encodeURIComponent(highlight.id);
   return (
     <div className="tile tile--highlight" data-camera="highlight" style={{ left: rect.x, top: rect.y, width: rect.w, height: rect.h }}>
+      {highlight.hasThumbnail && <img className="tile__video" src={`/api/highlights/${id}/thumb.webp`} alt="" />}
       <video
         key={highlight.id}
         className={playing ? 'tile__video' : 'tile__video tile__video--hidden'}
-        src={`/api/highlights/${encodeURIComponent(highlight.id)}/clip.mp4`}
+        src={`/api/highlights/${id}/clip.mp4`}
         autoPlay
         muted
         playsInline
         onPlaying={() => setPlaying(true)}
-        onEnded={onDone}
-        onError={onFail}
+        onEnded={(e) => {
+          const video = e.currentTarget;
+          onDone();
+          // Still on screen (no other highlight available): play again from the start.
+          video.currentTime = 0;
+          void video.play().catch(() => {});
+          setRound((n) => n + 1);
+        }}
+        onError={() => onFail()}
       />
-      {!playing && <div className="tile__placeholder">Highlight laden…</div>}
+      {!playing && !highlight.hasThumbnail && <div className="tile__placeholder">Highlight laden…</div>}
       <div className="tile__highlight-label">{highlightTime(highlight.startTime)}</div>
       <div className="tile__name">
         {highlight.description}

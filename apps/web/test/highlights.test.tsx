@@ -77,7 +77,7 @@ describe('highlight rotation', () => {
     expect(new Set(ids(result.current)).size).toBe(5);
   });
 
-  it('with fewer highlights than tiles shows each once and replays it with a new play key', async () => {
+  it('with fewer highlights than tiles keeps each on its tile (the tile replays it in place)', async () => {
     rotation = [h('a'), h('b')];
     const { result } = renderHook(() => useHighlightRotation(false, 5));
     await flush();
@@ -85,10 +85,15 @@ describe('highlight rotation', () => {
     const first = result.current.tiles[0]!.playKey;
     act(() => result.current.next(0));
     expect(ids(result.current)).toEqual(['a', 'b', null, null, null]);
-    expect(result.current.tiles[0]!.playKey).not.toBe(first);
+    // Same play key: the tile is not rebuilt, so the clip is not loaded again.
+    expect(result.current.tiles[0]!.playKey).toBe(first);
+    // A new highlight arrives: an empty tile shows it, and after its round tile 0 moves on to nothing else (stays).
+    rotation = [h('a'), h('b'), h('c')];
+    await act(async () => void (await vi.advanceTimersByTimeAsync(60_000)));
+    expect(ids(result.current)).toEqual(['a', 'b', 'c', null, null]);
   });
 
-  it('hides a failing highlight, plays others, and only retries after a pause', async () => {
+  it('lets another highlight take over from a failing one, and keeps the still when there is none', async () => {
     rotation = [h('a', 4), h('b', 3)];
     const { result } = renderHook(() => useHighlightRotation(false));
     await flush();
@@ -96,13 +101,13 @@ describe('highlight rotation', () => {
     act(() => result.current.fail(0));
     await flush();
     expect(ids(result.current)).toEqual(['b']);
+    // 'a' is skipped for ten minutes, so 'b' stays even though it fails too.
     act(() => result.current.fail(0));
     await flush();
-    expect(ids(result.current)).toEqual([null]);
-    await act(async () => void (await vi.advanceTimersByTimeAsync(5 * 60_000)));
-    expect(ids(result.current)).toEqual([null]);
-    await act(async () => void (await vi.advanceTimersByTimeAsync(6 * 60_000)));
-    expect(ids(result.current)[0]).not.toBeNull();
+    expect(ids(result.current)).toEqual(['b']);
+    await act(async () => void (await vi.advanceTimersByTimeAsync(11 * 60_000)));
+    act(() => result.current.next(0));
+    expect(ids(result.current)).toEqual(['a']);
   });
 
   it('puts five highlights in a column beside the cameras, fewer in a row on a phone', () => {
