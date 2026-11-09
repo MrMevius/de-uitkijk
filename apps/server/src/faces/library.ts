@@ -61,7 +61,8 @@ export class FaceLibrary {
 
   async refresh(): Promise<void> {
     try {
-      const res = await this.fetch(`${this.url}/api/faces`, { signal: AbortSignal.timeout(15_000) });
+      // Frigate's nginx caches /api/faces for up to a minute; a list right after a change must be current.
+      const res = await this.fetch(`${this.url}/api/faces`, { headers: { 'x-cache-bypass': '1' }, signal: AbortSignal.timeout(15_000) });
       if (!res.ok) throw new Error(`Frigate /api/faces HTTP ${res.status}`);
       const body = (await res.json()) as Record<string, string[]>;
       this.names = Object.keys(body)
