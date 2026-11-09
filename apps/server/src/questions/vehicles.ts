@@ -16,6 +16,7 @@ export const normalizeVehicle = (v: string) => v.toLowerCase().replace(/[^a-z0-9
 export function askableVehicle(description: string): boolean {
   if (/\b(step|skateboard|stoep|kinderwagen|rolstoel)\w*/i.test(description)) return false;
   // The AI sometimes says itself that it cannot tell the vehicle apart ("merk en model niet duidelijk herkenbaar").
-  if (/niet (goed |duidelijk )?(herkenbaar|te herkennen|zichtbaar)|onherkenbaar|onduidelijk/i.test(description)) return false;
+  // A plate that is not legible is fine when make and model are known ("grijze Volvo V60, kenteken niet leesbaar").
+  if (/(merk|model)[^,.;]*\bniet\b|niet (goed |duidelijk )?(herkenbaar|te herkennen)|onherkenbaar|onduidelijk/i.test(description)) return false;
   return normalizeVehicle(description).split(' ').length >= 2;
 }

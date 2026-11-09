@@ -11,6 +11,7 @@ import { HighlightStore, type CandidateRecord } from '../src/highlights/store.ts
 import { StateHub } from '../src/hub.ts';
 import { OPEN_LIMITS, QuestionGenerator } from '../src/questions/generator.ts';
 import { applyPersonAnswer, parsePersonAnswer } from '../src/questions/routes.ts';
+import { askableVehicle } from '../src/questions/vehicles.ts';
 import { QuestionStore } from '../src/questions/store.ts';
 
 const cameras = parseCameraConfig(
@@ -285,6 +286,8 @@ describe('learning from answers (0.13)', () => {
     t.questions.add({ kind: 'vehicle', key: 'vehicle:x', highlightId: null, title: 'Van wie is deze auto?', body: 'x', data: { vehicle: 'grijze hatchback, merk en model niet duidelijk herkenbaar' } }, NOW);
     t.generator().runOnce();
     expect(t.questions.list('open').some((q) => q.key === 'vehicle:x')).toBe(false);
+    expect(askableVehicle('Blauwe compacte MPV, merk en model niet leesbaar')).toBe(false);
+    expect(askableVehicle('grijze Volvo V60, kenteken niet leesbaar')).toBe(true);
   });
 
   it('annotates, describes again, queues a fact and teaches Frigate the face of a named resident or visitor', () => {
