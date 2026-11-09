@@ -91,6 +91,13 @@ export function buildBaseline(items: Pick<ReviewItem, 'camera' | 'startTime'>[],
  * Rule-based interest score. No fixed camera weighting: rarity is relative to each camera's own
  * activity at that hour, so a busy garden by day scores low and the same garden at night scores high.
  */
+/** Frigate label, score bonus and reason for vehicles. */
+export const VEHICLE_WEIGHTS: [string, number, string][] = [
+  ['car', 0.5, 'auto'],
+  ['motorcycle', 0.75, 'motor'],
+  ['bicycle', 0.75, 'fiets'],
+];
+
 export function scoreGroup(
   items: ReviewItem[],
   baseline: Baseline,
@@ -109,10 +116,17 @@ export function scoreGroup(
     score += 1.5;
     reasons.push("'s nachts");
   }
+  // Since 0.20.0 Frigate tracks vehicles itself: cars are common (also passing ones), two-wheelers on the
+  // property are rarer, and someone at a vehicle (arriving, leaving, loading) is the interesting part.
   const objects = new Set(items.flatMap((i) => i.objects));
-  if (objects.has('car')) {
-    score += 1;
-    reasons.push('auto');
+  const vehicle = VEHICLE_WEIGHTS.filter(([label]) => objects.has(label));
+  if (vehicle.length) {
+    score += Math.max(...vehicle.map(([, w]) => w));
+    reasons.push(vehicle.map(([, , name]) => name).join(', '));
+    if (objects.has('person')) {
+      score += 0.25;
+      reasons.push('persoon bij voertuig');
+    }
   }
   const cameras = new Set(items.map((i) => i.camera));
   if (cameras.size > 1) {

@@ -34,6 +34,13 @@ describe('AI answer handling', () => {
     expect(parseVerdict('{"description":"x","real_event":true,"person_marker":true}').personMarker).toBe(true);
   });
 
+  it('treats parked vehicles without activity as noise and passes plates Frigate read (0.20.0)', () => {
+    const prompt = buildPrompt({ cameraName: 'Achter', time: 't', objects: ['car'], plates: ['XX123Y'] });
+    expect(prompt).toContain('alleen geparkeerde voertuigen staan zonder dat er iemand bij is');
+    expect(prompt).toContain("Frigate's kentekenherkenning las: XX123Y");
+    expect(buildPrompt({ cameraName: 'Achter', time: 't', objects: ['car'] })).not.toContain('kentekenherkenning');
+  });
+
   it('accepts only the expected shape and flattens the text', () => {
     expect(parseVerdict('{"description":"Bezorger\\nlegt <b>pakket</b> neer","real_event":true}')).toEqual({
       description: 'Bezorger legt b pakket /b neer',

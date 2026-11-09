@@ -95,6 +95,30 @@ export function registerQuestions(app: FastifyInstance, options: QuestionRouteOp
     return reply.header('content-type', 'image/webp').header('cache-control', 'private, max-age=3600').send(Buffer.from(image));
   });
 
+  // The face library itself (since 0.20.0): administrators remove images of the wrong person.
+  app.get('/api/admin/faces/library', async (_request, reply) => {
+    if (!faces) return reply.code(404).send({ error: 'Gezichtsherkenning is niet beschikbaar' });
+    await faces.refresh().catch(() => undefined);
+    return { available: faces.ready, people: faces.ready ? faces.libraryImages() : [] };
+  });
+
+  app.get<{ Params: { name: string; file: string } }>('/api/admin/faces/library/:name/:file', async (request, reply) => {
+    const image = await faces?.libraryImage(request.params.name, request.params.file).catch(() => undefined);
+    if (!image) return reply.code(404).send({ error: 'Niet gevonden' });
+    return reply.header('content-type', 'image/webp').header('cache-control', 'private, max-age=86400').send(Buffer.from(image));
+  });
+
+  app.post<{ Params: { name: string }; Body: { files?: unknown } }>('/api/admin/faces/library/:name/delete', async (request, reply) => {
+    const files = Array.isArray(request.body?.files) ? request.body.files.filter((f): f is string => typeof f === 'string').slice(0, 200) : [];
+    if (!faces || !files.length) return reply.code(400).send({ error: "Kies een of meer foto's" });
+    try {
+      return { deleted: await faces.deleteImages(request.params.name, files) };
+    } catch (err) {
+      request.log.warn(`faces: delete for ${request.params.name}: ${(err as Error).message}`);
+      return reply.code(502).send({ error: "Frigate kon de foto's niet verwijderen" });
+    }
+  });
+
   app.get('/api/admin/questions/count', async () => ({ open: questions.list('open', 1000).length }));
 
   app.post<{ Params: { id: string }; Body: Record<string, unknown> }>('/api/admin/questions/:id/answer', async (request, reply) => {

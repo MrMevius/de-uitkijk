@@ -138,6 +138,7 @@ export class AiWorker {
         recognized: next.subLabels,
         facts: this.opts.facts(),
         ...(next.annotation ? { annotation: next.annotation } : {}),
+        ...(next.plates.length ? { plates: next.plates } : {}),
       });
       this.store.setAiResult(
         next.id,

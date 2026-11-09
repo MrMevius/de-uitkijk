@@ -20,6 +20,7 @@ import { QuestionStore } from './questions/store.ts';
 import { loadConfig } from './config.ts';
 import { frigateFetch, readFrigateAuth } from './frigate/client.ts';
 import { FrigateSource } from './frigate/frigate-source.ts';
+import { FrigatePush } from './frigate/push.ts';
 import { StateHub } from './hub.ts';
 import { MockSource } from './mock/mock-source.ts';
 import { StreamingProbe } from './streaming-probe.ts';
@@ -191,6 +192,20 @@ const frigate = config.frigate
     })
   : undefined;
 frigate?.start();
+// Frigate pushes object and review changes over its websocket: poll at once instead of within pollMs (since 0.20.0).
+const frigatePush =
+  frigate && config.frigate
+    ? new FrigatePush({
+        url: config.frigate.url,
+        ...(frigateHttp?.session ? { session: frigateHttp.session } : {}),
+        ...(frigateAuth ? { certificate: frigateAuth.certificate } : {}),
+        onTopic: (topic) => {
+          if (topic === 'reviews' || topic === 'events') frigate.wake();
+        },
+        log: (msg) => app.log.warn(msg),
+      })
+    : undefined;
+frigatePush?.start();
 
 const probe = config.go2rtcUrl
   ? new StreamingProbe(hub, config.go2rtcUrl, { suppressed: () => mock?.streamingSimulated ?? false })
@@ -205,6 +220,7 @@ app.log.info(
 const shutdown = async () => {
   mock?.stop();
   frigate?.stop();
+  frigatePush?.stop();
   probe?.stop();
   importer?.stop();
   questionGenerator?.stop();

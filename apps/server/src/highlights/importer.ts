@@ -38,7 +38,15 @@ interface FrigateReview {
 interface FrigateEvent {
   id: string;
   top_score?: number | null;
-  data?: { top_score?: number | null };
+  /** For a vehicle with a known plate (`lpr.known_plates`): its name. */
+  sub_label?: string | [string, number] | null;
+  data?: { top_score?: number | null; recognized_license_plate?: string | null };
+}
+
+/** Plates Frigate's LPR read on these detections, upper case without spaces or dashes, deduplicated. */
+export function platesOf(events: FrigateEvent[]): string[] {
+  const plates = events.map((e) => (e.data?.recognized_license_plate ?? '').toUpperCase().replace(/[^A-Z0-9]/g, ''));
+  return [...new Set(plates.filter((p) => p.length >= 4))];
 }
 
 const AMSTERDAM_HOUR = new Intl.DateTimeFormat('en-GB', { hour: 'numeric', hourCycle: 'h23', timeZone: 'Europe/Amsterdam' });
@@ -222,6 +230,7 @@ export class HighlightImporter {
       eventEnd: Math.min(groupEnd + 5, rep.startTime + 600),
       labels: [...new Set(items.flatMap((i) => i.objects))],
       subLabels: [...new Set(items.flatMap((i) => i.subLabels))],
+      plates: platesOf(events),
       score: scored.score,
       reasons: scored.reasons,
       description: describe(items, (f) => this.byFrigate.get(f)?.name ?? f),

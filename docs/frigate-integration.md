@@ -13,7 +13,7 @@ Findings from read-only inspection of the production Frigate instance (version s
 | Detection | Detect role on the substream at 640x360, 5 fps. | `/api/config` |
 | Alert rules | `review.alerts.labels = [person, car]`, per-camera `required_zones`, `cutoff_time = 40` s. | `/api/config` |
 | MQTT | Disabled. | `/api/config` |
-| WebSocket `/ws` | Works without MQTT; delivered `<camera>/status/detect` and `/status/record` messages in a 25 s sample (no `reviews` messages occurred during the sample). | Live probe |
+| WebSocket `/ws` | Works without MQTT; delivered `<camera>/status/detect` and `/status/record` messages in a 25 s sample (no `reviews` messages occurred during the sample). On 2026-11-09 a 90 s sample also delivered `events` (every tracked-object change, with `before`/`after`), `<camera>/<label>/active` and `stats`, as text frames `{"topic", "payload"}`. | Live probe |
 | Camera health | `GET /api/stats` → `cameras.<name>.camera_fps`. | Live API |
 
 ## Deriving active alerts
@@ -30,7 +30,7 @@ De Uitkijk therefore polls
 GET /api/review?severity=alert&cameras=<configured>&after=<now-120s>&limit=100
 ```
 
-every 2 s (configurable, minimum 1 s) and treats every returned item with `end_time = null` as an active alert. The 15 s focus hold starts when De Uitkijk **observes** the segment closing. Using Frigate's retroactive `end_time` would end the hold almost immediately, because that timestamp is already about 40 s in the past.
+every 2 s (configurable, minimum 1 s) and treats every returned item with `end_time = null` as an active alert. Since 0.20.0 the backend also keeps Frigate's websocket `/ws` open (same session cookie and pinned certificate as the API) and polls at once on every `events` or `reviews` message, at most every 500 ms: the push is only a wake-up signal, polling stays the source of truth, and without the websocket (reconnecting with backoff up to 60 s; logged after three failures) everything works as before. The 15 s focus hold starts when De Uitkijk **observes** the segment closing. Using Frigate's retroactive `end_time` would end the hold almost immediately, because that timestamp is already about 40 s in the past.
 
 Consequence: after the last person or car leaves a zone, focus lasts roughly `cutoff_time` (40 s, Frigate setting) + poll delay (≤ 2 s) + hold (15 s). Shortening this means lowering Frigate's `review.alerts.cutoff_time`. That is a production change outside this increment.
 
@@ -47,5 +47,4 @@ Since 2026-11-08, production uses the authenticated API on port 8971 with the de
 ## Open points
 
 - Measure real alert-to-focus latency (Frigate detection delay + poll interval).
-- Evaluate the `/ws` `reviews` topic as a push source once a real alert can be observed. Keep polling as fallback.
 - Highlights (later) will need `/api/review` with `detection` severity, `/api/events`, snapshots and clip export. Their semantics must be verified the same way before use.

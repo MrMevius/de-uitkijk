@@ -31,6 +31,8 @@ export interface AiContext {
   facts?: string[];
   /** An administrator's answer about who or what this highlight shows, e.g. "Tineke Mevius (bewoner)". */
   annotation?: string;
+  /** Number plates Frigate's LPR read in this event, e.g. ["XX123Y"]. */
+  plates?: string[];
 }
 
 /** Runs one description; implementations must never throw for "no answer", only for real errors. */
@@ -65,6 +67,11 @@ export function buildPrompt(context: AiContext): string {
     `Camera: ${context.cameraName}. Tijd: ${context.time}. Frigate detecteerde: ${context.objects.join(', ') || 'beweging'}.`,
   ];
   if (context.recognized?.length) lines.push(`Frigate's gezichtsherkenning herkende: ${context.recognized.join(', ')}.`);
+  if (context.plates?.length) {
+    lines.push(
+      `Frigate's kentekenherkenning las: ${context.plates.join(', ')} (zonder streepjes). Neem het kenteken op in de omschrijving van het voertuig waar het bij hoort, met streepjes als die duidelijk zijn, en vergelijk het met de kentekens in de bekende feiten.`,
+    );
+  }
   if (context.annotation) {
     lines.push(
       `Een bewoner heeft dit beeld bekeken en gaf aan wie of wat het is (betrouwbaar): ${context.annotation}.`,
@@ -82,7 +89,7 @@ export function buildPrompt(context: AiContext): string {
     'Gebruik bij namen alleen de voornaam. Klopt een voertuig met een feit, noem dan de eigenaar: rijdt of fietst iemand op een bekende fiets of scooter, dan "Jasper fietst weg"; bij een bekende auto "De auto van Mark rijdt de oprit op". Herkent de gezichtsherkenning iemand anders dan de eigenaar, volg dan de gezichtsherkenning.',
     'Geef:',
     '- description: één korte, feitelijke Nederlandse zin (maximaal 90 tekens) over wat er gebeurt, zonder de camera of de tijd te noemen.',
-    '- real_event: true als er echt iets gebeurt (een persoon, voertuig of dier); false als het ruis lijkt (schaduw, licht, regen, insect, leeg beeld).',
+    '- real_event: true als er echt iets gebeurt: een persoon, een dier, of een voertuig dat rijdt, net aankomt of vertrekt, of waar iemand bij is. false als het ruis lijkt (schaduw, licht, regen, insect, leeg beeld), en ook als er alleen geparkeerde voertuigen staan zonder dat er iemand bij is of iets gebeurt.',
     '- vehicle: als er een voertuig (auto, bestelbus, vrachtwagen, motor, scooter of fiets) duidelijk en dichtbij in beeld is en de gebeurtenis erom draait (iemand rijdt of fietst erop, stapt in of uit, of zet hem neer): een exacte omschrijving waaraan het later te herkennen is. Bij een motorvoertuig kleur, merk, model en het kenteken alleen als het volledig leesbaar is, bijvoorbeeld "zwarte Volkswagen up!, kenteken XX-123-Y". Bij een fiets of scooter het soort (fiets, e-bike, bakfiets, mountainbike, scooter), de kleur, het merk als het leesbaar is en opvallende vaste onderdelen (kinderzitje, fietstassen, krat), bijvoorbeeld "zwarte Gazelle e-bike met fietstassen". Alleen "een fiets" is te vaag: geef dan een lege tekst. Steps en skateboards tellen niet mee. Anders een lege tekst. Bij meerdere voertuigen het voertuig waar de gebeurtenis om draait.',
     '- vehicle_known: true als dat voertuig overeenkomt met een van de bekende feiten; anders false.',
     '- vehicles: alle voertuigen (auto, bestelbus, motor, scooter, fiets) die duidelijk genoeg in beeld zijn om later te herkennen, ook geparkeerde, maximaal 4: elk met description (exacte omschrijving zoals bij vehicle) en known (true als het overeenkomt met een bekend feit). Te ver weg, half verborgen of te vaag om te herkennen: weglaten. Geen voertuigen: een lege lijst.',

@@ -45,6 +45,9 @@ export class FrigateSource {
   private failures = 0;
   private polls = 0;
   private stopped = false;
+  private running = false;
+  private wakePending = false;
+  private lastWake = 0;
 
   constructor(hub: StateHub, cameras: Camera[], options: FrigateSourceOptions) {
     this.hub = hub;
@@ -68,8 +71,27 @@ export class FrigateSource {
     clearTimeout(this.timer);
   }
 
+  /**
+   * Polls right away because Frigate pushed a change (websocket, since 0.20.0): at most every 500 ms, and once
+   * more straight after a poll that is running now.
+   */
+  wake(): void {
+    if (this.stopped) return;
+    if (this.running) {
+      this.wakePending = true;
+      return;
+    }
+    if (Date.now() - this.lastWake < 500) return;
+    this.lastWake = Date.now();
+    clearTimeout(this.timer);
+    void this.tick();
+  }
+
   /** One poll cycle. Exposed for tests. */
   async tick(): Promise<void> {
+    if (this.running) return;
+    this.running = true;
+    this.wakePending = false;
     let delay = this.opts.pollMs;
     try {
       if (this.polls % DISCOVERY_EVERY_N_POLLS === 0) await this.discover();
@@ -89,6 +111,9 @@ export class FrigateSource {
       }
       delay = Math.max(this.opts.pollMs, backoffDelay(this.failures - 1, { baseMs: this.opts.pollMs, maxMs: 30_000 }));
     }
+    this.running = false;
+    if (this.wakePending && this.failures === 0) delay = Math.min(delay, 500);
+    clearTimeout(this.timer);
     if (!this.stopped) this.timer = setTimeout(() => void this.tick(), delay);
   }
 

@@ -1,6 +1,8 @@
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AdminPage } from '../src/admin/AdminPage.tsx';
+import { FacesTab } from '../src/admin/FacesTab.tsx';
+import { fireEvent } from '@testing-library/react';
 
 afterEach(() => {
   cleanup();
@@ -45,7 +47,7 @@ describe('admin page', () => {
   it('shows all tabs to administrators, starting with the overview', async () => {
     stubApi('admin');
     render(<AdminPage />);
-    await waitFor(() => expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Overzicht', 'Vragen2', 'Gebruikers', 'Highlights', 'AI', 'Mijn account']));
+    await waitFor(() => expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Overzicht', 'Vragen2', 'Gebruikers', 'Highlights', 'AI', 'Gezichten', 'Mijn account']));
     expect(await screen.findByText(/De Uitkijk 0\.9\.0/)).toBeTruthy();
     expect(screen.getByText(/geen beeld/)).toBeTruthy();
     expect(screen.getByText(/7 in 24 uur/)).toBeTruthy();
@@ -80,5 +82,28 @@ describe('admin page', () => {
     await waitFor(() => expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Highlights', 'Mijn account']));
     await waitFor(() => expect(screen.getByRole('tab', { name: 'Highlights' }).getAttribute('aria-selected')).toBe('true'));
     expect(screen.queryByText('Gebruiker toevoegen')).toBeNull();
+  });
+});
+
+describe('face library tab', () => {
+  it('removes the photos an administrator picked', async () => {
+    const posts: { url: string; body: string }[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (init?.method === 'POST') return (posts.push({ url, body: String(init.body) }), new Response('{"deleted":1}', { status: 200 }));
+        return new Response(
+          JSON.stringify({ available: true, people: [{ name: 'Tineke Mevius', images: [{ file: 'a.webp', time: 1794244419 }, { file: 'b.webp', time: null }] }] }),
+          { status: 200 },
+        );
+      }),
+    );
+    render(<FacesTab />);
+    fireEvent.click(await screen.findByText("Foto's bekijken"));
+    const photos = screen.getAllByRole('button', { pressed: false }).filter((b) => b.className.includes('ui-face'));
+    expect(photos).toHaveLength(2);
+    fireEvent.click(photos[1]!);
+    fireEvent.click(screen.getByText('1 foto verwijderen'));
+    await waitFor(() => expect(posts).toEqual([{ url: '/api/admin/faces/library/Tineke%20Mevius/delete', body: JSON.stringify({ files: ['b.webp'] }) }]));
   });
 });

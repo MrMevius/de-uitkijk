@@ -23,6 +23,8 @@ export interface CandidateRecord {
   eventEnd: number;
   labels: string[];
   subLabels: string[];
+  /** Number plates Frigate's LPR read on the group's vehicles (since 0.20.0). */
+  plates?: string[];
   score: number;
   reasons: string[];
   description: string;
@@ -65,6 +67,7 @@ interface Row {
   ai_person_marker: number | null;
   ai_redo: number;
   ai_vehicles: string | null;
+  plates: string | null;
 }
 
 export interface StoredCandidate extends CandidateRecord {
@@ -96,10 +99,11 @@ export interface StoredCandidate extends CandidateRecord {
   aiPersonMarker: boolean | null;
   /** Waiting for a new AI description after an administrator's answer. */
   aiRedo: boolean;
+  plates: string[];
 }
 
 const COLUMNS =
-  'id, start_time, end_time, cameras, camera, frigate_camera, rep_event, clip_start, clip_end, event_start, event_end, labels, sub_labels, score, reasons, description, selected, feedback, deleted, thumbnail IS NOT NULL AS has_thumbnail, ai_description, ai_real, ai_status, ai_attempts, base_score, feedback_adj, frame_time, ai_vehicle, ai_vehicle_known, annotation, detections, annotation_known, known_factor, ai_person_marker, ai_redo, ai_vehicles';
+  'id, start_time, end_time, cameras, camera, frigate_camera, rep_event, clip_start, clip_end, event_start, event_end, labels, sub_labels, score, reasons, description, selected, feedback, deleted, thumbnail IS NOT NULL AS has_thumbnail, ai_description, ai_real, ai_status, ai_attempts, base_score, feedback_adj, frame_time, ai_vehicle, ai_vehicle_known, annotation, detections, annotation_known, known_factor, ai_person_marker, ai_redo, ai_vehicles, plates';
 
 const fromRow = (r: Row): StoredCandidate => ({
   id: r.id,
@@ -138,6 +142,7 @@ const fromRow = (r: Row): StoredCandidate => ({
   knownFactor: Number(r.known_factor ?? 1),
   aiPersonMarker: r.ai_person_marker === null ? null : r.ai_person_marker === 1,
   aiRedo: r.ai_redo === 1,
+  plates: r.plates ? (JSON.parse(r.plates) as string[]) : [],
 });
 
 export const toSummary = (c: StoredCandidate): HighlightSummary => ({
@@ -238,6 +243,8 @@ export class HighlightStore {
       ['ai_redo', 'INTEGER NOT NULL DEFAULT 0'],
       // Added in 0.18.0 (all clearly visible vehicles, also parked ones, for "whose car" questions).
       ['ai_vehicles', 'TEXT'],
+      // Added in 0.20.0 (number plates from Frigate's LPR).
+      ['plates', 'TEXT'],
     ] as const) {
       if (!columns.has(name)) this.db.exec(`ALTER TABLE candidates ADD COLUMN ${name} ${type}`);
     }
@@ -287,13 +294,14 @@ export class HighlightStore {
       this.db
         .prepare(
           `INSERT INTO candidates (id, start_time, end_time, cameras, camera, frigate_camera, rep_event, clip_start, clip_end,
-             event_start, event_end, labels, sub_labels, score, reasons, description, base_score, frame_time, detections)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             event_start, event_end, labels, sub_labels, score, reasons, description, base_score, frame_time, detections, plates)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           c.id, c.startTime, c.endTime, JSON.stringify(c.cameras), c.camera, c.frigateCamera, c.repEvent, c.clipStart,
           c.clipEnd, c.eventStart, c.eventEnd, JSON.stringify(c.labels), JSON.stringify(c.subLabels), c.score,
           JSON.stringify(c.reasons), c.description, c.score, c.frameTime ?? null, c.detections ? JSON.stringify(c.detections) : null,
+          c.plates?.length ? JSON.stringify(c.plates) : null,
         );
       const mark = this.db.prepare('INSERT OR IGNORE INTO processed_reviews (review_id, candidate_id) VALUES (?, ?)');
       for (const id of reviewIds) mark.run(id, c.id);

@@ -23,10 +23,13 @@ browser ──► /api/highlights/:id/clip.mp4 ──► clip cache (bounded, te
   | --- | --- |
   | Rarity | `3 × 1 / (1 + alerts per day on this camera in this hour over the last 7 days)`, so a busy garden by day scores low and the same garden at night high. |
   | Night (23:00–06:00) | +1.5 |
-  | Car | +1 |
+  | Vehicle (since 0.20.0; before: car +1) | car +0.5, motorcycle or bicycle +0.75 (the highest counts once); someone at the vehicle (person in the same group) another +0.25 |
   | Several cameras | +0.75 per extra camera (max +1.5) |
   | Recognised person (Frigate sub label, e.g. face recognition) | × 0.4 |
   | Known from an answer or a fact (since 0.13.0): an administrator named a resident, visitor or vehicle owner, or the AI matched the vehicle to a household fact | × 0.4 (not on top of a recognised face) |
+
+  Since 2026-11-09 Frigate tracks cars, bicycles, motorcycles, dogs and cats itself, and vehicles are alerts too; cars are common (also passing ones), so their weight went down. Parked cars that flicker in and out of detection are masked in Frigate (homelab `operations/server502-production.md`), and the AI calls parked vehicles without activity noise (see [ai.md](ai.md)). Review the weights after a few weeks of vehicle alerts.
+- **Plates (since 0.20.0).** Plates Frigate's LPR read on the group's detections (`recognized_license_plate`) are stored with the candidate, passed to the AI and shown in "whose vehicle" questions.
 
 - **Selection (HL-4).** A highlight needs a score of at least the threshold: 2.0 by default, adjustable by administrators since 0.15.0 (Beheer → Overzicht → Highlights, 1.0–5.0 in steps of 0.1, with a preview of how many highlights a value gives over the last 24 hours and the last week). The importer applies a new value to the last two days within a minute; borderline questions follow it (threshold to threshold + 0.6). Within 30 minutes on the same camera, only the best one is kept (no series of near-identical clips). The dashboard rotates the best 15 of the last 24 hours. Tuned on seven days of real alerts (2026-11-01..08, 758 alerts): 6–14 highlights per day. On 2026-11-08, 149 candidates from 24 hours produced 17 highlights.
 - **Clip (HL-5).** From 2 s before the representative alert to 2 s after it, at least 5 s and at most 30 s. A clip is available about 1–2 minutes after the event ends.

@@ -1239,6 +1239,37 @@ body,
   background: #000;
 }
 
+/* Face library: pick photos to remove */
+.ui-faces--pick {
+  gap: 0.4rem;
+  margin: 0.5rem 0 0.75rem;
+}
+
+.ui-face {
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: var(--ui-radius-sm);
+  background: none;
+  cursor: pointer;
+  line-height: 0;
+}
+
+.ui-face img {
+  width: 5rem;
+  height: 5rem;
+  object-fit: cover;
+  border-radius: var(--ui-radius-sm);
+  background: #000;
+}
+
+.ui-face--picked {
+  border-color: var(--ui-bad, #d64545);
+}
+
+.ui-face--picked img {
+  opacity: 0.55;
+}
+
 @media (max-width: 44rem) {
   .ui-question {
     grid-template-columns: 1fr;

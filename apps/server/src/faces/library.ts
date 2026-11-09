@@ -49,6 +49,7 @@ export class FaceLibrary {
   private readonly fetch: typeof fetch;
   private names: string[] = [];
   private attempts: FaceAttempt[] = [];
+  private library = new Map<string, string[]>();
   /** False until the library was read once; callers must not draw conclusions from an empty cache. */
   ready = false;
   lastError: string | null = null;
@@ -66,6 +67,7 @@ export class FaceLibrary {
       this.names = Object.keys(body)
         .filter((n) => n !== 'train')
         .sort();
+      this.library = new Map(this.names.map((n) => [n, body[n] ?? []]));
       this.attempts = (body.train ?? []).map(parseAttempt).filter((a): a is FaceAttempt => a !== null);
       this.ready = true;
       this.lastError = null;
@@ -100,6 +102,47 @@ export class FaceLibrary {
     await res.body?.cancel();
     this.attempts = this.attempts.filter((a) => a.file !== file);
     if (!this.names.includes(name)) this.names = [...this.names, name].sort();
+  }
+
+  /** The images per person in the library, newest first (the time is part of Frigate's file name). */
+  libraryImages(): { name: string; images: { file: string; time: number | null }[] }[] {
+    return this.names.map((name) => ({
+      name,
+      images: (this.library.get(name) ?? [])
+        .map((file) => ({ file, time: libraryTime(name, file) ?? null }))
+        .sort((a, b) => (b.time ?? 0) - (a.time ?? 0)),
+    }));
+  }
+
+  /** One library image (WebP), only for a known name and a file of that person. */
+  async libraryImage(name: string, file: string): Promise<Uint8Array | undefined> {
+    if (!this.isLibraryFile(name, file)) return undefined;
+    const res = await this.fetch(`${this.url}/clips/faces/${encodeURIComponent(name)}/${encodeURIComponent(file)}`, { signal: AbortSignal.timeout(15_000) });
+    if (!res.ok) return (await res.body?.cancel(), undefined);
+    return new Uint8Array(await res.arrayBuffer());
+  }
+
+  /** Removes images from a person's library, e.g. a face that is somebody else (since 0.20.0). */
+  async deleteImages(name: string, files: string[]): Promise<number> {
+    const valid = files.filter((f) => this.isLibraryFile(name, f));
+    if (!valid.length) return 0;
+    const res = await this.fetch(`${this.url}/api/faces/${encodeURIComponent(name)}/delete`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-csrf-token': '1' },
+      body: JSON.stringify({ ids: valid }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) {
+      const text = (await res.text().catch(() => '')).slice(0, 200);
+      throw new Error(`Frigate face deletion HTTP ${res.status}${text ? `: ${text}` : ''}`);
+    }
+    await res.body?.cancel();
+    this.library.set(name, (this.library.get(name) ?? []).filter((f) => !valid.includes(f)));
+    return valid.length;
+  }
+
+  private isLibraryFile(name: string, file: string): boolean {
+    return (this.library.get(name) ?? []).includes(file) && libraryTime(name, file) !== undefined;
   }
 
   /**
@@ -153,4 +196,14 @@ export class FaceLibrary {
     }
     return new Uint8Array(await res.arrayBuffer());
   }
+}
+
+/**
+ * Seconds since epoch from a library file name ("Tineke Mevius-1771419626.643532.webp"; "_" for images registered
+ * through the API); null when the name has no time; undefined when the file is not one of this person's images.
+ */
+export function libraryTime(name: string, file: string): number | null | undefined {
+  if (!file.startsWith(name) || !file.endsWith('.webp') || /[/\\]|\.\./.test(file)) return undefined;
+  const m = /^[-_](\d+(?:\.\d+)?)\.webp$/.exec(file.slice(name.length));
+  return m ? Number(m[1]) : null;
 }

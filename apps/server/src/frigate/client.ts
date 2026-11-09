@@ -66,7 +66,7 @@ function pinnedFetch(certificate: string): Fetch {
  * logs in to the authenticated API as a viewer, sends the session cookie, pins Frigate's certificate and logs
  * in again once when Frigate answers 401 (expired session).
  */
-export function frigateFetch(baseUrl: string, auth: FrigateAuth | undefined): Fetch {
+export function frigateFetch(baseUrl: string, auth: FrigateAuth | undefined): FrigateFetch {
   if (!auth) return globalThis.fetch;
   const base = baseUrl.replace(/\/$/, '');
   const raw = pinnedFetch(auth.certificate);
@@ -87,7 +87,7 @@ export function frigateFetch(baseUrl: string, auth: FrigateAuth | undefined): Fe
       return `frigate_token=${token}`;
     })().finally(() => (login = undefined)));
 
-  return (async (input: string | URL, init: RequestInit = {}) => {
+  const fetchFn = (async (input: string | URL, init: RequestInit = {}) => {
     const url = String(input);
     if (!url.startsWith(`${base}/`)) throw new Error('frigateFetch only serves the Frigate base URL');
     const send = (c: string) => raw(url, { ...init, headers: { ...Object.fromEntries(new Headers(init.headers)), cookie: c } });
@@ -99,5 +99,11 @@ export function frigateFetch(baseUrl: string, auth: FrigateAuth | undefined): Fe
       res = await send(cookie);
     }
     return res;
-  }) as Fetch;
+  }) as FrigateFetch;
+  // The same session for Frigate's websocket (push, since 0.20.0); `renew` after a refused upgrade.
+  fetchFn.session = async (renew = false) => (renew || !cookie ? (cookie = await signIn()) : cookie);
+  return fetchFn;
 }
+
+/** `fetch` for Frigate plus its session cookie when it uses the authenticated API. */
+export type FrigateFetch = Fetch & { session?: (renew?: boolean) => Promise<string> };

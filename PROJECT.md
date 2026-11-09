@@ -63,6 +63,6 @@ The complete agreed scope is in [docs/requirements.md](docs/requirements.md).
 | Camera account | Operator decision (2026-11-08): go2rtc uses the existing camera administrator account. Accepted trade-off: the credential stays server-side (`.env`, mode 600, go2rtc only). | None. |
 | Frigate alert timing | Frigate keeps alerts open for `cutoff_time` (40 s) after activity; focus lasts about 40 s + 15 s. | Decide whether that is acceptable or adjust Frigate (production change). |
 | Frigate API authentication | Done 2026-11-08: authenticated API with a dedicated viewer account and a pinned certificate. Port 5000 stays open for other consumers. | Optionally close port 5000 once monitoring uses authentication too. |
-| Frigate push events | Could lower alert latency below the 2 s poll. | Verify the `/ws` `reviews` topic with a real alert. |
+| Frigate push events | Done in 0.20.0: Frigate's websocket wakes the poll at once; polling remains the fallback. | Measure alert-to-focus latency on the TV client. |
 | Highlight tuning | Since 0.7.0 feedback adjusts scores per camera and time-of-day period ([docs/highlights.md](docs/highlights.md#learning-from-feedback-since-070)). | Review the effect after a few weeks of feedback. |
 | AI provider | Codex with ChatGPT sign-in is in use; Claude needs Max/Ultra/Team for the permitted API-credit route. | Revisit Claude when the plan changes. |

@@ -9,7 +9,7 @@ import { buildApp } from '../src/app.ts';
 import { AuthStore } from '../src/auth/store.ts';
 import { hashPassword } from '../src/auth/passwords.ts';
 import { ClipCache } from '../src/highlights/clips.ts';
-import { describe as describeGroup, HighlightImporter, hourInAmsterdam } from '../src/highlights/importer.ts';
+import { describe as describeGroup, HighlightImporter, hourInAmsterdam, platesOf } from '../src/highlights/importer.ts';
 import { buildBaseline, groupItems, scoreGroup, selectHighlights, type ReviewItem } from '../src/highlights/selection.ts';
 import { HighlightStore, toSummary } from '../src/highlights/store.ts';
 import { StateHub } from '../src/hub.ts';
@@ -61,10 +61,25 @@ describe('selection', () => {
     expect(garden.score).toBeLessThan(2);
     expect(night.score).toBe(4.5);
     expect(night.reasons).toContain("'s nachts");
-    expect(car.score).toBe(4);
+    expect(car.score).toBe(3.5);
+    // Two-wheelers weigh more than cars; someone at a vehicle a little more again (0.20.0).
+    const bike = scoreGroup([item('f', OPRIT, at(14), at(14) + 20, { objects: ['bicycle', 'person'] })], baseline, hourInAmsterdam);
+    expect(bike.score).toBe(4);
+    expect(bike.reasons).toEqual(expect.arrayContaining(['fiets', 'persoon bij voertuig']));
     expect(two.score).toBe(3.75);
     expect(known.score).toBe(1.2);
     expect(known.reasons).toContain('bekende persoon');
+  });
+
+  it('collects the plates Frigate read, in one spelling', () => {
+    expect(
+      platesOf([
+        { id: 'a', data: { recognized_license_plate: 'xx-123-y' } },
+        { id: 'b', data: { recognized_license_plate: 'XX 123 Y' } },
+        { id: 'c', data: { recognized_license_plate: 'AB' } },
+        { id: 'd', data: {} },
+      ]),
+    ).toEqual(['XX123Y']);
   });
 
   it('keeps only the best highlight per camera within 30 minutes and never adds filler', () => {

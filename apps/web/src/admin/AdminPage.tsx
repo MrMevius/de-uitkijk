@@ -3,6 +3,7 @@ import { api, ApiError } from '../api.ts';
 import { ArchiveView } from '../Archive.tsx';
 import { AccountTab } from './AccountTab.tsx';
 import { AiTab } from './AiTab.tsx';
+import { FacesTab } from './FacesTab.tsx';
 import { OverviewTab } from './OverviewTab.tsx';
 import { QuestionsTab } from './QuestionsTab.tsx';
 import { Icon, type IconName } from './ui.tsx';
@@ -33,6 +34,7 @@ const TABS: Tab[] = [
   { id: 'gebruikers', label: 'Gebruikers', icon: 'users', adminOnly: true, render: ({ me }) => <UsersTab me={me} /> },
   { id: 'highlights', label: 'Highlights', icon: 'highlights', adminOnly: false, render: () => <ArchiveView embedded /> },
   { id: 'ai', label: 'AI', icon: 'ai', adminOnly: true, render: () => <AiTab /> },
+  { id: 'gezichten', label: 'Gezichten', icon: 'account', adminOnly: true, render: () => <FacesTab /> },
   { id: 'account', label: 'Mijn account', icon: 'account', adminOnly: false, render: ({ me }) => <AccountTab me={me} /> },
 ];
 

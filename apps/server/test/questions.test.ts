@@ -5,7 +5,7 @@ import { buildApp } from '../src/app.ts';
 import { FactStore } from '../src/ai/facts.ts';
 import { hashPassword } from '../src/auth/passwords.ts';
 import { AuthStore } from '../src/auth/store.ts';
-import { FaceLibrary, matchFaceName, parseAttempt, type FaceAttempt } from '../src/faces/library.ts';
+import { FaceLibrary, libraryTime, matchFaceName, parseAttempt, type FaceAttempt } from '../src/faces/library.ts';
 import { FaceWorker } from '../src/faces/worker.ts';
 import { moments, personRect, RecordingFaces, singlePeople, type PersonTrack } from '../src/faces/recording.ts';
 import { HighlightStore, type CandidateRecord } from '../src/highlights/store.ts';
@@ -441,6 +441,44 @@ describe('learning from answers (0.13)', () => {
     expect(personRect([0.9, 0.1, 0.2, 0.95], { x: 0.98, y: 0.5 })).toMatchObject({ x: expect.closeTo(0.68), y: 0 });
     const track = { ...person('e', 'oprit', 0, 10), path: [0.2, 0.4, 0.6, 0.8, 0.9, 0.85, 0.7].map((y, t) => ({ x: 0.5, y, t })) };
     expect(moments(track, 2).map((p) => p.y)).toEqual([0.8, 0.85]);
+  });
+
+  it('lists the face library newest first and removes only the images of that person (0.20.0)', async () => {
+    const calls: { url: string; body?: string }[] = [];
+    const library = {
+      'Tineke Mevius': ['Tineke Mevius-1771419626.643532.webp', 'Tineke Mevius_1794244419.1.webp'],
+      'Mark Mevius': ['Mark Mevius-1774616862.150213.webp'],
+      train: [],
+    };
+    const fetchStub = (async (url: string, init?: RequestInit) => {
+      calls.push({ url: decodeURIComponent(url), ...(typeof init?.body === 'string' ? { body: init.body } : {}) });
+      if (url.endsWith('/api/faces')) return Response.json(library);
+      if (url.includes('/clips/faces/')) return new Response(new Uint8Array([1, 2]));
+      return Response.json({ success: true });
+    }) as typeof fetch;
+    const faces = new FaceLibrary({ frigateUrl: 'https://f', fetch: fetchStub });
+    await faces.refresh();
+    expect(faces.libraryImages()).toEqual([
+      { name: 'Mark Mevius', images: [{ file: 'Mark Mevius-1774616862.150213.webp', time: 1774616862.150213 }] },
+      {
+        name: 'Tineke Mevius',
+        images: [
+          { file: 'Tineke Mevius_1794244419.1.webp', time: 1794244419.1 },
+          { file: 'Tineke Mevius-1771419626.643532.webp', time: 1771419626.643532 },
+        ],
+      },
+    ]);
+    expect(await faces.libraryImage('Tineke Mevius', 'Mark Mevius-1774616862.150213.webp')).toBeUndefined();
+    expect(await faces.libraryImage('Tineke Mevius', '../train/x.webp')).toBeUndefined();
+    expect(await faces.libraryImage('Mark Mevius', 'Mark Mevius-1774616862.150213.webp')).toEqual(new Uint8Array([1, 2]));
+    // A file of another person or an invented one is ignored; only Tineke's own image goes to Frigate.
+    expect(await faces.deleteImages('Tineke Mevius', ['Tineke Mevius_1794244419.1.webp', 'Mark Mevius-1774616862.150213.webp', 'x.webp'])).toBe(1);
+    expect(calls.filter((c) => c.url.endsWith('/delete'))).toEqual([
+      { url: 'https://f/api/faces/Tineke Mevius/delete', body: JSON.stringify({ ids: ['Tineke Mevius_1794244419.1.webp'] }) },
+    ]);
+    expect(faces.libraryImages().find((p) => p.name === 'Tineke Mevius')!.images).toHaveLength(1);
+    expect(libraryTime('Tineke Mevius', 'Tineke Mevius-x.webp')).toBeNull();
+    expect(libraryTime('Tineke Mevius', 'Tineke Mevius-1/../a.webp')).toBeUndefined();
   });
 
   it('parses Frigate train attempts and matches typed names to the library', () => {

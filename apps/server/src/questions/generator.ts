@@ -160,7 +160,7 @@ export class QuestionGenerator {
         key: `vehicle:${key}`,
         highlightId: c.id,
         title: `Van wie is deze ${noun}?`,
-        body: `De AI ziet: ${sentence(vehicle)} ${this.name(c.camera)}, ${timeText(c.startTime)}. Klopt de omschrijving niet precies, pas hem dan aan.`,
+        body: `De AI ziet: ${sentence(vehicle)} ${this.name(c.camera)}, ${timeText(c.startTime)}.${platesText(c.plates, vehicle)} Klopt de omschrijving niet precies, pas hem dan aan.`,
         data: { vehicle, noun },
       });
     }
@@ -237,4 +237,11 @@ export class QuestionGenerator {
     }
     return added;
   }
+}
+
+/** Plates Frigate read that the AI's description does not mention yet (both without dashes or spaces). */
+function platesText(plates: string[], vehicle: string): string {
+  const bare = vehicle.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const extra = plates.filter((p) => !bare.includes(p));
+  return extra.length ? ` Frigate las ${extra.length === 1 ? 'kenteken' : 'kentekens'} ${extra.join(', ')}.` : '';
 }
