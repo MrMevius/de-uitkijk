@@ -59,7 +59,7 @@ function setup() {
 }
 
 /** A minimal extended WebP header with the given size. */
-function webp(width: number, height: number): Uint8Array {
+function webp(width: number, height: number): Uint8Array<ArrayBuffer> {
   const b = new Uint8Array(30);
   b.set(new TextEncoder().encode('RIFF'), 0);
   b.set(new TextEncoder().encode('WEBPVP8X'), 8);
