@@ -104,26 +104,16 @@ export class QuestionGenerator {
     };
     const room = (kind: keyof typeof OPEN_LIMITS) => OPEN_LIMITS[kind] - this.questions.openCount(kind);
     const faces = this.opts.faces;
-    // A person question is only useful when the answer can teach something: a face Frigate kept (to learn)
-    // or another stable feature the AI saw (uniform, logo, own vehicle). Unrecognisable figures are not asked.
-    const learnable = (c: StoredCandidate) => faces.attemptsFor(c.detections).length > 0 || c.aiPersonMarker === true;
     const freeHighlight = (c: StoredCandidate) => !this.questions.hasForHighlight(c.id);
 
-    // Open questions that no longer apply are withdrawn.
-    for (const q of this.questions.list('open', 1000)) {
-      const h = q.highlightId ? this.highlights.get(q.highlightId) : undefined;
-      if (q.kind === 'person' && h && faces.ready && !learnable(h)) this.questions.withdraw(q.id, now);
-    }
-
-    // Unknown people: real events with a person, no face recognised, not yet labelled, something to learn. Best first.
-    const people = faces.ready
-      ? recent
-          .filter((c) => c.selected && c.hasThumbnail && c.startTime > now - 7 * 86400 && c.labels.some((l) => l.startsWith('person')))
-          .filter((c) => c.subLabels.length === 0 && c.aiRealEvent === true && !c.annotation && freeHighlight(c) && learnable(c))
-          .sort((a, b) => b.score - a.score)
-      : [];
+    // Unknown people: real events with a person whom Frigate did not recognise and nobody named yet. Best first.
+    // The answer puts the name on the highlight (and in its description); a face Frigate kept is also learned.
+    const people = recent
+      .filter((c) => c.selected && c.hasThumbnail && c.startTime > now - 7 * 86400 && c.labels.some((l) => l.startsWith('person')))
+      .filter((c) => c.subLabels.length === 0 && c.aiRealEvent === true && !c.annotation && freeHighlight(c))
+      .sort((a, b) => b.score - a.score);
     for (const c of people.slice(0, Math.max(0, room('person')))) {
-      const attempts = faces.attemptsFor(c.detections);
+      const attempts = faces.ready ? faces.attemptsFor(c.detections) : [];
       const guess = attempts.find((a) => a.guess && a.score >= 0.5);
       add({
         kind: 'person',
@@ -140,26 +130,31 @@ export class QuestionGenerator {
       });
     }
 
-    // Cars, bicycles, scooters and motorbikes the AI described but could not match to a fact. One question per distinct vehicle.
+    // Cars, bicycles, scooters and motorbikes the AI saw (also parked ones) but could not match to a fact, to build
+    // up who owns which vehicle. One question per distinct vehicle; a highlight never has two open questions.
     const seenVehicles = new Set<string>();
-    const vehicles = recent
-      .filter((c) => c.hasThumbnail && c.aiVehicle && !c.aiVehicleKnown && askableVehicle(c.aiVehicle) && freeHighlight(c))
-      .sort((a, b) => b.startTime - a.startTime)
-      .filter((c) => {
-        const key = normalizeVehicle(c.aiVehicle!);
-        if (!key || seenVehicles.has(key) || this.questions.has(`vehicle:${key}`)) return false;
+    const busy = new Set<string>();
+    const vehicles: { c: StoredCandidate; vehicle: string; key: string }[] = [];
+    for (const c of [...recent].sort((a, b) => b.startTime - a.startTime)) {
+      if (!c.hasThumbnail || this.questions.hasOpenForHighlight(c.id)) continue;
+      const seen = [...(c.aiVehicle && !c.aiVehicleKnown ? [c.aiVehicle] : []), ...c.aiVehicles.filter((v) => !v.known).map((v) => v.description)];
+      for (const vehicle of seen) {
+        const key = normalizeVehicle(vehicle);
+        if (busy.has(c.id) || !askableVehicle(vehicle) || seenVehicles.has(key) || this.questions.has(`vehicle:${key}`)) continue;
         seenVehicles.add(key);
-        return true;
-      });
-    for (const c of vehicles.slice(0, Math.max(0, room('vehicle')))) {
-      const noun = vehicleNoun(c.aiVehicle!);
+        busy.add(c.id);
+        vehicles.push({ c, vehicle, key });
+      }
+    }
+    for (const { c, vehicle, key } of vehicles.slice(0, Math.max(0, room('vehicle')))) {
+      const noun = vehicleNoun(vehicle);
       add({
         kind: 'vehicle',
-        key: `vehicle:${normalizeVehicle(c.aiVehicle!)}`,
+        key: `vehicle:${key}`,
         highlightId: c.id,
         title: `Van wie is deze ${noun}?`,
-        body: `De AI ziet: ${sentence(c.aiVehicle!)} ${this.name(c.camera)}, ${timeText(c.startTime)}. Klopt de omschrijving niet precies, pas hem dan aan.`,
-        data: { vehicle: c.aiVehicle, noun },
+        body: `De AI ziet: ${sentence(vehicle)} ${this.name(c.camera)}, ${timeText(c.startTime)}. Klopt de omschrijving niet precies, pas hem dan aan.`,
+        data: { vehicle, noun },
       });
     }
 

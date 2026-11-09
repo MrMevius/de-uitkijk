@@ -236,35 +236,50 @@ describe('facts from answers about people', () => {
 });
 
 describe('learning from answers (0.13)', () => {
-  it('asks "who is this" only when there is something to learn, once per highlight, and withdraws what no longer applies', () => {
+  it('asks "who is this" about every unknown person, best first, once per highlight (0.18)', () => {
     const t = setup();
     const face = t.add({ ai: { real: true }, score: 5 });
-    const marker = t.add({ ai: { real: true, marker: true }, score: 4 });
-    t.add({ ai: { real: true }, score: 3 }); // unrecognisable: no face kept, no stable feature
-    const both = t.add({ ai: { real: true, marker: true, vehicle: 'grijze Toyota Yaris' }, score: 2.5 });
+    const plain = t.add({ ai: { real: true }, score: 3 }); // no face kept: asked anyway, the answer names the highlight
+    t.add({ ai: { real: true }, subLabels: ['Mark Mevius'], score: 6 }); // recognised by Frigate
+    t.add({ ai: { real: false }, score: 7 }); // noise
     const bike = t.add({ labels: ['bicycle'], ai: { real: true, vehicle: 'fiets' } });
-    const step = t.add({ labels: ['person'], ai: { real: true, vehicle: 'rode step van Micro' } });
     const faces = t.faceStub({ [`ev-${face}`]: { guess: 'Tineke Mevius', score: 0.82 } });
     t.generator({ faces }).runOnce();
 
     const open = t.questions.list('open');
-    expect(open.filter((q) => q.kind === 'person').map((q) => q.highlightId).sort()).toEqual([face, marker, both].sort());
-    // The person question already covers the highlight with the Yaris; "fiets" alone is too vague and steps are never asked.
-    expect(open.filter((q) => q.kind === 'vehicle')).toHaveLength(0);
-    expect(open.some((q) => q.highlightId === bike || q.highlightId === step)).toBe(false);
+    expect(open.filter((q) => q.kind === 'person').map((q) => q.highlightId).sort()).toEqual([face, plain].sort());
+    // "fiets" alone is too vague to recognise later.
+    expect(open.some((q) => q.highlightId === bike)).toBe(false);
     const fq = open.find((q) => q.highlightId === face)!;
     expect(fq.data).toEqual({ faces: [`ev-${face}.webp`], guess: 'Tineke Mevius' });
     expect(fq.body).toBe('Iemand bij de deur. Voordeur, zo 8 nov, 20:00. Frigate denkt aan Tineke Mevius (82%), maar weet het niet zeker.'.replace('20:00', fq.body.match(/\d\d:\d\d/)![0]));
-    expect(fq.body).not.toContain('..');
+    expect(open.find((q) => q.highlightId === plain)!.data).toEqual({ faces: [] });
 
-    // The face attempt is gone (e.g. rotated out of Frigate's train folder): the question is withdrawn.
-    t.generator({ faces: t.faceStub() }).runOnce();
-    expect(t.questions.get(fq.id)).toMatchObject({ status: 'dismissed', answeredBy: 'systeem' });
-    // Without a readable face library nothing is concluded: no new person questions, none withdrawn.
-    const before = t.questions.list('open').length;
-    t.add({ ai: { real: true, marker: true }, score: 6 });
+    // Without a readable face library people are still asked about, just without face crops.
+    const later = t.add({ ai: { real: true }, score: 4 });
     t.generator({ faces: t.faceStub({}, false) }).runOnce();
-    expect(t.questions.list('open')).toHaveLength(before);
+    expect(t.questions.list('open').some((q) => q.highlightId === later)).toBe(true);
+  });
+
+  it('asks whose vehicle it is for every unknown vehicle the AI saw, also parked ones (0.18)', () => {
+    const t = setup();
+    const id = t.add({ labels: ['person'], ai: { real: true } });
+    t.highlights.setAiResult(id, 'Een persoon loopt over de oprit.', true, NOW, null, false, false, [
+      { description: 'donkerblauwe Volvo V60', known: false },
+      { description: 'rode Tesla Model 3', known: true },
+    ]);
+    const parked = t.add({ labels: ['car'], selected: false });
+    t.highlights.setAiResult(parked, 'Een auto staat geparkeerd.', true, NOW, null, false, false, [{ description: 'witte Renault Kangoo bestelbus', known: false }]);
+    t.generator().runOnce();
+    const open = t.questions.list('open');
+    // The person question comes first for the first highlight; its vehicle waits until that one is answered.
+    expect(open.filter((q) => q.kind === 'vehicle').map((q) => q.data.vehicle)).toEqual(['witte Renault Kangoo bestelbus']);
+    const person = open.find((q) => q.highlightId === id)!;
+    t.questions.resolve(person.id, 'answered', 'Mark Mevius (bewoner)', 'mark', NOW);
+    t.generator().runOnce();
+    const vehicles = t.questions.list('open').filter((q) => q.kind === 'vehicle');
+    expect(vehicles.map((q) => q.data.vehicle).sort()).toEqual(['donkerblauwe Volvo V60', 'witte Renault Kangoo bestelbus']);
+    expect(vehicles.find((q) => q.highlightId === id)!.title).toBe('Van wie is deze auto?');
   });
 
   it('annotates, describes again, queues a fact and teaches Frigate the face of a named resident or visitor', () => {

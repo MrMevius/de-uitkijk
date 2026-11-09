@@ -147,6 +147,7 @@ export class AiWorker {
         verdict.vehicle ?? null,
         verdict.vehicleKnown ?? false,
         verdict.personMarker ?? null,
+        verdict.vehicles ?? [],
       );
       this.lastSuccessAt = now;
       this.lastError = null;

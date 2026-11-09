@@ -16,7 +16,7 @@ Highlights get a short Dutch description written by an AI from one still image. 
 
 1. Only highlights that passed the rule-based selection (AI-1) are sent, oldest first and one at a time, every two minutes. At most 60 calls a day.
 2. Input: the stored clean snapshot (converted to JPEG) plus camera name, time and Frigate's labels.
-3. `codex exec` runs with a strict JSON output schema: `description` (max 120 characters), `real_event` (boolean), `vehicle` and `vehicle_known` (since 0.10.0; motor vehicles only in 0.13.x, bicycles and scooters again since 0.14.0 with type, colour, brand and fixed parts) and `person_marker` (since 0.13.0: a person is recognisable by work clothes, a logo or their own vehicle). The answer is validated and flattened to one plain line.
+3. `codex exec` runs with a strict JSON output schema: `description` (max 120 characters), `real_event` (boolean), `vehicle` and `vehicle_known` (since 0.10.0; motor vehicles only in 0.13.x, bicycles and scooters again since 0.14.0 with type, colour, brand and fixed parts) and `person_marker` (since 0.13.0: a person is recognisable by work clothes, a logo or their own vehicle), and `vehicles` (since 0.18.0: every vehicle clearly in view, also parked ones, each with `known`). The answer is validated and flattened to one plain line.
    A highlight an administrator answered a question about is described again (since 0.13.0), with priority and regardless of its age, and with the answer in the prompt.
 4. A failure is retried up to three times; after that the rule-based description stays. AI problems never affect live video, alerts or rule-based highlights (AI-7).
 5. Status for administrators is on `/beheer`: calls today, the last success, the last error and how many are pending.

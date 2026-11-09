@@ -15,6 +15,8 @@ export interface AiVerdict {
   vehicleKnown?: boolean;
   /** A person is recognisable by a stable feature other than the face: work clothes or logo, or the vehicle they use. */
   personMarker?: boolean;
+  /** Every vehicle clearly in view, also parked ones, each with whether it matches a household fact. */
+  vehicles?: { description: string; known: boolean }[];
 }
 
 export interface AiContext {
@@ -37,13 +39,23 @@ export type Describer = (jpeg: Uint8Array, context: AiContext) => Promise<AiVerd
 const SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['description', 'real_event', 'vehicle', 'vehicle_known', 'person_marker'],
+  required: ['description', 'real_event', 'vehicle', 'vehicle_known', 'person_marker', 'vehicles'],
   properties: {
     description: { type: 'string', maxLength: 120 },
     real_event: { type: 'boolean' },
     vehicle: { type: 'string', maxLength: 100 },
     vehicle_known: { type: 'boolean' },
     person_marker: { type: 'boolean' },
+    vehicles: {
+      type: 'array',
+      maxItems: 4,
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['description', 'known'],
+        properties: { description: { type: 'string', maxLength: 100 }, known: { type: 'boolean' } },
+      },
+    },
   },
 };
 
@@ -73,6 +85,7 @@ export function buildPrompt(context: AiContext): string {
     '- real_event: true als er echt iets gebeurt (een persoon, voertuig of dier); false als het ruis lijkt (schaduw, licht, regen, insect, leeg beeld).',
     '- vehicle: als er een voertuig (auto, bestelbus, vrachtwagen, motor, scooter of fiets) duidelijk en dichtbij in beeld is en de gebeurtenis erom draait (iemand rijdt of fietst erop, stapt in of uit, of zet hem neer): een exacte omschrijving waaraan het later te herkennen is. Bij een motorvoertuig kleur, merk, model en het kenteken alleen als het volledig leesbaar is, bijvoorbeeld "zwarte Volkswagen up!, kenteken XX-123-Y". Bij een fiets of scooter het soort (fiets, e-bike, bakfiets, mountainbike, scooter), de kleur, het merk als het leesbaar is en opvallende vaste onderdelen (kinderzitje, fietstassen, krat), bijvoorbeeld "zwarte Gazelle e-bike met fietstassen". Alleen "een fiets" is te vaag: geef dan een lege tekst. Steps en skateboards tellen niet mee. Anders een lege tekst. Bij meerdere voertuigen het voertuig waar de gebeurtenis om draait.',
     '- vehicle_known: true als dat voertuig overeenkomt met een van de bekende feiten; anders false.',
+    '- vehicles: alle voertuigen (auto, bestelbus, motor, scooter, fiets) die duidelijk genoeg in beeld zijn om later te herkennen, ook geparkeerde, maximaal 4: elk met description (exacte omschrijving zoals bij vehicle) en known (true als het overeenkomt met een bekend feit). Te ver weg, half verborgen of te vaag om te herkennen: weglaten. Geen voertuigen: een lege lijst.',
     '- person_marker: true als een persoon in beeld te herkennen is aan een vast kenmerk anders dan het gezicht: bedrijfskleding of een logo, of een voertuig waar die persoon duidelijk bij hoort (in- of uitstappen, erin of erop rijden, fietsen); anders false.',
   );
   return lines.join('\n');
@@ -80,13 +93,34 @@ export function buildPrompt(context: AiContext): string {
 
 /** Parses and validates Codex's final message. */
 export function parseVerdict(text: string): AiVerdict {
-  const json = JSON.parse(text.trim()) as { description?: unknown; real_event?: unknown; vehicle?: unknown; vehicle_known?: unknown; person_marker?: unknown };
+  const json = JSON.parse(text.trim()) as {
+    description?: unknown;
+    real_event?: unknown;
+    vehicle?: unknown;
+    vehicle_known?: unknown;
+    person_marker?: unknown;
+    vehicles?: unknown;
+  };
   if (typeof json.description !== 'string' || typeof json.real_event !== 'boolean') throw new Error('unexpected AI answer');
   // Plain single line; drop anything that looks like markup.
   const description = json.description.replace(/[\r\n\t<>]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120);
   if (!description) throw new Error('empty AI description');
   const vehicle = typeof json.vehicle === 'string' ? json.vehicle.replace(/[\r\n\t<>]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 100) : '';
-  return { description, realEvent: json.real_event, vehicle: vehicle || null, vehicleKnown: json.vehicle_known === true, personMarker: json.person_marker === true };
+  const vehicles = (Array.isArray(json.vehicles) ? json.vehicles : [])
+    .map((v: { description?: unknown; known?: unknown }) => ({
+      description: typeof v?.description === 'string' ? v.description.replace(/[\r\n\t<>]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 100) : '',
+      known: v?.known === true,
+    }))
+    .filter((v) => v.description.length >= 3)
+    .slice(0, 4);
+  return {
+    description,
+    realEvent: json.real_event,
+    vehicle: vehicle || null,
+    vehicleKnown: json.vehicle_known === true,
+    personMarker: json.person_marker === true,
+    vehicles,
+  };
 }
 
 export interface CodexOptions {

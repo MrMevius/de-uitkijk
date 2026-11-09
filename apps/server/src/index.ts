@@ -80,6 +80,14 @@ if (questionStore && highlightStore) {
     applyPersonAnswer(q, q.answer ?? '', { questions: questionStore, highlights: highlightStore, autoFacts: Boolean(ai), ...(faces ? { faces } : {}) });
   }
 }
+// Since 0.18.0 the AI lists every visible vehicle (also parked ones); highlights of the last two days that were
+// described before that are described once more, so their vehicles can be asked about.
+if (highlightStore && ai && !highlightStore.getMeta('vehicles_backfill')) {
+  for (const c of highlightStore.candidatesSince(Date.now() / 1000 - 2 * 86400)) {
+    if (c.selected && c.aiStatus === 'done' && c.aiVehicles.length === 0) highlightStore.requestRedescribe(c.id);
+  }
+  highlightStore.setMeta('vehicles_backfill', '1');
+}
 // Per-camera picture check for monitoring (live mode only; mock streams are synthetic).
 const cameraProbe = config.mode === 'live' && config.go2rtcUrl ? new CameraVideoProbe(config.cameras, config.go2rtcUrl) : undefined;
 let importer: HighlightImporter | undefined;

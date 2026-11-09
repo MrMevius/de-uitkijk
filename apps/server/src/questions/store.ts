@@ -161,6 +161,11 @@ export class QuestionStore {
     return this.db.prepare('SELECT 1 FROM questions WHERE highlight_id = ?').get(highlightId) !== undefined;
   }
 
+  /** Whether an open question about this highlight is waiting (a vehicle question may follow an answered one). */
+  hasOpenForHighlight(highlightId: string): boolean {
+    return this.db.prepare("SELECT 1 FROM questions WHERE highlight_id = ? AND status = 'open'").get(highlightId) !== undefined;
+  }
+
   /** Closes an open question that no longer applies (the system's own decision, shown as "systeem"). */
   withdraw(id: number, at: number): void {
     this.db.prepare("UPDATE questions SET status = 'dismissed', answered_by = 'systeem', answered_at = ? WHERE id = ? AND status = 'open'").run(at, id);

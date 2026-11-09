@@ -64,6 +64,7 @@ interface Row {
   known_factor: number;
   ai_person_marker: number | null;
   ai_redo: number;
+  ai_vehicles: string | null;
 }
 
 export interface StoredCandidate extends CandidateRecord {
@@ -82,6 +83,8 @@ export interface StoredCandidate extends CandidateRecord {
   feedbackAdj: number;
   aiVehicle: string | null;
   aiVehicleKnown: boolean;
+  /** Every vehicle the AI saw clearly, also parked ones (since 0.18.0); empty for older descriptions. */
+  aiVehicles: { description: string; known: boolean }[];
   /** Administrator's answer about who or what is shown. */
   annotation: string | null;
   detections: string[];
@@ -96,7 +99,7 @@ export interface StoredCandidate extends CandidateRecord {
 }
 
 const COLUMNS =
-  'id, start_time, end_time, cameras, camera, frigate_camera, rep_event, clip_start, clip_end, event_start, event_end, labels, sub_labels, score, reasons, description, selected, feedback, deleted, thumbnail IS NOT NULL AS has_thumbnail, ai_description, ai_real, ai_status, ai_attempts, base_score, feedback_adj, frame_time, ai_vehicle, ai_vehicle_known, annotation, detections, annotation_known, known_factor, ai_person_marker, ai_redo';
+  'id, start_time, end_time, cameras, camera, frigate_camera, rep_event, clip_start, clip_end, event_start, event_end, labels, sub_labels, score, reasons, description, selected, feedback, deleted, thumbnail IS NOT NULL AS has_thumbnail, ai_description, ai_real, ai_status, ai_attempts, base_score, feedback_adj, frame_time, ai_vehicle, ai_vehicle_known, annotation, detections, annotation_known, known_factor, ai_person_marker, ai_redo, ai_vehicles';
 
 const fromRow = (r: Row): StoredCandidate => ({
   id: r.id,
@@ -128,6 +131,7 @@ const fromRow = (r: Row): StoredCandidate => ({
   feedbackAdj: Number(r.feedback_adj ?? 0),
   aiVehicle: r.ai_vehicle,
   aiVehicleKnown: r.ai_vehicle_known === 1,
+  aiVehicles: r.ai_vehicles ? (JSON.parse(r.ai_vehicles) as { description: string; known: boolean }[]) : [],
   annotation: r.annotation,
   detections: r.detections ? (JSON.parse(r.detections) as string[]) : [r.rep_event],
   annotationKnown: r.annotation_known === 1,
@@ -232,6 +236,8 @@ export class HighlightStore {
       ['known_factor', 'REAL NOT NULL DEFAULT 1'],
       ['ai_person_marker', 'INTEGER'],
       ['ai_redo', 'INTEGER NOT NULL DEFAULT 0'],
+      // Added in 0.18.0 (all clearly visible vehicles, also parked ones, for "whose car" questions).
+      ['ai_vehicles', 'TEXT'],
     ] as const) {
       if (!columns.has(name)) this.db.exec(`ALTER TABLE candidates ADD COLUMN ${name} ${type}`);
     }
@@ -382,13 +388,17 @@ export class HighlightStore {
     vehicle: string | null = null,
     vehicleKnown = false,
     personMarker: boolean | null = null,
+    vehicles: { description: string; known: boolean }[] = [],
   ): void {
     this.db
       .prepare(
         `UPDATE candidates SET ai_description = ?, ai_real = ?, ai_status = 'done', ai_updated = ?, ai_vehicle = ?, ai_vehicle_known = ?,
-           ai_person_marker = ?, ai_redo = 0 WHERE id = ?`,
+           ai_person_marker = ?, ai_vehicles = ?, ai_redo = 0 WHERE id = ?`,
       )
-      .run(description, realEvent ? 1 : 0, at, vehicle, vehicleKnown ? 1 : 0, personMarker === null ? null : personMarker ? 1 : 0, id);
+      .run(
+        description, realEvent ? 1 : 0, at, vehicle, vehicleKnown ? 1 : 0, personMarker === null ? null : personMarker ? 1 : 0,
+        vehicles.length ? JSON.stringify(vehicles) : null, id,
+      );
   }
 
   /**
