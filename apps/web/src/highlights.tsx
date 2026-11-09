@@ -170,7 +170,10 @@ export function HighlightTile({ highlight, rect, cameraName, onDone, onFail }: T
       <div className="tile__highlight-label">Highlight · {highlightTime(highlight.startTime)}</div>
       <div className="tile__name">
         {highlight.description}
-        <span className="tile__sub">{cameraName}</span>
+        <span className="tile__sub">
+          {cameraName}
+          {highlight.annotation && !highlight.annotation.includes('onbekend') ? ` · ${highlight.annotation}` : ''}
+        </span>
       </div>
     </div>
   );

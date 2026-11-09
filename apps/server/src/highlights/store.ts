@@ -12,6 +12,8 @@ export interface CandidateRecord {
   camera: string;
   frigateCamera: string;
   repEvent: string;
+  /** Frigate tracked-object ids of all alerts in the group (face training attempts are named after them). */
+  detections?: string[];
   clipStart: number;
   clipEnd: number;
   /** Best frame of the representative alert (epoch seconds), for a full-resolution still. */
@@ -56,6 +58,11 @@ interface Row {
   ai_vehicle: string | null;
   ai_vehicle_known: number | null;
   annotation: string | null;
+  detections: string | null;
+  annotation_known: number;
+  known_factor: number;
+  ai_person_marker: number | null;
+  ai_redo: number;
 }
 
 export interface StoredCandidate extends CandidateRecord {
@@ -76,10 +83,19 @@ export interface StoredCandidate extends CandidateRecord {
   aiVehicleKnown: boolean;
   /** Administrator's answer about who or what is shown. */
   annotation: string | null;
+  detections: string[];
+  /** The answer names a resident, visitor or vehicle owner: the highlight counts as known. */
+  annotationKnown: boolean;
+  /** Multiplier on the base score for known people and vehicles (1 = unknown). */
+  knownFactor: number;
+  /** AI: a person is recognisable by a stable feature other than the face (uniform, logo, own vehicle). */
+  aiPersonMarker: boolean | null;
+  /** Waiting for a new AI description after an administrator's answer. */
+  aiRedo: boolean;
 }
 
 const COLUMNS =
-  'id, start_time, end_time, cameras, camera, frigate_camera, rep_event, clip_start, clip_end, event_start, event_end, labels, sub_labels, score, reasons, description, selected, feedback, deleted, thumbnail IS NOT NULL AS has_thumbnail, ai_description, ai_real, ai_status, ai_attempts, base_score, feedback_adj, frame_time, ai_vehicle, ai_vehicle_known, annotation';
+  'id, start_time, end_time, cameras, camera, frigate_camera, rep_event, clip_start, clip_end, event_start, event_end, labels, sub_labels, score, reasons, description, selected, feedback, deleted, thumbnail IS NOT NULL AS has_thumbnail, ai_description, ai_real, ai_status, ai_attempts, base_score, feedback_adj, frame_time, ai_vehicle, ai_vehicle_known, annotation, detections, annotation_known, known_factor, ai_person_marker, ai_redo';
 
 const fromRow = (r: Row): StoredCandidate => ({
   id: r.id,
@@ -112,6 +128,11 @@ const fromRow = (r: Row): StoredCandidate => ({
   aiVehicle: r.ai_vehicle,
   aiVehicleKnown: r.ai_vehicle_known === 1,
   annotation: r.annotation,
+  detections: r.detections ? (JSON.parse(r.detections) as string[]) : [r.rep_event],
+  annotationKnown: r.annotation_known === 1,
+  knownFactor: Number(r.known_factor ?? 1),
+  aiPersonMarker: r.ai_person_marker === null ? null : r.ai_person_marker === 1,
+  aiRedo: r.ai_redo === 1,
 });
 
 export const toSummary = (c: StoredCandidate): HighlightSummary => ({
@@ -127,7 +148,11 @@ export const toSummary = (c: StoredCandidate): HighlightSummary => ({
   aiNoise: c.aiRealEvent === false,
   annotation: c.annotation,
   score: c.score,
-  reasons: c.feedbackAdj ? [...c.reasons, `feedback ${c.feedbackAdj > 0 ? '+' : ''}${c.feedbackAdj.toFixed(1)}`] : c.reasons,
+  reasons: [
+    ...c.reasons,
+    ...(c.knownFactor < 1 && c.subLabels.length === 0 ? ['bekend volgens beheer of AI'] : []),
+    ...(c.feedbackAdj ? [`feedback ${c.feedbackAdj > 0 ? '+' : ''}${c.feedbackAdj.toFixed(1)}`] : []),
+  ],
   feedback: c.feedback,
   hasThumbnail: c.hasThumbnail,
 });
@@ -200,6 +225,12 @@ export class HighlightStore {
       ['ai_vehicle', 'TEXT'],
       ['ai_vehicle_known', 'INTEGER'],
       ['annotation', 'TEXT'],
+      // Added in 0.13.0 (face learning, known factor, re-description after answers).
+      ['detections', 'TEXT'],
+      ['annotation_known', 'INTEGER NOT NULL DEFAULT 0'],
+      ['known_factor', 'REAL NOT NULL DEFAULT 1'],
+      ['ai_person_marker', 'INTEGER'],
+      ['ai_redo', 'INTEGER NOT NULL DEFAULT 0'],
     ] as const) {
       if (!columns.has(name)) this.db.exec(`ALTER TABLE candidates ADD COLUMN ${name} ${type}`);
     }
@@ -229,13 +260,13 @@ export class HighlightStore {
       this.db
         .prepare(
           `INSERT INTO candidates (id, start_time, end_time, cameras, camera, frigate_camera, rep_event, clip_start, clip_end,
-             event_start, event_end, labels, sub_labels, score, reasons, description, base_score, frame_time)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             event_start, event_end, labels, sub_labels, score, reasons, description, base_score, frame_time, detections)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           c.id, c.startTime, c.endTime, JSON.stringify(c.cameras), c.camera, c.frigateCamera, c.repEvent, c.clipStart,
           c.clipEnd, c.eventStart, c.eventEnd, JSON.stringify(c.labels), JSON.stringify(c.subLabels), c.score,
-          JSON.stringify(c.reasons), c.description, c.score, c.frameTime ?? null,
+          JSON.stringify(c.reasons), c.description, c.score, c.frameTime ?? null, c.detections ? JSON.stringify(c.detections) : null,
         );
       const mark = this.db.prepare('INSERT OR IGNORE INTO processed_reviews (review_id, candidate_id) VALUES (?, ?)');
       for (const id of reviewIds) mark.run(id, c.id);
@@ -292,11 +323,14 @@ export class HighlightStore {
     ).map((r) => ({ ...r, value: Number(r.value) }));
   }
 
-  /** Stores the feedback adjustment; `score` becomes base score plus adjustment. */
-  setFeedbackAdjustment(id: string, adjustment: number): void {
+  /** Stores the learned score parts; `score` becomes base score times known factor plus feedback adjustment. */
+  setScoreParts(id: string, adjustment: number, knownFactor = 1): void {
     this.db
-      .prepare('UPDATE candidates SET base_score = COALESCE(base_score, score), feedback_adj = ?, score = ROUND(COALESCE(base_score, score) + ?, 2) WHERE id = ?')
-      .run(adjustment, adjustment, id);
+      .prepare(
+        `UPDATE candidates SET base_score = COALESCE(base_score, score), feedback_adj = ?, known_factor = ?,
+           score = ROUND(COALESCE(base_score, score) * ? + ?, 2) WHERE id = ?`,
+      )
+      .run(adjustment, knownFactor, knownFactor, adjustment, id);
   }
 
   /** Deletes a highlight: keeps a tombstone (no thumbnail, never selected) so it is not re-imported. */
@@ -304,35 +338,59 @@ export class HighlightStore {
     this.db.prepare('UPDATE candidates SET deleted = 1, selected = 0, thumbnail = NULL WHERE id = ?').run(id);
   }
 
-  /** Highlights waiting for an AI description, oldest first. */
+  /**
+   * Highlights waiting for an AI description: re-descriptions after an answer first (any age, also when the
+   * answer made the highlight drop out of the selection), then new highlights oldest first.
+   */
   aiPending(since: number, maxAttempts: number): StoredCandidate[] {
     return (
       this.db
         .prepare(
-          `SELECT ${COLUMNS} FROM candidates WHERE selected = 1 AND deleted = 0 AND thumbnail IS NOT NULL AND start_time >= ?
-             AND ai_status IS NULL AND ai_attempts < ? ORDER BY start_time`,
+          `SELECT ${COLUMNS} FROM candidates WHERE deleted = 0 AND thumbnail IS NOT NULL AND ai_status IS NULL AND ai_attempts < ?
+             AND (ai_redo = 1 OR (selected = 1 AND start_time >= ?)) ORDER BY ai_redo DESC, start_time`,
         )
-        .all(since, maxAttempts) as unknown as Row[]
+        .all(maxAttempts, since) as unknown as Row[]
     ).map(fromRow);
   }
 
-  setAiResult(id: string, description: string, realEvent: boolean, at: number, vehicle: string | null = null, vehicleKnown = false): void {
+  setAiResult(
+    id: string,
+    description: string,
+    realEvent: boolean,
+    at: number,
+    vehicle: string | null = null,
+    vehicleKnown = false,
+    personMarker: boolean | null = null,
+  ): void {
     this.db
-      .prepare("UPDATE candidates SET ai_description = ?, ai_real = ?, ai_status = 'done', ai_updated = ?, ai_vehicle = ?, ai_vehicle_known = ? WHERE id = ?")
-      .run(description, realEvent ? 1 : 0, at, vehicle, vehicleKnown ? 1 : 0, id);
+      .prepare(
+        `UPDATE candidates SET ai_description = ?, ai_real = ?, ai_status = 'done', ai_updated = ?, ai_vehicle = ?, ai_vehicle_known = ?,
+           ai_person_marker = ?, ai_redo = 0 WHERE id = ?`,
+      )
+      .run(description, realEvent ? 1 : 0, at, vehicle, vehicleKnown ? 1 : 0, personMarker === null ? null : personMarker ? 1 : 0, id);
   }
 
-  /** An administrator's answer about who or what is in the highlight (from the questions tab). */
-  setAnnotation(id: string, text: string | null): void {
-    this.db.prepare('UPDATE candidates SET annotation = ? WHERE id = ?').run(text, id);
+  /**
+   * An administrator's answer about who or what is in the highlight (from the questions tab). `known` marks
+   * a named resident, visitor or vehicle owner, so the highlight counts low like a recognised face.
+   */
+  setAnnotation(id: string, text: string | null, known = false): void {
+    this.db.prepare('UPDATE candidates SET annotation = ?, annotation_known = ? WHERE id = ?').run(text, known ? 1 : 0, id);
+  }
+
+  /** Describe again with the latest answer and facts; the current description stays until the new one is there. */
+  requestRedescribe(id: string): void {
+    this.db.prepare('UPDATE candidates SET ai_redo = 1, ai_status = NULL, ai_attempts = 0 WHERE id = ? AND deleted = 0').run(id);
   }
 
   setAiFailure(id: string, maxAttempts: number, at: number): void {
     this.db
       .prepare(
-        "UPDATE candidates SET ai_attempts = ai_attempts + 1, ai_updated = ?, ai_status = CASE WHEN ai_attempts + 1 >= ? THEN 'failed' ELSE NULL END WHERE id = ?",
+        `UPDATE candidates SET ai_attempts = ai_attempts + 1, ai_updated = ?,
+           ai_status = CASE WHEN ai_attempts + 1 >= ? THEN 'failed' ELSE NULL END,
+           ai_redo = CASE WHEN ai_attempts + 1 >= ? THEN 0 ELSE ai_redo END WHERE id = ?`,
       )
-      .run(at, maxAttempts, id);
+      .run(at, maxAttempts, maxAttempts, id);
   }
 
   /** Highlights for the dashboard: selected in the window, not judged noise by the AI nor 👎, best first. */
@@ -345,7 +403,8 @@ export class HighlightStore {
   }
 
   archive(q: ArchiveQuery): { items: StoredCandidate[]; total: number } {
-    const where = ['selected = 1', 'deleted = 0'];
+    // Highlights an administrator identified stay in the archive, also when that made them count low.
+    const where = ['(selected = 1 OR annotation_known = 1)', 'deleted = 0'];
     const args: (string | number)[] = [];
     if (q.from !== undefined) where.push('start_time >= ?'), args.push(q.from);
     if (q.to !== undefined) where.push('start_time < ?'), args.push(q.to);

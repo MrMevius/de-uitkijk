@@ -657,6 +657,20 @@ body,
   display: block;
 }
 
+.admin__faces {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.admin__faces img {
+  width: 4.5rem;
+  height: 4.5rem;
+  object-fit: cover;
+  border-radius: 6px;
+  background: #000;
+}
+
 .admin__qbody {
   display: flex;
   flex-direction: column;

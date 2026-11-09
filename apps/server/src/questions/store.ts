@@ -21,6 +21,12 @@ export interface Question {
   /** Fact derived from the answer: pending (AI to write), done, none (nothing usable), failed. */
   factStatus: 'pending' | 'done' | 'none' | 'failed' | null;
   fact: string | null;
+  /** Face learning in Frigate from the answer: pending, done, none (no face to learn), failed. */
+  faceStatus: 'pending' | 'done' | 'none' | 'failed' | null;
+  /** Name the face is (to be) stored under in Frigate's library. */
+  faceName: string | null;
+  /** Outcome for the history, e.g. "3 gezichtsfoto's toegevoegd aan Tineke Mevius". */
+  faceResult: string | null;
 }
 
 interface Row {
@@ -39,6 +45,9 @@ interface Row {
   fact_status: Question['factStatus'];
   fact: string | null;
   fact_attempts: number;
+  face_status: Question['faceStatus'];
+  face_name: string | null;
+  face_result: string | null;
 }
 
 const fromRow = (r: Row): Question => ({
@@ -56,6 +65,9 @@ const fromRow = (r: Row): Question => ({
   answeredAt: r.answered_at,
   factStatus: r.fact_status ?? null,
   fact: r.fact ?? null,
+  faceStatus: r.face_status ?? null,
+  faceName: r.face_name ?? null,
+  faceResult: r.face_result ?? null,
 });
 
 /** Questions and suggestions for administrators, with their answers (kept as history). */
@@ -83,7 +95,16 @@ export class QuestionStore {
     `);
     // Added in 0.11.0 (facts derived from answers).
     const columns = new Set((this.db.prepare('PRAGMA table_info(questions)').all() as { name: string }[]).map((c) => c.name));
-    for (const [name, type] of [['fact_status', 'TEXT'], ['fact', 'TEXT'], ['fact_attempts', 'INTEGER NOT NULL DEFAULT 0']] as const) {
+    for (const [name, type] of [
+      ['fact_status', 'TEXT'],
+      ['fact', 'TEXT'],
+      ['fact_attempts', 'INTEGER NOT NULL DEFAULT 0'],
+      // Added in 0.13.0 (face learning in Frigate).
+      ['face_status', 'TEXT'],
+      ['face_name', 'TEXT'],
+      ['face_result', 'TEXT'],
+      ['face_attempts', 'INTEGER NOT NULL DEFAULT 0'],
+    ] as const) {
       if (!columns.has(name)) this.db.exec(`ALTER TABLE questions ADD COLUMN ${name} ${type}`);
     }
   }
@@ -105,6 +126,44 @@ export class QuestionStore {
     this.db
       .prepare("UPDATE questions SET fact_attempts = fact_attempts + 1, fact_status = CASE WHEN fact_attempts + 1 >= ? THEN 'failed' ELSE fact_status END WHERE id = ?")
       .run(maxAttempts, id);
+  }
+
+  setFace(id: number, status: 'pending' | 'done' | 'none' | 'failed', name: string | null = null, result: string | null = null): void {
+    this.db.prepare('UPDATE questions SET face_status = ?, face_name = COALESCE(?, face_name), face_result = ? WHERE id = ?').run(status, name, result, id);
+  }
+
+  /** Answered questions whose face still has to be stored in Frigate, oldest first. */
+  facePending(maxAttempts: number): Question[] {
+    return (
+      this.db
+        .prepare("SELECT * FROM questions WHERE face_status = 'pending' AND face_attempts < ? ORDER BY answered_at")
+        .all(maxAttempts) as unknown as Row[]
+    ).map(fromRow);
+  }
+
+  faceFailure(id: number, maxAttempts: number, error: string): void {
+    this.db
+      .prepare(
+        "UPDATE questions SET face_attempts = face_attempts + 1, face_result = ?, face_status = CASE WHEN face_attempts + 1 >= ? THEN 'failed' ELSE face_status END WHERE id = ?",
+      )
+      .run(error.slice(0, 200), maxAttempts, id);
+  }
+
+  /** Answered person questions from before 0.11/0.13 that never had a fact or face step. */
+  legacyPersonAnswers(): Question[] {
+    return (
+      this.db.prepare("SELECT * FROM questions WHERE kind = 'person' AND status = 'answered' AND fact_status IS NULL AND face_status IS NULL").all() as unknown as Row[]
+    ).map(fromRow);
+  }
+
+  /** Whether any question (open or handled) was ever asked about this highlight: one question per highlight. */
+  hasForHighlight(highlightId: string): boolean {
+    return this.db.prepare('SELECT 1 FROM questions WHERE highlight_id = ?').get(highlightId) !== undefined;
+  }
+
+  /** Closes an open question that no longer applies (the system's own decision, shown as "systeem"). */
+  withdraw(id: number, at: number): void {
+    this.db.prepare("UPDATE questions SET status = 'dismissed', answered_by = 'systeem', answered_at = ? WHERE id = ? AND status = 'open'").run(at, id);
   }
 
   close(): void {

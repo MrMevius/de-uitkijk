@@ -11,7 +11,7 @@ import { hashPassword } from '../src/auth/passwords.ts';
 import { ClipCache } from '../src/highlights/clips.ts';
 import { describe as describeGroup, HighlightImporter, hourInAmsterdam } from '../src/highlights/importer.ts';
 import { buildBaseline, groupItems, scoreGroup, selectHighlights, type ReviewItem } from '../src/highlights/selection.ts';
-import { HighlightStore } from '../src/highlights/store.ts';
+import { HighlightStore, toSummary } from '../src/highlights/store.ts';
 import { StateHub } from '../src/hub.ts';
 
 const cameras = parseCameraConfig(
@@ -283,6 +283,21 @@ describe('feedback learning', () => {
     expect(after.v1!.feedbackAdj).toBe(0);
     expect(t2.store.rotation(0, 15).map((c) => c.id)).not.toContain('n1');
   });
+
+  it('counts highlights low once they are known from an answer or a vehicle fact, like a recognised face', async () => {
+    const t2 = setupImporter([review('v1', VOORDEUR, at(4, 20), at(4, 20) + 20), review('v2', VOORDEUR, at(4, 22), at(4, 22) + 20)]);
+    t2.store.setMeta('activated_at', String(at(1)));
+    t2.setClock(at(5));
+    await t2.importer.runOnce();
+    const base = Object.fromEntries(t2.store.candidatesSince(0).map((c) => [c.id, c.baseScore]));
+    t2.store.setAnnotation('v1', 'Tineke Mevius (bewoner)', true);
+    t2.store.setAiResult('v2', 'Auto op de oprit', true, at(5), 'grijze Toyota Yaris', true);
+    await t2.importer.runOnce();
+    const after = Object.fromEntries(t2.store.candidatesSince(0).map((c) => [c.id, c]));
+    expect(after.v1).toMatchObject({ knownFactor: 0.4, score: Math.round(base.v1! * 0.4 * 100) / 100 });
+    expect(after.v2).toMatchObject({ knownFactor: 0.4, score: Math.round(base.v2! * 0.4 * 100) / 100 });
+    expect(toSummaryReasons(after.v1!)).toContain('bekend volgens beheer of AI');
+  });
 });
 
 describe('facts API', () => {
@@ -311,3 +326,7 @@ describe('facts API', () => {
     expect((await app.inject({ method: 'DELETE', url: `/api/admin/facts/${fact.id}`, headers: adminFresh })).statusCode).toBe(204);
   });
 });
+
+function toSummaryReasons(c: Parameters<typeof toSummary>[0]): string[] {
+  return toSummary(c).reasons;
+}

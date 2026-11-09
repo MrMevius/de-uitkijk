@@ -26,6 +26,7 @@ browser ──► /api/highlights/:id/clip.mp4 ──► clip cache (bounded, te
   | Car | +1 |
   | Several cameras | +0.75 per extra camera (max +1.5) |
   | Recognised person (Frigate sub label, e.g. face recognition) | × 0.4 |
+  | Known from an answer or a fact (since 0.13.0): an administrator named a resident, visitor or vehicle owner, or the AI matched the vehicle to a household fact | × 0.4 (not on top of a recognised face) |
 
 - **Selection (HL-4).** A highlight needs a score of at least 2.0. Within 30 minutes on the same camera, only the best one is kept (no series of near-identical clips). The dashboard rotates the best 15 of the last 24 hours. Tuned on seven days of real alerts (2026-11-01..08, 758 alerts): 6–14 highlights per day. On 2026-11-08, 149 candidates from 24 hours produced 17 highlights.
 - **Clip (HL-5).** From 2 s before the representative alert to 2 s after it, at least 5 s and at most 30 s. A clip is available about 1–2 minutes after the event ends.
@@ -59,5 +60,5 @@ browser ──► /api/highlights/:id/clip.mp4 ──► clip cache (bounded, te
 ## Limits
 
 - Selection is rule-based. Activity that is frequent at a given hour on a camera counts as normal by definition, and a cat or headlights at night can still score high. Use 👎 and delete to keep the archive clean.
-- Frigate recognises faces only occasionally (14 of 758 alerts in the tuning week), so the "known person" factor rarely applies.
+- Frigate recognises faces only occasionally (14 of 758 alerts in the tuning week), so the "known person" factor rarely applies. Since 0.13.0 answers on the questions tab teach Frigate faces, which should raise this over time; the detection stream (640×360) remains the limit.
 - Clips come from the 4K main recording (about 3 Mbit/s). Playback needs H.265 support, as for live video.

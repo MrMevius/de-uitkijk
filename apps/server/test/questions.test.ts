@@ -5,9 +5,12 @@ import { buildApp } from '../src/app.ts';
 import { FactStore } from '../src/ai/facts.ts';
 import { hashPassword } from '../src/auth/passwords.ts';
 import { AuthStore } from '../src/auth/store.ts';
+import { FaceLibrary, matchFaceName, parseAttempt, type FaceAttempt } from '../src/faces/library.ts';
+import { FaceWorker } from '../src/faces/worker.ts';
 import { HighlightStore, type CandidateRecord } from '../src/highlights/store.ts';
 import { StateHub } from '../src/hub.ts';
 import { OPEN_LIMITS, QuestionGenerator } from '../src/questions/generator.ts';
+import { applyPersonAnswer, parsePersonAnswer } from '../src/questions/routes.ts';
 import { QuestionStore } from '../src/questions/store.ts';
 
 const cameras = parseCameraConfig(
@@ -25,29 +28,38 @@ function setup() {
   const questions = new QuestionStore(':memory:');
   cleanup.push(() => highlights.close(), () => questions.close());
   let n = 0;
-  const add = (over: Partial<CandidateRecord> & { ai?: { real: boolean; vehicle?: string; known?: boolean }; selected?: boolean } = {}) => {
+  const add = (
+    over: Partial<CandidateRecord> & { ai?: { real: boolean; vehicle?: string; known?: boolean; marker?: boolean }; selected?: boolean } = {},
+  ) => {
     const id = `h${++n}`;
     const start = over.startTime ?? NOW - n * 3600;
     const rec: CandidateRecord = {
       id, startTime: start, endTime: start + 20, cameras: ['voordeur'], camera: 'voordeur', frigateCamera: 'Vriezenveen_voordeur',
       repEvent: 'e', clipStart: start - 2, clipEnd: start + 22, eventStart: start - 5, eventEnd: start + 25, labels: ['person'],
-      subLabels: [], score: 3, reasons: [], description: 'Persoon bij Voordeur', ...over,
+      subLabels: [], score: 3, reasons: [], description: 'Persoon bij Voordeur', detections: [`ev-${id}`], ...over,
     };
     highlights.insert(rec, [id]);
     if (over.selected !== false) highlights.setSelected(id, true);
     highlights.setThumbnail(id, new Uint8Array([1]));
-    if (over.ai) highlights.setAiResult(id, 'Iemand bij de deur', over.ai.real, start + 60, over.ai.vehicle ?? null, over.ai.known ?? false);
+    if (over.ai) highlights.setAiResult(id, 'Iemand bij de deur.', over.ai.real, start + 60, over.ai.vehicle ?? null, over.ai.known ?? false, over.ai.marker ?? null);
     return id;
   };
+  /** Face library stand-in: `attempts` lists unrecognised faces per Frigate event id. */
+  const faceStub = (attempts: Record<string, Partial<FaceAttempt>> = {}, ready = true) => ({
+    ready,
+    refresh: async () => {},
+    attemptsFor: (ids: string[]) =>
+      ids.filter((i) => attempts[i]).map((i) => ({ file: `${i}.webp`, eventId: i, time: 1, guess: null, score: 0.3, ...attempts[i] })),
+  });
   const generator = (extra: Partial<ConstructorParameters<typeof QuestionGenerator>[2]> = {}) =>
-    new QuestionGenerator(highlights, questions, { cameras, now: () => NOW, ...extra });
-  return { highlights, questions, add, generator };
+    new QuestionGenerator(highlights, questions, { cameras, now: () => NOW, faces: faceStub(), ...extra });
+  return { highlights, questions, add, generator, faceStub };
 }
 
 describe('question generator', () => {
   it('asks about unknown people, best first, within the open limit and only once', () => {
     const t = setup();
-    for (let i = 0; i < 5; i++) t.add({ ai: { real: true }, score: 2 + i });
+    for (let i = 0; i < 5; i++) t.add({ ai: { real: true, marker: true }, score: 2 + i });
     t.add({ ai: { real: true }, subLabels: ['Mark Mevius'] });
     t.add({ ai: { real: false } });
     const g = t.generator();
@@ -102,9 +114,10 @@ describe('question generator', () => {
 
   it('closes questions about deleted highlights', () => {
     const t = setup();
-    const id = t.add({ ai: { real: true } });
+    const id = t.add({ ai: { real: true, marker: true } });
     const g = t.generator();
     g.runOnce();
+    expect(t.questions.list('open')).toHaveLength(1);
     t.highlights.tombstone(id);
     g.runOnce();
     expect(t.questions.list('open')).toHaveLength(0);
@@ -128,7 +141,7 @@ describe('answering questions', () => {
 
   it('labels a person and a vehicle; the vehicle answer becomes a fact for the AI', async () => {
     const t = await api();
-    const p = t.add({ ai: { real: true } });
+    const p = t.add({ ai: { real: true, marker: true } });
     const v = t.add({ labels: ['car'], ai: { real: true, vehicle: 'zwarte Volkswagen up!, kenteken XX-123-Y' } });
     t.generator().runOnce();
     const qs = (await t.app.inject({ url: '/api/admin/questions', headers: t.headers })).json<{ id: number; kind: string; highlight: { id: string } }[]>();
@@ -136,16 +149,17 @@ describe('answering questions', () => {
     const vehicle = qs.find((q) => q.kind === 'vehicle')!;
 
     expect((await t.answer(person.id, { category: 'iets' })).statusCode).toBe(400);
-    expect((await t.answer(person.id, { category: 'bezorger', name: 'PostNL\n<b>' })).json()).toEqual({ answer: 'PostNL (bezorger of dienstverlener)', fact: 'pending' });
+    expect((await t.answer(person.id, { category: 'bezorger', name: 'PostNL\n<b>' })).json()).toEqual({ answer: 'PostNL (bezorger of dienstverlener)', fact: 'pending', face: 'none' });
     expect(t.questions.get(person.id)!.factStatus).toBe('pending');
-    expect(t.highlights.get(p)!.annotation).toBe('PostNL (bezorger of dienstverlener)');
+    // A courier is annotated and described again, but does not count as known and teaches no face.
+    expect(t.highlights.get(p)).toMatchObject({ annotation: 'PostNL (bezorger of dienstverlener)', annotationKnown: false, aiRedo: true });
     expect((await t.answer(person.id, { category: 'bewoner' })).statusCode).toBe(404);
 
     const res = await t.answer(vehicle.id, { owner: 'Tini', vehicle: 'zwarte Volkswagen up!, kenteken XX-123-Y' });
     expect(res.json()).toMatchObject({ answer: 'Zwarte Volkswagen up!, kenteken XX-123-Y is van Tini', fact: 'done' });
     expect(t.facts.list()).toMatchObject([{ text: 'Zwarte Volkswagen up!, kenteken XX-123-Y is van Tini', createdBy: `mark (vraag ${vehicle.id})` }]);
     expect(t.questions.get(vehicle.id)).toMatchObject({ factStatus: 'done', fact: 'Zwarte Volkswagen up!, kenteken XX-123-Y is van Tini' });
-    expect(t.highlights.get(v)!.annotation).toBe('auto van Tini');
+    expect(t.highlights.get(v)).toMatchObject({ annotation: 'auto van Tini', annotationKnown: true, aiRedo: true });
   });
 
   it('turns a highlight answer into feedback, dismisses suggestions and counts open questions', async () => {
@@ -171,7 +185,7 @@ describe('facts from answers about people', () => {
     const t = setup();
     const facts = new FactStore(':memory:');
     cleanup.push(() => facts.close());
-    for (let i = 0; i < 3; i++) t.add({ ai: { real: true } });
+    for (let i = 0; i < 3; i++) t.add({ ai: { real: true, marker: true } });
     t.generator().runOnce();
     const qs = t.questions.list('open');
     for (const q of qs) {
@@ -204,5 +218,137 @@ describe('facts from answers about people', () => {
     expect(prompt).toContain('Alleen ernaast staan is niet genoeg');
     expect(parseFact('{"fact":""}')).toBeNull();
     expect(parseFact('{"fact":"Oma komt met een <i>grijze</i> Toyota Yaris.\\n"}')).toBe('Oma komt met een grijze Toyota Yaris.');
+  });
+});
+
+describe('learning from answers (0.13)', () => {
+  it('asks "who is this" only when there is something to learn, once per highlight, and withdraws what no longer applies', () => {
+    const t = setup();
+    const face = t.add({ ai: { real: true }, score: 5 });
+    const marker = t.add({ ai: { real: true, marker: true }, score: 4 });
+    t.add({ ai: { real: true }, score: 3 }); // unrecognisable: no face kept, no stable feature
+    const both = t.add({ ai: { real: true, marker: true, vehicle: 'grijze Toyota Yaris' }, score: 2.5 });
+    const bike = t.add({ labels: ['bicycle'], ai: { real: true, vehicle: 'fiets' } });
+    const faces = t.faceStub({ [`ev-${face}`]: { guess: 'Tineke Mevius', score: 0.82 } });
+    t.generator({ faces }).runOnce();
+
+    const open = t.questions.list('open');
+    expect(open.filter((q) => q.kind === 'person').map((q) => q.highlightId).sort()).toEqual([face, marker, both].sort());
+    // The person question already covers the highlight with the Yaris; bicycles are never vehicle questions.
+    expect(open.filter((q) => q.kind === 'vehicle')).toHaveLength(0);
+    expect(open.some((q) => q.highlightId === bike)).toBe(false);
+    const fq = open.find((q) => q.highlightId === face)!;
+    expect(fq.data).toEqual({ faces: [`ev-${face}.webp`], guess: 'Tineke Mevius' });
+    expect(fq.body).toBe('Iemand bij de deur. Voordeur, zo 8 nov, 20:00. Frigate denkt aan Tineke Mevius (82%), maar weet het niet zeker.'.replace('20:00', fq.body.match(/\d\d:\d\d/)![0]));
+    expect(fq.body).not.toContain('..');
+
+    // The face attempt is gone (e.g. rotated out of Frigate's train folder): the question is withdrawn.
+    t.generator({ faces: t.faceStub() }).runOnce();
+    expect(t.questions.get(fq.id)).toMatchObject({ status: 'dismissed', answeredBy: 'systeem' });
+    // Without a readable face library nothing is concluded: no new person questions, none withdrawn.
+    const before = t.questions.list('open').length;
+    t.add({ ai: { real: true, marker: true }, score: 6 });
+    t.generator({ faces: t.faceStub({}, false) }).runOnce();
+    expect(t.questions.list('open')).toHaveLength(before);
+  });
+
+  it('withdraws an open "whose car" question about a bicycle from before the prompt change', () => {
+    const t = setup();
+    const id = t.add({ ai: { real: true } });
+    t.questions.add({ kind: 'vehicle', key: 'vehicle:fiets', highlightId: id, title: 'Van wie is deze auto?', body: 'x', data: { vehicle: 'fiets' } }, NOW);
+    t.generator().runOnce();
+    expect(t.questions.list('open')).toHaveLength(0);
+  });
+
+  it('annotates, describes again, queues a fact and teaches Frigate the face of a named resident or visitor', () => {
+    const t = setup();
+    const id = t.add({ ai: { real: true } });
+    const qid = (n: number) => (t.questions.add({ kind: 'person', key: `person:${n}`, highlightId: id, title: 'Wie is dit?', body: 'x' }, NOW), t.questions.list('all')[0]!.id);
+    const faces = new FaceLibrary({ frigateUrl: 'https://f' });
+    const opts = { questions: t.questions, highlights: t.highlights, autoFacts: true, faces };
+
+    expect(applyPersonAnswer(t.questions.get(qid(1))!, 'Tineke (bewoner)', opts)).toEqual({ fact: 'pending', face: 'pending' });
+    expect(t.highlights.get(id)).toMatchObject({ annotation: 'Tineke (bewoner)', annotationKnown: true, aiRedo: true, aiStatus: null });
+    expect(t.questions.list('all')[0]).toMatchObject({ factStatus: 'pending', faceStatus: 'pending', faceName: 'Tineke' });
+    expect(applyPersonAnswer(t.questions.get(qid(2))!, 'onbekend', opts)).toEqual({ fact: 'none', face: 'none' });
+    expect(t.highlights.get(id)!.annotationKnown).toBe(false);
+    expect(parsePersonAnswer('Oma (Tini) (bezoeker)')).toEqual({ name: 'Oma (Tini)', category: 'bezoeker' });
+  });
+
+  it('stores the kept face crops under the matching library name in Frigate', async () => {
+    const t = setup();
+    const ev = '1794150548.746085-gotiou';
+    const id = t.add({ ai: { real: true }, detections: [ev] });
+    t.questions.add({ kind: 'person', key: 'person:x', highlightId: id, title: 'Wie is dit?', body: 'x' }, NOW);
+    const q = t.questions.list('all')[0]!;
+    t.questions.resolve(q.id, 'answered', 'tineke (bewoner)', 'mark', NOW);
+    t.questions.setFace(q.id, 'pending', 'tineke');
+    const train = [`${ev}-1794150563.53-unknown-0.webp`, `${ev}-1794150564.1-Tineke Mevius-0.61.webp`, '1794150000.1-other-1794150001.2-unknown-0.webp'];
+    const calls: { url: string; body?: string }[] = [];
+    const fetchStub = (async (url: string, init?: RequestInit) => {
+      calls.push({ url: decodeURIComponent(url), ...(typeof init?.body === 'string' ? { body: init.body } : {}) });
+      if (url.endsWith('/api/faces')) return Response.json({ 'Tineke Mevius': ['a.webp'], 'Mark Mevius': [], train });
+      return new Response(null, { status: url.includes('/classify') ? 200 : 404 });
+    }) as typeof fetch;
+    await new FaceWorker(t.questions, t.highlights, new FaceLibrary({ frigateUrl: 'https://f', fetch: fetchStub })).runOnce();
+
+    expect(calls.filter((c) => c.url.includes('/classify'))).toEqual([
+      { url: 'https://f/api/faces/train/Tineke Mevius/classify', body: JSON.stringify({ training_file: train[1] }) },
+      { url: 'https://f/api/faces/train/Tineke Mevius/classify', body: JSON.stringify({ training_file: train[0] }) },
+    ]);
+    expect(t.questions.get(q.id)).toMatchObject({ faceStatus: 'done', faceName: 'Tineke Mevius', faceResult: "2 gezichtsfoto's toegevoegd aan Tineke Mevius" });
+  });
+
+  it('marks face learning failed after repeated Frigate errors (e.g. no admin role) and none without a kept face', async () => {
+    const t = setup();
+    const ev = '1794150548.746085-gotiou';
+    const withFace = t.add({ ai: { real: true }, detections: [ev] });
+    const without = t.add({ ai: { real: true } });
+    for (const [n, h] of [[1, withFace], [2, without]] as const) {
+      t.questions.add({ kind: 'person', key: `person:${n}`, highlightId: h, title: 'Wie is dit?', body: 'x' }, NOW + n);
+    }
+    for (const q of t.questions.list('all')) t.questions.setFace(q.id, 'pending', 'Oma');
+    const fetchStub = (async (url: string) =>
+      url.endsWith('/api/faces') ? Response.json({ train: [`${ev}-1794150563.53-unknown-0.webp`] }) : new Response('{"detail":"admin required"}', { status: 403 })) as typeof fetch;
+    const worker = new FaceWorker(t.questions, t.highlights, new FaceLibrary({ frigateUrl: 'https://f', fetch: fetchStub }), { maxAttempts: 2 });
+    await worker.runOnce();
+    await worker.runOnce();
+    const byHighlight = Object.fromEntries(t.questions.list('all').map((q) => [q.highlightId, q]));
+    expect(byHighlight[withFace]).toMatchObject({ faceStatus: 'failed', faceResult: expect.stringContaining('HTTP 403') });
+    expect(byHighlight[without]).toMatchObject({ faceStatus: 'none' });
+  });
+
+  it('parses Frigate train attempts and matches typed names to the library', () => {
+    expect(parseAttempt('1794161576.503101-smfbsb-1794161583.495469-Mark Mevius-0.89.webp')).toEqual({
+      file: '1794161576.503101-smfbsb-1794161583.495469-Mark Mevius-0.89.webp',
+      eventId: '1794161576.503101-smfbsb',
+      time: 1794161583.495469,
+      guess: 'Mark Mevius',
+      score: 0.89,
+    });
+    expect(parseAttempt('1794150548.746085-gotiou-1794150563.533809-unknown-0.webp')).toMatchObject({ guess: null, score: 0 });
+    expect(parseAttempt('../../etc/passwd')).toBeNull();
+    const names = ['Jasper Mevius', 'Mark Mevius', 'Tineke Mevius'];
+    expect(matchFaceName('tineke', names)).toBe('Tineke Mevius');
+    expect(matchFaceName('MARK MEVIUS', names)).toBe('Mark Mevius');
+    expect(matchFaceName(' Oma  Tini ', names)).toBe('Oma Tini');
+    expect(matchFaceName('Mevius', names)).toBe('Mevius');
+  });
+
+  it('describes answered highlights again (any age, also when no longer selected) and counts known ones low', () => {
+    const t = setup();
+    const old = t.add({ ai: { real: true }, startTime: NOW - 5 * 86400, selected: false });
+    t.highlights.setAnnotation(old, 'auto van Tini', true);
+    expect(t.highlights.aiPending(NOW - 86400, 3).map((c) => c.id)).toEqual([]);
+    t.highlights.requestRedescribe(old);
+    expect(t.highlights.aiPending(NOW - 86400, 3).map((c) => c.id)).toEqual([old]);
+    expect(t.highlights.get(old)!.aiDescription).toBe('Iemand bij de deur.');
+    t.highlights.setAiResult(old, 'Tini parkeert haar auto.', true, NOW);
+    expect(t.highlights.get(old)).toMatchObject({ aiRedo: false, aiDescription: 'Tini parkeert haar auto.' });
+
+    t.highlights.setScoreParts(old, 0.2, 0.4);
+    expect(t.highlights.get(old)).toMatchObject({ score: 1.4, knownFactor: 0.4 });
+    // Identified highlights stay in the archive although they count low now.
+    expect(t.highlights.archive({ limit: 10, offset: 0 }).items.map((c) => c.id)).toEqual([old]);
   });
 });

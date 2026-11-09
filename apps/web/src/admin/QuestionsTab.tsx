@@ -7,7 +7,7 @@ interface Question {
   kind: 'person' | 'vehicle' | 'highlight' | 'noise' | 'system';
   title: string;
   body: string;
-  data: { vehicle?: string };
+  data: { vehicle?: string; faces?: string[]; guess?: string };
   status: 'open' | 'answered' | 'dismissed';
   answer: string | null;
   answeredBy: string | null;
@@ -15,6 +15,8 @@ interface Question {
   answeredAt: number | null;
   factStatus: 'pending' | 'done' | 'none' | 'failed' | null;
   fact: string | null;
+  faceStatus: 'pending' | 'done' | 'none' | 'failed' | null;
+  faceResult: string | null;
   highlight: { id: string; hasThumbnail: boolean } | null;
 }
 
@@ -50,8 +52,20 @@ function Media({ highlight }: { highlight: Question['highlight'] }) {
   );
 }
 
-function QuestionCard({ q, onDone }: { q: Question; onDone: () => void }) {
-  const [name, setName] = useState('');
+/** Face crops Frigate kept but could not recognise; a name plus Bewoner/Bezoeker stores them in Frigate. */
+function Faces({ files }: { files: string[] }) {
+  if (!files.length) return null;
+  return (
+    <div className="admin__faces">
+      {files.map((f) => (
+        <img key={f} src={`/api/admin/faces/train/${encodeURIComponent(f)}`} alt="Gezicht" />
+      ))}
+    </div>
+  );
+}
+
+function QuestionCard({ q, names, onDone }: { q: Question; names: string[]; onDone: () => void }) {
+  const [name, setName] = useState(q.data.guess ?? '');
   const [owner, setOwner] = useState('');
   const [vehicle, setVehicle] = useState(q.data.vehicle ?? '');
   const [error, setError] = useState<string | null>(null);
@@ -79,7 +93,22 @@ function QuestionCard({ q, onDone }: { q: Question; onDone: () => void }) {
 
         {q.kind === 'person' && (
           <>
-            <input placeholder="Naam (optioneel), bijv. Oma of PostNL" maxLength={60} value={name} onChange={(e) => setName(e.target.value)} />
+            <Faces files={q.data.faces ?? []} />
+            <input
+              placeholder="Naam (optioneel), bijv. Oma of PostNL"
+              maxLength={60}
+              list="known-faces"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+            <datalist id="known-faces">
+              {names.map((n) => (
+                <option key={n} value={n} />
+              ))}
+            </datalist>
+            {(q.data.faces?.length ?? 0) > 0 && (
+              <p className="admin__muted">Met een naam en Bewoner of Bezoeker leert Frigate dit gezicht herkennen.</p>
+            )}
             <div className="admin__row">
               {PERSON_BUTTONS.map(([category, label]) => (
                 <button key={category} onClick={() => void send('answer', { category, name })}>
@@ -130,6 +159,7 @@ export function QuestionsTab({ onCountChange }: { onCountChange?: (open: number)
   const [open, setOpen] = useState<Question[] | null>(null);
   const [history, setHistory] = useState<Question[] | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [names, setNames] = useState<string[]>([]);
 
   const load = () =>
     api<Question[]>('GET', '/api/admin/questions').then((qs) => {
@@ -139,6 +169,7 @@ export function QuestionsTab({ onCountChange }: { onCountChange?: (open: number)
 
   useEffect(() => {
     void load();
+    void api<{ names: string[] }>('GET', '/api/admin/faces').then((r) => setNames(r.names), () => {});
   }, []);
 
   useEffect(() => {
@@ -151,12 +182,13 @@ export function QuestionsTab({ onCountChange }: { onCountChange?: (open: number)
     <div className="admin__stack">
       <p className="admin__muted">
         Het systeem stelt hier vragen over wat het nog niet weet, en doet suggesties. Uit je antwoorden bouwt het zelf de
-        feiten voor de AI op (zie het tabblad AI); antwoorden over personen komen ook bij de highlight te staan; een oordeel
-        over een highlight stuurt de selectie bij. Nieuwe vragen verschijnen vanzelf, hooguit een paar tegelijk.
+        feiten voor de AI op (zie het tabblad AI) en leert Frigate gezichten van bewoners en bezoekers herkennen. Je antwoord
+        komt bij de highlight te staan, de AI beschrijft hem opnieuw, en bekende mensen en auto's tellen daarna laag mee. Een
+        oordeel over een highlight stuurt de selectie bij. Nieuwe vragen verschijnen vanzelf, hooguit een paar tegelijk.
       </p>
       {open.length === 0 && <p>Geen open vragen. 🎉</p>}
       {open.map((q) => (
-        <QuestionCard key={q.id} q={q} onDone={() => void load()} />
+        <QuestionCard key={q.id} q={q} names={names} onDone={() => void load()} />
       ))}
       <button className="admin__subtle" onClick={() => setShowHistory((v) => !v)}>
         {showHistory ? 'Verberg afgehandelde vragen' : 'Toon afgehandelde vragen'}
@@ -171,6 +203,9 @@ export function QuestionsTab({ onCountChange }: { onCountChange?: (open: number)
                 <td>{q.status === 'answered' ? q.answer : <span className="admin__muted">overgeslagen</span>}</td>
                 <td className="admin__muted">
                   {q.factStatus === 'done' ? `Feit: ${q.fact}` : q.factStatus === 'pending' ? 'AI schrijft een feit…' : q.factStatus === 'failed' ? 'Feit mislukt' : ''}
+                  {q.faceStatus === 'done' && <div>{q.faceResult}</div>}
+                  {q.faceStatus === 'pending' && <div>Gezicht wordt aan Frigate geleerd…</div>}
+                  {q.faceStatus === 'failed' && <div>Gezicht leren mislukt</div>}
                 </td>
                 <td className="admin__muted">{q.answeredBy}</td>
               </tr>

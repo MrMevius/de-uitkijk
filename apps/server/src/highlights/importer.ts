@@ -5,6 +5,7 @@ import {
   feedbackAdjustment,
   feedbackKey,
   groupItems,
+  KNOWN_FACTOR,
   scoreGroup,
   selectHighlights,
   SELECTION,
@@ -213,6 +214,7 @@ export class HighlightImporter {
       camera: camera.id,
       frigateCamera: rep.camera,
       repEvent,
+      detections: [...new Set(items.flatMap((i) => i.detections))],
       clipStart,
       clipEnd,
       frameTime: rep.thumbTime ?? rep.startTime + 1,
@@ -237,7 +239,9 @@ export class HighlightImporter {
     }
     for (const c of this.store.candidatesSince(now - 2 * 86400)) {
       const adjustment = feedbackAdjustment(sums.get(feedbackKey(c.camera, hourInAmsterdam(c.startTime))) ?? 0);
-      if (adjustment !== c.feedbackAdj) this.store.setFeedbackAdjustment(c.id, adjustment);
+      // Known from answers or facts counts low, like a recognised face (already part of the base score).
+      const known = c.subLabels.length === 0 && (c.aiVehicleKnown || c.annotationKnown) ? KNOWN_FACTOR : 1;
+      if (adjustment !== c.feedbackAdj || known !== c.knownFactor) this.store.setScoreParts(c.id, adjustment, known);
     }
     const recent = this.store.candidatesSince(now - 2 * 86400);
     const selected = selectHighlights(recent.map((c) => ({ id: c.id, startTime: c.startTime, cameras: c.cameras, score: c.score })));

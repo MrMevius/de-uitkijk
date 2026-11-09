@@ -1,6 +1,7 @@
 import type { Camera } from '@uitkijk/shared';
 import type { AiStatus } from '../ai/worker.ts';
 import type { CameraVideoStatus } from '../camera-probe.ts';
+import type { FaceLibrary } from '../faces/library.ts';
 import { hourInAmsterdam } from '../highlights/importer.ts';
 import { periodOf } from '../highlights/selection.ts';
 import type { HighlightStore, StoredCandidate } from '../highlights/store.ts';
@@ -10,6 +11,8 @@ export interface GeneratorOptions {
   cameras: Camera[];
   cameraStatus?: () => CameraVideoStatus[];
   aiStatus?: () => AiStatus | undefined;
+  /** Frigate's face library: a person question needs a face Frigate can learn (or another stable feature). */
+  faces?: Pick<FaceLibrary, 'ready' | 'attemptsFor' | 'refresh'>;
   intervalMs?: number;
   /** Epoch seconds. */
   now?: () => number;
@@ -36,6 +39,10 @@ export function isoWeek(epochS: number): string {
 }
 
 const normalizeVehicle = (v: string) => v.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+/** Not a vehicle with an owner to ask about (the AI is told to leave these out; older answers may still have them). */
+const NOT_A_CAR = /\b(e-?)?(fiets|bike|bicycle|scooter|step|skateboard)\w*/i;
+/** "Een persoon loopt." + ". Voordeur" must not become "loopt.. Voordeur". */
+const sentence = (text: string) => `${text.trim().replace(/[.!?…]+$/, '')}.`;
 
 /**
  * Turns what the system does not know (yet) into questions and suggestions for administrators:
@@ -54,12 +61,21 @@ export class QuestionGenerator {
     this.highlights = highlights;
     this.questions = questions;
     this.names = new Map(options.cameras.map((c) => [c.id, c.name]));
-    this.opts = { cameraStatus: () => [], aiStatus: () => undefined, intervalMs: 10 * 60_000, now: () => Date.now() / 1000, ...options };
+    this.opts = {
+      cameraStatus: () => [],
+      aiStatus: () => undefined,
+      faces: { ready: false, attemptsFor: () => [], refresh: async () => {} },
+      intervalMs: 10 * 60_000,
+      now: () => Date.now() / 1000,
+      ...options,
+    };
   }
 
   start(): void {
-    const loop = () => {
+    const loop = async () => {
       try {
+        // Fresh face attempts; on failure the generator asks no new person questions (the cache is not ready).
+        await this.opts.faces.refresh().catch(() => {});
         this.runOnce();
       } finally {
         this.timer = setTimeout(loop, this.opts.intervalMs);
@@ -89,26 +105,48 @@ export class QuestionGenerator {
       if (this.questions.add(q, now)) added++;
     };
     const room = (kind: keyof typeof OPEN_LIMITS) => OPEN_LIMITS[kind] - this.questions.openCount(kind);
+    const faces = this.opts.faces;
+    // A person question is only useful when the answer can teach something: a face Frigate kept (to learn)
+    // or another stable feature the AI saw (uniform, logo, own vehicle). Unrecognisable figures are not asked.
+    const learnable = (c: StoredCandidate) => faces.attemptsFor(c.detections).length > 0 || c.aiPersonMarker === true;
+    const freeHighlight = (c: StoredCandidate) => !this.questions.hasForHighlight(c.id);
 
-    // Unknown people: real events with a person, no face recognised, not yet labelled. Best first.
-    const people = recent
-      .filter((c) => c.selected && c.hasThumbnail && c.startTime > now - 7 * 86400 && c.labels.some((l) => l.startsWith('person')))
-      .filter((c) => c.subLabels.length === 0 && c.aiRealEvent === true && !c.annotation && !this.questions.has(`person:${c.id}`))
-      .sort((a, b) => b.score - a.score);
+    // Open questions that no longer apply are withdrawn.
+    for (const q of this.questions.list('open', 1000)) {
+      const h = q.highlightId ? this.highlights.get(q.highlightId) : undefined;
+      if (q.kind === 'vehicle' && NOT_A_CAR.test(String(q.data.vehicle ?? ''))) this.questions.withdraw(q.id, now);
+      else if (q.kind === 'person' && h && faces.ready && !learnable(h)) this.questions.withdraw(q.id, now);
+    }
+
+    // Unknown people: real events with a person, no face recognised, not yet labelled, something to learn. Best first.
+    const people = faces.ready
+      ? recent
+          .filter((c) => c.selected && c.hasThumbnail && c.startTime > now - 7 * 86400 && c.labels.some((l) => l.startsWith('person')))
+          .filter((c) => c.subLabels.length === 0 && c.aiRealEvent === true && !c.annotation && freeHighlight(c) && learnable(c))
+          .sort((a, b) => b.score - a.score)
+      : [];
     for (const c of people.slice(0, Math.max(0, room('person')))) {
+      const attempts = faces.attemptsFor(c.detections);
+      const guess = attempts.find((a) => a.guess && a.score >= 0.5);
       add({
         kind: 'person',
         key: `person:${c.id}`,
         highlightId: c.id,
         title: 'Wie is dit?',
-        body: `${c.aiDescription ?? c.description}. ${this.name(c.camera)}, ${timeText(c.startTime)}.`,
+        body:
+          `${sentence(c.aiDescription ?? c.description)} ${this.name(c.camera)}, ${timeText(c.startTime)}.` +
+          (guess ? ` Frigate denkt aan ${guess.guess} (${Math.round(guess.score * 100)}%), maar weet het niet zeker.` : ''),
+        data: {
+          faces: attempts.slice(0, 4).map((a) => a.file),
+          ...(guess ? { guess: guess.guess } : {}),
+        },
       });
     }
 
     // Vehicles the AI described but could not match to a fact. One question per distinct vehicle.
     const seenVehicles = new Set<string>();
     const vehicles = recent
-      .filter((c) => c.hasThumbnail && c.aiVehicle && !c.aiVehicleKnown)
+      .filter((c) => c.hasThumbnail && c.aiVehicle && !c.aiVehicleKnown && !NOT_A_CAR.test(c.aiVehicle) && freeHighlight(c))
       .sort((a, b) => b.startTime - a.startTime)
       .filter((c) => {
         const key = normalizeVehicle(c.aiVehicle!);
@@ -122,7 +160,7 @@ export class QuestionGenerator {
         key: `vehicle:${normalizeVehicle(c.aiVehicle!)}`,
         highlightId: c.id,
         title: 'Van wie is deze auto?',
-        body: `De AI ziet: ${c.aiVehicle}. ${this.name(c.camera)}, ${timeText(c.startTime)}. Klopt de omschrijving niet precies, pas hem dan aan.`,
+        body: `De AI ziet: ${sentence(c.aiVehicle!)} ${this.name(c.camera)}, ${timeText(c.startTime)}. Klopt de omschrijving niet precies, pas hem dan aan.`,
         data: { vehicle: c.aiVehicle },
       });
     }
@@ -130,7 +168,7 @@ export class QuestionGenerator {
     // Borderline highlights without feedback: a quick 👍/👎 teaches the selection the most here.
     const borderline = recent
       .filter((c) => c.selected && c.hasThumbnail && c.startTime > now - 3 * 86400 && c.feedback === null && c.aiRealEvent !== false)
-      .filter((c) => c.score >= 2 && c.score < 2.6 && !this.questions.has(`highlight:${c.id}`))
+      .filter((c) => c.score >= 2 && c.score < 2.6 && freeHighlight(c))
       .sort((a, b) => a.score - b.score);
     for (const c of borderline.slice(0, Math.max(0, room('highlight')))) {
       add({
@@ -138,7 +176,7 @@ export class QuestionGenerator {
         key: `highlight:${c.id}`,
         highlightId: c.id,
         title: 'Was dit een goede highlight?',
-        body: `${c.aiDescription ?? c.description}. ${this.name(c.camera)}, ${timeText(c.startTime)}. Het systeem twijfelde (relevantie ${c.score.toFixed(1)}).`,
+        body: `${sentence(c.aiDescription ?? c.description)} ${this.name(c.camera)}, ${timeText(c.startTime)}. Het systeem twijfelde (relevantie ${c.score.toFixed(1)}).`,
       });
     }
 

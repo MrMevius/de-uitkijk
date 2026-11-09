@@ -137,8 +137,17 @@ export class AiWorker {
         objects: next.labels.map((l) => l.replace(/-verified$/, '')),
         recognized: next.subLabels,
         facts: this.opts.facts(),
+        ...(next.annotation ? { annotation: next.annotation } : {}),
       });
-      this.store.setAiResult(next.id, verdict.description, verdict.realEvent, now, verdict.vehicle ?? null, verdict.vehicleKnown ?? false);
+      this.store.setAiResult(
+        next.id,
+        verdict.description,
+        verdict.realEvent,
+        now,
+        verdict.vehicle ?? null,
+        verdict.vehicleKnown ?? false,
+        verdict.personMarker ?? null,
+      );
       this.lastSuccessAt = now;
       this.lastError = null;
     } catch (err) {

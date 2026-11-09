@@ -7,11 +7,14 @@ import { codexDescriber, codexImageCall } from './ai/codex.ts';
 import { codexFactWriter } from './ai/fact-writer.ts';
 import { FactStore } from './ai/facts.ts';
 import { AiWorker, ffmpegToJpeg } from './ai/worker.ts';
+import { FaceLibrary } from './faces/library.ts';
+import { FaceWorker } from './faces/worker.ts';
 import { ClipCache } from './highlights/clips.ts';
 import { HighlightImporter } from './highlights/importer.ts';
 import { HighlightStore, type StoredCandidate } from './highlights/store.ts';
 import { FactWorker } from './questions/fact-worker.ts';
 import { QuestionGenerator } from './questions/generator.ts';
+import { applyPersonAnswer } from './questions/routes.ts';
 import { QuestionStore } from './questions/store.ts';
 import { loadConfig } from './config.ts';
 import { frigateFetch, readFrigateAuth } from './frigate/client.ts';
@@ -68,6 +71,15 @@ const ai =
         log: (msg) => app.log.warn(msg),
       })
     : undefined;
+// Frigate's face library: answers about residents and visitors teach Frigate their faces (operator decision 2026-11-09).
+const faces = highlightStore && config.frigate ? new FaceLibrary({ frigateUrl: config.frigate.url, ...(frigateHttp ? { fetch: frigateHttp } : {}) }) : undefined;
+let faceWorker: FaceWorker | undefined;
+// Answers given before facts (0.11) and face learning (0.13) existed go through the same steps once.
+if (questionStore && highlightStore) {
+  for (const q of questionStore.legacyPersonAnswers()) {
+    applyPersonAnswer(q, q.answer ?? '', { questions: questionStore, highlights: highlightStore, autoFacts: Boolean(ai), ...(faces ? { faces } : {}) });
+  }
+}
 // Per-camera picture check for monitoring (live mode only; mock streams are synthetic).
 const cameraProbe = config.mode === 'live' && config.go2rtcUrl ? new CameraVideoProbe(config.cameras, config.go2rtcUrl) : undefined;
 let importer: HighlightImporter | undefined;
@@ -81,7 +93,17 @@ const version = (() => {
 const app = buildApp({
   hub,
   ...(version ? { version } : {}),
-  ...(questionStore && highlightStore ? { questions: { questions: questionStore, highlights: highlightStore, autoFacts: Boolean(ai), ...(facts ? { facts } : {}) } } : {}),
+  ...(questionStore && highlightStore
+    ? {
+        questions: {
+          questions: questionStore,
+          highlights: highlightStore,
+          autoFacts: Boolean(ai),
+          ...(facts ? { facts } : {}),
+          ...(faces ? { faces, onFaceQueued: () => void faceWorker?.kick() } : {}),
+        },
+      }
+    : {}),
   detail: () => ({
     cameras: cameraProbe?.snapshot() ?? [],
     highlights: importer ? { enabled: true, lastOkAt: importer.lastOkAt, lastError: importer.lastError } : { enabled: false },
@@ -108,9 +130,12 @@ const questionGenerator =
         cameras: config.cameras,
         ...(cameraProbe ? { cameraStatus: () => cameraProbe.snapshot() } : {}),
         ...(ai ? { aiStatus: () => ai.status() } : {}),
+        ...(faces ? { faces } : {}),
       })
     : undefined;
 questionGenerator?.start();
+faceWorker = faces && questionStore && highlightStore ? new FaceWorker(questionStore, highlightStore, faces, { log: (msg) => app.log.warn(msg) }) : undefined;
+faceWorker?.start();
 // Facts from answers about people (only with AI enabled; vehicle answers become facts directly).
 const factWorker =
   ai && questionStore && highlightStore && facts
@@ -154,6 +179,7 @@ const shutdown = async () => {
   importer?.stop();
   questionGenerator?.stop();
   factWorker?.stop();
+  faceWorker?.stop();
   cameraProbe?.stop();
   ai?.stop();
   hub.stop();

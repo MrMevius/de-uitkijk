@@ -40,6 +40,12 @@ export const SELECTION = {
   baselineDays: 7,
 } as const;
 
+/**
+ * Score multiplier for known people and vehicles: a face Frigate recognised, a vehicle the AI matched to a
+ * household fact, or a highlight an administrator identified as a resident, visitor or vehicle owner.
+ */
+export const KNOWN_FACTOR = 0.4;
+
 /** Splits items (any order) into groups of consecutive activity across cameras. */
 export function groupItems(items: ReviewItem[], gapS: number = SELECTION.groupGapS): ReviewItem[][] {
   const sorted = [...items].sort((a, b) => a.startTime - b.startTime);
@@ -108,7 +114,7 @@ export function scoreGroup(
   }
   // Recognised household members are usually not news: they count, but low (operator decision).
   if (items.some((i) => i.subLabels.length > 0)) {
-    score *= 0.4;
+    score *= KNOWN_FACTOR;
     reasons.push('bekende persoon');
   }
   return { items, score: Math.round(score * 100) / 100, reasons };
