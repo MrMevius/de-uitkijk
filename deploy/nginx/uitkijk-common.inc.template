@@ -15,7 +15,7 @@ location = /index.html {
 }
 
 location /api/ {
-    proxy_pass http://${API_UPSTREAM};
+    proxy_pass http://uitkijk_api;
     proxy_http_version 1.1;
     proxy_set_header Connection "";
     proxy_set_header X-Uitkijk-Client $uitkijk_client;
@@ -30,9 +30,9 @@ location = /stream/ws {
         return 400;
     }
     auth_request /_auth;
-    # Rewrite (query string kept) instead of variables in proxy_pass, which would need a resolver.
+    # Rewrite keeps the query string.
     rewrite ^ /api/ws break;
-    proxy_pass http://${GO2RTC_UPSTREAM};
+    proxy_pass http://uitkijk_go2rtc;
     proxy_http_version 1.1;
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection $connection_upgrade;
@@ -44,7 +44,7 @@ location = /stream/ws {
 
 location = /_auth {
     internal;
-    proxy_pass http://${API_UPSTREAM}/api/auth/check;
+    proxy_pass http://uitkijk_api/api/auth/check;
     proxy_pass_request_body off;
     proxy_set_header Content-Length "";
     proxy_set_header X-Uitkijk-Client $uitkijk_client;

@@ -93,3 +93,7 @@ go2rtc/            go2rtc mock config, mock camera script, live config example
 deploy/nginx/      Edge proxy template
 docs/              Requirements, architecture, streaming, Frigate, security, development, testing
 ```
+
+## Edge upstreams
+
+nginx resolves the backend and go2rtc through Docker's DNS every 10 seconds (`upstream … resolve`, nginx ≥ 1.27.3). A recreated container can get a new address; before 0.12.0 the edge kept the address it saw at start-up and answered "Server niet bereikbaar" until it was restarted too. Verified on 2026-11-09 by forcing a new server address (172.18.0.2 → .5) while the edge kept running.

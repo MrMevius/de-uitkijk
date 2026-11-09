@@ -111,4 +111,10 @@ describe('StreamingProbe', () => {
     await probe.check();
     expect(hub.snapshot().health.streaming.status).toBe('down');
   });
+
+  it('lets the edge video check pass when login is off (development)', async () => {
+    const { app } = mockApp();
+    const res = await app.inject('/api/auth/check');
+    expect(res.statusCode).toBe(200);
+  });
 });

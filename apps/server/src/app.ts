@@ -31,6 +31,8 @@ export interface AppDeps {
 export function buildApp({ hub, mock, auth, highlights, questions, logger = false, heartbeatMs = 15_000, version, detail }: AppDeps): FastifyInstance {
   const app = Fastify({ logger });
   if (auth) registerAuth(app, auth);
+  // Without login (development) the edge's video check must still pass.
+  else app.get('/api/auth/check', async () => 'ok');
   if (highlights) registerHighlights(app, highlights);
   if (questions) registerQuestions(app, questions);
 

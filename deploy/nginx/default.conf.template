@@ -7,6 +7,20 @@
 #     8081  for SWAG (https://uitkijk.mrmevius.nl, the one address for viewers)
 # ${API_UPSTREAM} and ${GO2RTC_UPSTREAM} are filled in by the nginx image's envsubst at start-up.
 
+# Re-resolve the backend and go2rtc through Docker's DNS: a recreated container can get a new address, and
+# nginx would otherwise keep using the one it saw at start-up.
+resolver 127.0.0.11 valid=10s ipv6=off;
+
+upstream uitkijk_api {
+    zone uitkijk_api 64k;
+    server ${API_UPSTREAM} resolve;
+}
+
+upstream uitkijk_go2rtc {
+    zone uitkijk_go2rtc 64k;
+    server ${GO2RTC_UPSTREAM} resolve;
+}
+
 map $http_upgrade $connection_upgrade {
     default upgrade;
     ''      close;
