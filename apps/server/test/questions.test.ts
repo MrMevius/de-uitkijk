@@ -267,6 +267,7 @@ describe('learning from answers (0.13)', () => {
     t.highlights.setAiResult(id, 'Een persoon loopt over de oprit.', true, NOW, null, false, false, [
       { description: 'donkerblauwe Volvo V60', known: false },
       { description: 'rode Tesla Model 3', known: true },
+      { description: 'zwarte kleine hatchback, merk en model niet duidelijk herkenbaar', known: false },
     ]);
     const parked = t.add({ labels: ['car'], selected: false });
     t.highlights.setAiResult(parked, 'Een auto staat geparkeerd.', true, NOW, null, false, false, [{ description: 'witte Renault Kangoo bestelbus', known: false }]);
@@ -280,6 +281,10 @@ describe('learning from answers (0.13)', () => {
     const vehicles = t.questions.list('open').filter((q) => q.kind === 'vehicle');
     expect(vehicles.map((q) => q.data.vehicle).sort()).toEqual(['donkerblauwe Volvo V60', 'witte Renault Kangoo bestelbus']);
     expect(vehicles.find((q) => q.highlightId === id)!.title).toBe('Van wie is deze auto?');
+    // An open question about a vehicle the AI could not tell apart (asked before this rule) is withdrawn.
+    t.questions.add({ kind: 'vehicle', key: 'vehicle:x', highlightId: null, title: 'Van wie is deze auto?', body: 'x', data: { vehicle: 'grijze hatchback, merk en model niet duidelijk herkenbaar' } }, NOW);
+    t.generator().runOnce();
+    expect(t.questions.list('open').some((q) => q.key === 'vehicle:x')).toBe(false);
   });
 
   it('annotates, describes again, queues a fact and teaches Frigate the face of a named resident or visitor', () => {

@@ -15,5 +15,7 @@ export const normalizeVehicle = (v: string) => v.toLowerCase().replace(/[^a-z0-9
 /** Never asked about: no owner to learn ("fiets" alone is too vague to recognise the bicycle later). */
 export function askableVehicle(description: string): boolean {
   if (/\b(step|skateboard|stoep|kinderwagen|rolstoel)\w*/i.test(description)) return false;
+  // The AI sometimes says itself that it cannot tell the vehicle apart ("merk en model niet duidelijk herkenbaar").
+  if (/niet (goed |duidelijk )?(herkenbaar|te herkennen|zichtbaar)|onherkenbaar|onduidelijk/i.test(description)) return false;
   return normalizeVehicle(description).split(' ').length >= 2;
 }

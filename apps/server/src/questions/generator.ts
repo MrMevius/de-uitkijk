@@ -106,6 +106,11 @@ export class QuestionGenerator {
     const faces = this.opts.faces;
     const freeHighlight = (c: StoredCandidate) => !this.questions.hasForHighlight(c.id);
 
+    // Open vehicle questions about something the AI could not tell apart are withdrawn.
+    for (const q of this.questions.list('open', 1000)) {
+      if (q.kind === 'vehicle' && !askableVehicle(String(q.data.vehicle ?? ''))) this.questions.withdraw(q.id, now);
+    }
+
     // Unknown people: real events with a person whom Frigate did not recognise and nobody named yet. Best first.
     // The answer puts the name on the highlight (and in its description); a face Frigate kept is also learned.
     const people = recent
