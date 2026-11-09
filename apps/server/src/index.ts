@@ -143,10 +143,11 @@ const questionGenerator =
       })
     : undefined;
 questionGenerator?.start();
-// Since 0.19.0 faces also come from the 4K recording when Frigate kept no crop; earlier answers get that chance once.
-if (faces && questionStore && highlightStore && !highlightStore.getMeta('faces_from_recording')) {
+// Since 0.19.0 faces also come from the 4K recording when Frigate kept no crop; earlier answers get that chance once
+// (again in 0.19.1: in 0.19.0 a Frigate error during the attempt counted as "no face").
+if (faces && questionStore && highlightStore && highlightStore.getMeta('faces_from_recording') !== '2') {
   questionStore.retryFacesWithoutCrop();
-  highlightStore.setMeta('faces_from_recording', '1');
+  highlightStore.setMeta('faces_from_recording', '2');
 }
 const recordingFaces = faces && config.frigate ? new RecordingFaces({ frigateUrl: config.frigate.url, ...(frigateHttp ? { fetch: frigateHttp } : {}) }) : undefined;
 faceWorker =

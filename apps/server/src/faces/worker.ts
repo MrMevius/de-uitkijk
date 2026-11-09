@@ -92,10 +92,14 @@ export class FaceWorker {
    */
   private async fromRecording(name: string, detections: string[]): Promise<number> {
     const found: { jpeg: Uint8Array; sure: boolean }[] = [];
+    let unprocessed = 0;
     for (const jpeg of await this.recording!.crops(detections)) {
       const r = await this.faces.recognize(jpeg);
-      if (r) found.push({ jpeg, sure: r.name === name && r.score >= 0.9 });
+      if (r === undefined) unprocessed++;
+      else if (r) found.push({ jpeg, sure: r.name === name && r.score >= 0.9 });
     }
+    // Retried later (as a failure) rather than concluding there is no face.
+    if (!found.length && unprocessed) throw new Error("Frigate kon de beelden nu niet verwerken; later opnieuw");
     const chosen = found.sort((a, b) => Number(a.sure) - Number(b.sure)).slice(0, this.opts.maxFromRecording);
     for (const f of chosen) await this.faces.register(name, f.jpeg);
     return chosen.length;

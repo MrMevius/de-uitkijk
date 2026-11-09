@@ -398,6 +398,24 @@ describe('learning from answers (0.13)', () => {
     expect(t.questions.get(q.id)).toMatchObject({ faceStatus: 'done', faceResult: "2 gezichtsfoto's uit de opname toegevoegd aan Tineke Mevius" });
   });
 
+  it('tries again later when Frigate cannot process the recording frames now', async () => {
+    const t = setup();
+    const ev = '1794227571.915942-5a17ar';
+    const id = t.add({ ai: { real: true }, detections: [ev] });
+    t.questions.add({ kind: 'person', key: 'person:x', highlightId: id, title: 'Wie is dit?', body: 'x' }, NOW);
+    const q = t.questions.list('all')[0]!;
+    t.questions.setFace(q.id, 'pending', 'Tineke');
+    const fetchStub = (async (url: string) => {
+      if (url.endsWith('/api/faces')) return Response.json({ train: [] });
+      if (url.includes('/events/')) return Response.json({ label: 'person', camera: 'cam', start_time: 1, end_time: 9, data: { box: [0.5, 0.2, 0.2, 0.8], path_data: [[[0.6, 1], 2]] } });
+      if (url.includes('/recordings/')) return new Response(new Uint8Array([0xff, 0xd8]));
+      return Response.json({ success: false, message: 'Could not process request. Try restarting Frigate.' }, { status: 500 });
+    }) as typeof fetch;
+    const recording = new RecordingFaces({ frigateUrl: 'https://f', fetch: fetchStub, crop: async (j) => j });
+    await new FaceWorker(t.questions, t.highlights, new FaceLibrary({ frigateUrl: 'https://f', fetch: fetchStub }), { recording }).runOnce();
+    expect(t.questions.get(q.id)).toMatchObject({ faceStatus: 'pending', faceResult: 'Frigate kon de beelden nu niet verwerken; later opnieuw' });
+  });
+
   it('only looks at people tall enough and alone on their camera, around where they were seen best', () => {
     const person = (id: string, camera: string, start: number, end: number, h = 0.4): PersonTrack => ({
       id, camera, start, end, box: [0.4, 0.5, 0.2, h], path: [{ x: 0.5, y: 0.9, t: start }],

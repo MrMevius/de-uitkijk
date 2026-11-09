@@ -102,13 +102,17 @@ export class FaceLibrary {
     if (!this.names.includes(name)) this.names = [...this.names, name].sort();
   }
 
-  /** Frigate's guess for the face in an image (name null for "unknown"), or null when it finds no face. */
-  async recognize(jpeg: Uint8Array): Promise<{ name: string | null; score: number } | null> {
+  /**
+   * Frigate's guess for the face in an image (name null for "unknown"), null when it finds no face, or undefined
+   * when Frigate could not process it now (HTTP 500 "Could not process request", e.g. while its detector restarts).
+   */
+  async recognize(jpeg: Uint8Array): Promise<{ name: string | null; score: number } | null | undefined> {
     const res = await this.upload(`${this.url}/api/faces/recognize`, jpeg);
     const body = (await res.json().catch(() => ({}))) as { success?: boolean; face_name?: string; score?: number };
-    // 400 "No face was detected"; 500 "Could not process request" for an image Frigate cannot read.
-    if (res.status === 400 || res.status === 500 || !body.success) return null;
+    if (res.status >= 500) return undefined;
+    if (res.status === 400) return null;
     if (!res.ok) throw new Error(`Frigate face recognition HTTP ${res.status}`);
+    if (!body.success) return null;
     return { name: !body.face_name || body.face_name === 'unknown' ? null : body.face_name, score: body.score ?? 0 };
   }
 
