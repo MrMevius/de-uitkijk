@@ -41,6 +41,8 @@ export function matchFaceName(input: string, names: string[]): string {
 export interface FaceLibraryOptions {
   frigateUrl: string;
   fetch?: typeof fetch;
+  /** Quiet time after the last deletion before Frigate's face model is rebuilt once more. */
+  rebuildDelayMs?: number;
 }
 
 /** Cached view of the face library plus the two write actions De Uitkijk needs (admin role in Frigate). */
@@ -54,9 +56,12 @@ export class FaceLibrary {
   ready = false;
   lastError: string | null = null;
 
-  constructor({ frigateUrl, fetch: f = globalThis.fetch }: FaceLibraryOptions) {
+  private readonly rebuildDelayMs: number;
+
+  constructor({ frigateUrl, fetch: f = globalThis.fetch, rebuildDelayMs = 20_000 }: FaceLibraryOptions) {
     this.url = frigateUrl.replace(/\/$/, '');
     this.fetch = f;
+    this.rebuildDelayMs = rebuildDelayMs;
   }
 
   async refresh(): Promise<void> {
@@ -139,7 +144,32 @@ export class FaceLibrary {
     }
     await res.body?.cancel();
     this.library.set(name, (this.library.get(name) ?? []).filter((f) => !valid.includes(f)));
+    this.scheduleRebuild(name);
     return valid.length;
+  }
+
+  private rebuildTimer: ReturnType<typeof setTimeout> | undefined;
+
+  /**
+   * Frigate rebuilds its face model in the background after every change. With several deletions in a row a
+   * rebuild can start before the last one and keep a removed person (seen 2026-11-09: "Arjan" stayed after his
+   * folder was gone, until a restart). So once things are quiet, ask once more: a delete without files only
+   * clears the model, which Frigate then rebuilds from the folders as they are.
+   */
+  private scheduleRebuild(name: string): void {
+    clearTimeout(this.rebuildTimer);
+    this.rebuildTimer = setTimeout(() => {
+      const anyName = this.names.find((n) => (this.library.get(n) ?? []).length > 0) ?? name;
+      void this.fetch(`${this.url}/api/faces/${encodeURIComponent(anyName)}/delete`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-csrf-token': '1' },
+        body: JSON.stringify({ ids: [] }),
+        signal: AbortSignal.timeout(15_000),
+      })
+        .then((res) => res.body?.cancel())
+        .catch(() => undefined);
+    }, this.rebuildDelayMs);
+    this.rebuildTimer.unref?.();
   }
 
   private isLibraryFile(name: string, file: string): boolean {
@@ -169,6 +199,28 @@ export class FaceLibrary {
     }
     await res.body?.cancel();
     if (!this.names.includes(name)) this.names = [...this.names, name].sort();
+  }
+
+  /**
+   * Registers the face Frigate finds in an image, then checks the crop Frigate stored: a side view or a tiny face
+   * teaches it nothing and makes it mix people up (Arjan's three crops of 2026-11-09 were a forehead, a blurry
+   * side view and an ear: 30x63, 43x65 and 49x83 px). Such a crop is removed again. Returns whether it was kept.
+   */
+  async registerChecked(name: string, jpeg: Uint8Array): Promise<boolean> {
+    await this.refresh();
+    const before = new Set(this.library.get(name) ?? []);
+    await this.register(name, jpeg);
+    await this.refresh();
+    const added = (this.library.get(name) ?? []).filter((f) => !before.has(f));
+    let kept = false;
+    const reject: string[] = [];
+    for (const file of added) {
+      const size = webpSize((await this.libraryImage(name, file)) ?? new Uint8Array());
+      if (size && usableFace(size)) kept = true;
+      else reject.push(file);
+    }
+    if (reject.length) await this.deleteImages(name, reject);
+    return kept;
   }
 
   /** Multipart upload of one JPEG as `file`, built by hand: the pinned-certificate fetch sends only bytes. */
@@ -207,4 +259,22 @@ export function libraryTime(name: string, file: string): number | null | undefin
   if (!file.startsWith(name) || !file.endsWith('.webp') || /[/\\]|\.\./.test(file)) return undefined;
   const m = /^[-_](\d+(?:\.\d+)?)\.webp$/.exec(file.slice(name.length));
   return m ? Number(m[1]) : null;
+}
+
+/** A face crop worth learning from: at least 40 px wide and not narrow like a side view (width/height ≥ 0.68). */
+export const usableFace = ({ width, height }: { width: number; height: number }) => width >= 40 && width / height >= 0.68;
+
+/** Width and height of a WebP image (lossy, lossless or extended), or undefined. */
+export function webpSize(b: Uint8Array): { width: number; height: number } | undefined {
+  if (b.length < 30 || String.fromCharCode(...b.subarray(0, 4)) !== 'RIFF' || String.fromCharCode(...b.subarray(8, 12)) !== 'WEBP') return undefined;
+  const chunk = String.fromCharCode(...b.subarray(12, 16));
+  const u16 = (o: number) => b[o]! | (b[o + 1]! << 8);
+  const u24 = (o: number) => b[o]! | (b[o + 1]! << 8) | (b[o + 2]! << 16);
+  if (chunk === 'VP8 ') return { width: u16(26) & 0x3fff, height: u16(28) & 0x3fff };
+  if (chunk === 'VP8L') {
+    const v = (b[21]! | (b[22]! << 8) | (b[23]! << 16) | (b[24]! << 24)) >>> 0;
+    return { width: (v & 0x3fff) + 1, height: ((v >>> 14) & 0x3fff) + 1 };
+  }
+  if (chunk === 'VP8X') return { width: u24(24) + 1, height: u24(27) + 1 };
+  return undefined;
 }

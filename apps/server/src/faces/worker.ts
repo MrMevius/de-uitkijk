@@ -78,7 +78,7 @@ export class FaceWorker {
         }
         const n = this.recording ? await this.fromRecording(name, h.detections) : 0;
         if (n) this.questions.setFace(q.id, 'done', name, `${photos(n)} uit de opname toegevoegd aan ${name}`);
-        else this.questions.setFace(q.id, 'none', null, this.recording ? 'Geen bruikbaar gezicht, ook niet in de opname' : 'Geen bruikbaar gezicht bewaard door Frigate');
+        else this.questions.setFace(q.id, 'none', null, this.recording ? 'Geen bruikbaar gezicht, ook niet in de opname (alleen zijaanzichten, te klein of geen gezicht)' : 'Geen bruikbaar gezicht bewaard door Frigate');
       } catch (err) {
         this.questions.faceFailure(q.id, this.opts.maxAttempts, (err as Error).message);
         this.opts.log(`faces: question ${q.id}: ${(err as Error).message}`);
@@ -100,9 +100,13 @@ export class FaceWorker {
     }
     // Retried later (as a failure) rather than concluding there is no face.
     if (!found.length && unprocessed) throw new Error("Frigate kon de beelden nu niet verwerken; later opnieuw");
-    const chosen = found.sort((a, b) => Number(a.sure) - Number(b.sure)).slice(0, this.opts.maxFromRecording);
-    for (const f of chosen) await this.faces.register(name, f.jpeg);
-    return chosen.length;
+    // Each stored crop is checked (side views and tiny faces are removed again); the next frame then gets a turn.
+    let kept = 0;
+    for (const f of found.sort((a, b) => Number(a.sure) - Number(b.sure))) {
+      if (kept >= this.opts.maxFromRecording) break;
+      if (await this.faces.registerChecked(name, f.jpeg)) kept++;
+    }
+    return kept;
   }
 }
 

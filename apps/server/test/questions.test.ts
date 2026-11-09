@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parseCameraConfig } from '@uitkijk/shared';
 import { buildApp } from '../src/app.ts';
 import { FactStore } from '../src/ai/facts.ts';
@@ -56,6 +56,17 @@ function setup() {
   const generator = (extra: Partial<ConstructorParameters<typeof QuestionGenerator>[2]> = {}) =>
     new QuestionGenerator(highlights, questions, { cameras, now: () => NOW, faces: faceStub(), ...extra });
   return { highlights, questions, add, generator, faceStub };
+}
+
+/** A minimal extended WebP header with the given size. */
+function webp(width: number, height: number): Uint8Array {
+  const b = new Uint8Array(30);
+  b.set(new TextEncoder().encode('RIFF'), 0);
+  b.set(new TextEncoder().encode('WEBPVP8X'), 8);
+  const u24 = (o: number, v: number) => b.set([v & 0xff, (v >> 8) & 0xff, (v >> 16) & 0xff], o);
+  u24(24, width - 1);
+  u24(27, height - 1);
+  return b;
 }
 
 describe('question generator', () => {
@@ -383,11 +394,20 @@ describe('learning from answers (0.13)', () => {
     };
     const calls: string[] = [];
     const registered: string[] = [];
+    // Frigate's library as it changes; the crop stored for frame 1778 is a side view (narrow), the others frontal.
+    const library: Record<string, string[]> = { 'Tineke Mevius': [], 'Mark Mevius': [], train: [] };
+    const stored = new Map<string, [number, number]>();
     let frame = '';
     const fetchStub = (async (url: string, init?: RequestInit) => {
       const u = decodeURIComponent(url);
       calls.push(u);
-      if (u.endsWith('/api/faces')) return Response.json({ 'Tineke Mevius': [], 'Mark Mevius': [], train: [] });
+      if (u.endsWith('/api/faces')) return Response.json(library);
+      if (u.includes('/clips/faces/Tineke Mevius/')) return new Response(webp(...stored.get(u.split('/').pop()!)!));
+      if (u.endsWith('/Tineke Mevius/delete')) {
+        const ids = (JSON.parse(String(init!.body)) as { ids: string[] }).ids;
+        library['Tineke Mevius'] = library['Tineke Mevius']!.filter((f) => !ids.includes(f));
+        return Response.json({ success: true });
+      }
       if (u.endsWith(`/events/${tineke}`)) return Response.json({ label: 'person', camera: 'cam1', start_time: 1794217773, end_time: 1794217790, data: { box: [0.44, 0.53, 0.18, 0.46], path_data: path } });
       if (u.endsWith(`/events/${car}`)) return Response.json({ label: 'car', camera: 'cam1', start_time: 1794217773, end_time: 1794217790, data: { box: [0, 0, 0.5, 0.5], path_data: [] } });
       if (u.includes('/recordings/')) return (frame = u.split('/recordings/')[1]!.split('.')[0]!, new Response(new Uint8Array([0xff, 0xd8, 1])));
@@ -396,11 +416,17 @@ describe('learning from answers (0.13)', () => {
         const g = (guess[(init!.body as Buffer).toString().split('|')[1]!] ?? { body: { success: true, face_name: 'Tineke Mevius', score: 0.97 } }) as { status?: number; body: object };
         return Response.json(g.body, { status: g.status ?? 200 });
       }
-      if (u.endsWith('/register')) return (registered.push((init!.body as Buffer).toString().split('|')[1]!), Response.json({ success: true }));
+      if (u.endsWith('/register')) {
+        const f = (init!.body as Buffer).toString().split('|')[1]!;
+        registered.push(f);
+        library['Tineke Mevius']!.push(`Tineke Mevius_${f}.1.webp`);
+        stored.set(`Tineke Mevius_${f}.1.webp`, f === '1794217778' ? [43, 65] : [120, 150]);
+        return Response.json({ success: true });
+      }
       return new Response(null, { status: 404 });
     }) as typeof fetch;
     const crop = async (_: Uint8Array, r: { y: number }) => (expect(r.y).toBeGreaterThanOrEqual(0), new TextEncoder().encode(`|${frame}|`));
-    const faces = new FaceLibrary({ frigateUrl: 'https://f', fetch: fetchStub });
+    const faces = new FaceLibrary({ frigateUrl: 'https://f', fetch: fetchStub, rebuildDelayMs: 60_000 });
     await new FaceWorker(t.questions, t.highlights, faces, {
       recording: new RecordingFaces({ frigateUrl: 'https://f', fetch: fetchStub, crop, perPerson: 4 }),
       maxFromRecording: 2,
@@ -408,8 +434,9 @@ describe('learning from answers (0.13)', () => {
 
     // Four moments (1774, 1776, 1778, 1780); no face at 1774, Frigate sure it is Tineke at 1776.
     expect(calls.filter((c) => c.includes('/recordings/')).map((c) => c.split('/recordings/')[1])).toEqual(['1794217774.00/snapshot.jpg', '1794217776.00/snapshot.jpg', '1794217778.00/snapshot.jpg', '1794217780.00/snapshot.jpg']);
-    expect(calls.filter((c) => c.endsWith('/register'))).toEqual(Array(2).fill('https://f/api/faces/Tineke Mevius/register'));
-    expect(registered).toEqual(['1794217778', '1794217780']);
+    // Wrong guess first (1778), but Frigate stored a side view: removed again, so the sure frame (1776) gets a turn.
+    expect(registered).toEqual(['1794217778', '1794217780', '1794217776']);
+    expect(library['Tineke Mevius']).toEqual(['Tineke Mevius_1794217780.1.webp', 'Tineke Mevius_1794217776.1.webp']);
     expect(t.questions.get(q.id)).toMatchObject({ faceStatus: 'done', faceResult: "2 gezichtsfoto's uit de opname toegevoegd aan Tineke Mevius" });
   });
 
@@ -456,7 +483,7 @@ describe('learning from answers (0.13)', () => {
       if (url.includes('/clips/faces/')) return new Response(new Uint8Array([1, 2]));
       return Response.json({ success: true });
     }) as typeof fetch;
-    const faces = new FaceLibrary({ frigateUrl: 'https://f', fetch: fetchStub });
+    const faces = new FaceLibrary({ frigateUrl: 'https://f', fetch: fetchStub, rebuildDelayMs: 10 });
     await faces.refresh();
     expect(faces.libraryImages()).toEqual([
       { name: 'Mark Mevius', images: [{ file: 'Mark Mevius-1774616862.150213.webp', time: 1774616862.150213 }] },
@@ -477,6 +504,9 @@ describe('learning from answers (0.13)', () => {
       { url: 'https://f/api/faces/Tineke Mevius/delete', body: JSON.stringify({ ids: ['Tineke Mevius_1794244419.1.webp'] }) },
     ]);
     expect(faces.libraryImages().find((p) => p.name === 'Tineke Mevius')!.images).toHaveLength(1);
+    // Once quiet, Frigate is asked to rebuild its face model (a delete without files only clears it).
+    await vi.waitFor(() => expect(calls.filter((c) => c.url.endsWith('/delete'))).toHaveLength(2));
+    expect(calls.filter((c) => c.url.endsWith('/delete'))[1]!.body).toBe(JSON.stringify({ ids: [] }));
     expect(libraryTime('Tineke Mevius', 'Tineke Mevius-x.webp')).toBeNull();
     expect(libraryTime('Tineke Mevius', 'Tineke Mevius-1/../a.webp')).toBeUndefined();
   });
