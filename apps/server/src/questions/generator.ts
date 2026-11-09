@@ -115,7 +115,9 @@ export class QuestionGenerator {
     // The answer puts the name on the highlight (and in its description); a face Frigate kept is also learned.
     const people = recent
       .filter((c) => c.selected && c.hasThumbnail && c.startTime > now - 7 * 86400 && c.labels.some((l) => l.startsWith('person')))
-      .filter((c) => c.subLabels.length === 0 && c.aiRealEvent === true && !c.annotation && freeHighlight(c))
+      // Also after a 👍/👎 question about the same highlight, but never two open questions at once.
+      .filter((c) => c.subLabels.length === 0 && c.aiRealEvent === true && !c.annotation)
+      .filter((c) => !this.questions.hasForHighlight(c.id, 'person') && !this.questions.hasOpenForHighlight(c.id))
       .sort((a, b) => b.score - a.score);
     for (const c of people.slice(0, Math.max(0, room('person')))) {
       const attempts = faces.ready ? faces.attemptsFor(c.detections) : [];

@@ -367,8 +367,12 @@ describe('learning from answers (0.13)', () => {
     const old = t.add({ ai: { real: true }, startTime: NOW - 5 * 86400, selected: false });
     t.highlights.setAnnotation(old, 'auto van Tini', true);
     expect(t.highlights.aiPending(NOW - 86400, 3).map((c) => c.id)).toEqual([]);
+    // A redo without an answer (e.g. the 0.18 vehicle backfill) waits behind one with an answer.
+    const backfill = t.add({ ai: { real: true }, startTime: NOW - 6 * 86400, selected: false });
+    t.highlights.requestRedescribe(backfill);
     t.highlights.requestRedescribe(old);
-    expect(t.highlights.aiPending(NOW - 86400, 3).map((c) => c.id)).toEqual([old]);
+    expect(t.highlights.aiPending(NOW - 86400, 3).map((c) => c.id)).toEqual([old, backfill]);
+    t.highlights.setAiResult(backfill, 'Iemand bij de deur.', true, NOW);
     expect(t.highlights.get(old)!.aiDescription).toBe('Iemand bij de deur.');
     t.highlights.setAiResult(old, 'Tini parkeert haar auto.', true, NOW);
     expect(t.highlights.get(old)).toMatchObject({ aiRedo: false, aiDescription: 'Tini parkeert haar auto.' });

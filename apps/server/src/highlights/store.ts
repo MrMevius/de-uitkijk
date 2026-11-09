@@ -374,7 +374,7 @@ export class HighlightStore {
       this.db
         .prepare(
           `SELECT ${COLUMNS} FROM candidates WHERE deleted = 0 AND thumbnail IS NOT NULL AND ai_status IS NULL AND ai_attempts < ?
-             AND (ai_redo = 1 OR (selected = 1 AND start_time >= ?)) ORDER BY ai_redo DESC, start_time`,
+             AND (ai_redo = 1 OR (selected = 1 AND start_time >= ?)) ORDER BY ai_redo DESC, annotation IS NOT NULL DESC, start_time`,
         )
         .all(maxAttempts, since) as unknown as Row[]
     ).map(fromRow);

@@ -157,8 +157,10 @@ export class QuestionStore {
   }
 
   /** Whether any question (open or handled) was ever asked about this highlight: one question per highlight. */
-  hasForHighlight(highlightId: string): boolean {
-    return this.db.prepare('SELECT 1 FROM questions WHERE highlight_id = ?').get(highlightId) !== undefined;
+  hasForHighlight(highlightId: string, kind?: QuestionKind): boolean {
+    return kind
+      ? this.db.prepare('SELECT 1 FROM questions WHERE highlight_id = ? AND kind = ?').get(highlightId, kind) !== undefined
+      : this.db.prepare('SELECT 1 FROM questions WHERE highlight_id = ?').get(highlightId) !== undefined;
   }
 
   /** Whether an open question about this highlight is waiting (a vehicle question may follow an answered one). */
