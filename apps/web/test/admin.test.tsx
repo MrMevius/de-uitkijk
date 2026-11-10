@@ -71,6 +71,7 @@ describe('admin page', () => {
     render(<AdminPage />);
     expect(await screen.findByText('Wie is dit?')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Bezorger / dienst' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Voorbijganger' })).toBeTruthy();
     expect((screen.getByDisplayValue('zwarte Volkswagen up!') as HTMLInputElement).value).toBe('zwarte Volkswagen up!');
     expect(screen.getByRole('button', { name: 'Opslaan als feit voor de AI' })).toBeTruthy();
   });

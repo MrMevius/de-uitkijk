@@ -149,7 +149,7 @@ export class QuestionStore {
       .run(error.slice(0, 200), maxAttempts, id);
   }
 
-  /** Named residents and visitors whose face could not be learned (no crop kept by Frigate): try again. */
+  /** Named people who come back whose face could not be learned (no crop kept by Frigate): try again. */
   retryFacesWithoutCrop(): number {
     return Number(
       this.db

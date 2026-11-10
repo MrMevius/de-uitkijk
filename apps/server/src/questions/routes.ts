@@ -11,7 +11,7 @@ export interface QuestionRouteOptions {
   facts?: FactStore;
   /** When true (AI enabled), answers about people are queued for a fact and answered highlights are described again. */
   autoFacts?: boolean;
-  /** Frigate's face library: answers naming a resident or visitor teach Frigate that face. */
+  /** Frigate's face library: answers naming a person who comes back (resident, family, visitor, ...) teach Frigate that face. */
   faces?: FaceLibrary;
   /** Called after an answer queued face learning, to process it right away. */
   onFaceQueued?: () => void;
@@ -19,10 +19,25 @@ export interface QuestionRouteOptions {
   now?: () => number;
 }
 
-export const PERSON_CATEGORIES = { bewoner: 'bewoner', bezoeker: 'bezoeker', bezorger: 'bezorger of dienstverlener', onbekend: 'onbekend' } as const;
+export const PERSON_CATEGORIES = {
+  bewoner: 'bewoner',
+  familie: 'familie',
+  bezoeker: 'bezoeker',
+  buren: 'buren',
+  hulp: 'vaste hulp',
+  bezorger: 'bezorger of dienstverlener',
+  voorbijganger: 'voorbijganger',
+  onbekend: 'onbekend',
+} as const;
 
-/** Residents and visitors with a name count as known and their faces are learned; couriers are not (different people, same company). */
-const KNOWN_CATEGORIES = new Set(['bewoner', 'bezoeker']);
+/**
+ * People who come back count as known with a name and their faces are learned; couriers are not (different people,
+ * same company), nor are passers-by.
+ */
+const KNOWN_CATEGORIES = new Set(['bewoner', 'familie', 'bezoeker', 'buren', 'vaste hulp']);
+
+/** Answers without a name that tell the AI nothing to write a fact from. */
+const NO_FACT_CATEGORIES = new Set(['onbekend', 'voorbijganger']);
 
 /** Splits a stored person answer "Tineke (bewoner)" into name and category. */
 export function parsePersonAnswer(answer: string): { name: string; category: string } {
@@ -33,7 +48,7 @@ export function parsePersonAnswer(answer: string): { name: string; category: str
 
 /**
  * What an answer about a person does besides closing the question: annotate the highlight (known when it
- * names a resident or visitor), describe it again, queue a fact and queue face learning.
+ * names someone who comes back), describe it again, queue a fact and queue face learning.
  * Also used once at startup for answers given before these steps existed.
  */
 export function applyPersonAnswer(
@@ -48,8 +63,8 @@ export function applyPersonAnswer(
     highlights.setAnnotation(h.id, answer, known);
     if (autoFacts) highlights.requestRedescribe(h.id);
   }
-  // The AI writes a fact from the still and this answer (nothing to learn from "onbekend" without a name).
-  const fact = autoFacts && h && (name || category !== 'onbekend') ? 'pending' : 'none';
+  // The AI writes a fact from the still and this answer (nothing to learn from "onbekend" or a passer-by without a name).
+  const fact = autoFacts && h && (name || !NO_FACT_CATEGORIES.has(category)) ? 'pending' : 'none';
   questions.setFact(q.id, fact);
   const face = faces && h && known ? 'pending' : 'none';
   questions.setFace(q.id, face, face === 'pending' ? name : null);

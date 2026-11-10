@@ -31,8 +31,12 @@ const KIND_LABEL: Record<Question['kind'], string> = {
 
 const PERSON_BUTTONS = [
   ['bewoner', 'Bewoner'],
+  ['familie', 'Familie'],
   ['bezoeker', 'Bezoeker'],
+  ['buren', 'Buren'],
+  ['hulp', 'Vaste hulp'],
   ['bezorger', 'Bezorger / dienst'],
+  ['voorbijganger', 'Voorbijganger'],
   ['onbekend', 'Onbekend'],
 ] as const;
 
@@ -120,7 +124,7 @@ function QuestionCard({ q, names, onDone }: { q: Question; names: string[]; onDo
             </label>
             <NameChips names={names} value={name} onPick={setName} />
             {(q.data.faces?.length ?? 0) > 0 && (
-              <p className="ui-field__help">Met een naam en Bewoner of Bezoeker leert Frigate dit gezicht herkennen.</p>
+              <p className="ui-field__help">Met een naam leert Frigate dit gezicht herkennen, behalve bij Bezorger / dienst, Voorbijganger en Onbekend.</p>
             )}
             <div className="ui-segment" role="group" aria-label="Wie is het?">
               {PERSON_BUTTONS.map(([category, label]) => (

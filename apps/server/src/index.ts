@@ -73,7 +73,7 @@ const ai =
         log: (msg) => app.log.warn(msg),
       })
     : undefined;
-// Frigate's face library: answers about residents and visitors teach Frigate their faces (operator decision 2026-11-09).
+// Frigate's face library: answers about people who come back teach Frigate their faces (operator decision 2026-11-09).
 const faces = highlightStore && config.frigate ? new FaceLibrary({ frigateUrl: config.frigate.url, ...(frigateHttp ? { fetch: frigateHttp } : {}) }) : undefined;
 let faceWorker: FaceWorker | undefined;
 // Answers given before facts (0.11) and face learning (0.13) existed go through the same steps once.

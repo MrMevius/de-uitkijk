@@ -167,7 +167,6 @@ describe('answering questions', () => {
     // A courier is annotated and described again, but does not count as known and teaches no face.
     expect(t.highlights.get(p)).toMatchObject({ annotation: 'PostNL (bezorger of dienstverlener)', annotationKnown: false, aiRedo: true });
     expect((await t.answer(person.id, { category: 'bewoner' })).statusCode).toBe(404);
-
     const res = await t.answer(vehicle.id, { owner: 'Tini', vehicle: 'zwarte Volkswagen up!, kenteken XX-123-Y' });
     expect(res.json()).toMatchObject({ answer: 'Zwarte Volkswagen up!, kenteken XX-123-Y is van Tini', fact: 'done' });
     expect(t.facts.list()).toMatchObject([{ text: 'Zwarte Volkswagen up!, kenteken XX-123-Y is van Tini', createdBy: `mark (vraag ${vehicle.id})` }]);
@@ -328,6 +327,13 @@ describe('learning from answers (0.13)', () => {
     expect(t.highlights.get(id)).toMatchObject({ annotation: 'Tineke (bewoner)', annotationKnown: true, aiRedo: true, aiStatus: null });
     expect(t.questions.list('all')[0]).toMatchObject({ factStatus: 'pending', faceStatus: 'pending', faceName: 'Tineke' });
     expect(applyPersonAnswer(t.questions.get(qid(2))!, 'onbekend', opts)).toEqual({ fact: 'none', face: 'none' });
+    expect(t.highlights.get(id)!.annotationKnown).toBe(false);
+    // Family, neighbours and regular help come back: known, and their faces are learned.
+    expect(applyPersonAnswer(t.questions.get(qid(3))!, 'Kees (vaste hulp)', opts)).toEqual({ fact: 'pending', face: 'pending' });
+    expect(t.highlights.get(id)!.annotationKnown).toBe(true);
+    // A passer-by is never known; without a name there is nothing to write a fact from.
+    expect(applyPersonAnswer(t.questions.get(qid(4))!, 'voorbijganger', opts)).toEqual({ fact: 'none', face: 'none' });
+    expect(applyPersonAnswer(t.questions.get(qid(5))!, 'Jan (voorbijganger)', opts)).toEqual({ fact: 'pending', face: 'none' });
     expect(t.highlights.get(id)!.annotationKnown).toBe(false);
     expect(parsePersonAnswer('Oma (Tini) (bezoeker)')).toEqual({ name: 'Oma (Tini)', category: 'bezoeker' });
   });
