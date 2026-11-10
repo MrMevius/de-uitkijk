@@ -1,6 +1,6 @@
 # Frigate integration
 
-Findings from read-only inspection of the production Frigate instance (version string `0.17.2-3d4dd3a`) on 2026-11-08 and from the Frigate v0.17.2 source code. Nothing in Frigate was changed.
+Findings from read-only inspection of the production Frigate instance (version string `0.17.2-3d4dd3a`) on 2026-11-08 and from the Frigate v0.17.2 source code. Nothing in Frigate was changed. Production runs Frigate 0.18.2 since 2026-11-10; afterwards alerts, `/ws`, `snapshot-clean.webp`, clips, recording snapshots and the face API answered as before.
 
 ## What Frigate exposes
 
