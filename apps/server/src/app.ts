@@ -19,7 +19,7 @@ export interface AppDeps {
   questions?: QuestionRouteOptions;
   /** The household register: who is who and whose vehicle is which (since 0.22.0). */
   household?: HouseholdRouteOptions;
-  /** Raw AI calls for Beheer → AI-gesprekken (since 0.23.0). */
+  /** Raw AI calls for Beheer → AI-log (since 0.23.0). */
   aiLog?: AiLog;
   logger?: boolean;
   heartbeatMs?: number;

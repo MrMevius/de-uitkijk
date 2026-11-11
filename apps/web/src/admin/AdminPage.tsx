@@ -37,7 +37,7 @@ const TABS: Tab[] = [
   { id: 'highlights', label: 'Highlights', icon: 'highlights', adminOnly: false, render: () => <ArchiveView embedded /> },
   { id: 'huishouden', label: 'Huishouden', icon: 'home', adminOnly: true, render: () => <HouseholdTab /> },
   { id: 'ai', label: 'AI', icon: 'ai', adminOnly: true, render: () => <AiTab /> },
-  { id: 'ai-gesprekken', label: 'AI-gesprekken', icon: 'ai', adminOnly: true, render: () => <AiCallsTab /> },
+  { id: 'ai-log', label: 'AI-log', icon: 'ai', adminOnly: true, render: () => <AiCallsTab /> },
   { id: 'gezichten', label: 'Gezichten', icon: 'account', adminOnly: true, render: () => <FacesTab /> },
   { id: 'account', label: 'Mijn account', icon: 'account', adminOnly: false, render: ({ me }) => <AccountTab me={me} /> },
 ];

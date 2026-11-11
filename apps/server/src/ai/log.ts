@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import type { CodexImageCall } from './codex.ts';
 
-/** What a call was for, shown on Beheer → AI-gesprekken. */
+/** What a call was for, shown on Beheer → AI-log. */
 export type AiPurpose = 'beschrijving' | 'feit' | 'huishouden';
 
 /** One AI call as sent and received: the raw conversation for administrators (since 0.23.0). */

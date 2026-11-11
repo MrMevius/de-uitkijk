@@ -52,7 +52,7 @@ export function AiTab() {
         {ai?.lastError && <Notice level="warn">Laatste fout: {ai.lastError}</Notice>}
         {ai?.enabled && (
           <p className="ui-muted">
-            Wat de AI precies kreeg en antwoordde, staat per gesprek in <a className="ui-link" href="#ai-gesprekken">AI-gesprekken</a>.
+            Wat de AI precies kreeg en antwoordde, staat per aanroep in de <a className="ui-link" href="#ai-log">AI-log</a>.
           </p>
         )}
 

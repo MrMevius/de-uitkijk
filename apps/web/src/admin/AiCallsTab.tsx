@@ -80,7 +80,7 @@ function CallCard({ c }: { c: AiCall }) {
   );
 }
 
-/** Beheer → AI-gesprekken: every AI call of the last 14 days with prompt, image and raw answer. */
+/** Beheer → AI-log: every AI call of the last 14 days with prompt, image and raw answer. */
 export function AiCallsTab() {
   const [purpose, setPurpose] = useState<Purpose | ''>('');
   const [calls, setCalls] = useState<AiCall[] | null>(null);
@@ -107,8 +107,8 @@ export function AiCallsTab() {
   return (
     <>
       <PageHeader
-        title="AI-gesprekken"
-        description="Elke vraag aan de AI van de afgelopen 14 dagen, met het beeld dat hij kreeg en zijn letterlijke antwoord. Klik op een gesprek om het te openen."
+        title="AI-log"
+        description="Gedetailleerd logboek van elke AI-aanroep van de afgelopen 14 dagen: het beeld, de letterlijke prompt en het ruwe antwoord. Klik op een regel voor de details."
       />
       <div className="ui-stack">
         <div className="ui-chips" role="group" aria-label="Soort">
@@ -123,7 +123,7 @@ export function AiCallsTab() {
           <p className="ui-muted">Laden…</p>
         ) : calls.length === 0 ? (
           <div className="ui-card">
-            <Empty>Nog geen gesprekken. Ze worden bewaard vanaf versie 0.23.0.</Empty>
+            <Empty>Nog geen AI-aanroepen gelogd. Het logboek loopt vanaf versie 0.23.0.</Empty>
           </div>
         ) : (
           calls.map((c) => <CallCard key={c.id} c={c} />)
@@ -131,7 +131,7 @@ export function AiCallsTab() {
         {more && calls && (
           <div>
             <button className="ui-btn ui-btn--ghost" onClick={() => load(calls.at(-1)!.id)}>
-              Oudere gesprekken
+              Oudere aanroepen
             </button>
           </div>
         )}

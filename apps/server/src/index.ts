@@ -65,7 +65,7 @@ const facts = highlightStore ? new FactStore(join(config.dataDir, 'uitkijk.db'))
 const questionStore = highlightStore ? new QuestionStore(join(config.dataDir, 'uitkijk.db')) : undefined;
 // AI descriptions (AI-4: only when the owner enabled them; AI-7: isolated, failures never affect the rest).
 const codexOptions = { codexHome: join(config.dataDir, 'codex'), model: config.aiModel };
-// Every AI call with prompt, image and raw answer, for Beheer → AI-gesprekken (since 0.23.0).
+// Every AI call with prompt, image and raw answer, for Beheer → AI-log (since 0.23.0).
 const aiLog = highlightStore && config.ai === 'codex' ? new AiLog(join(config.dataDir, 'uitkijk.db'), { shrink: ffmpegThumbnail }) : undefined;
 const aiCall = (purpose: AiPurpose) =>
   loggedCall(codexImageCall(codexOptions), aiLog, purpose, config.aiModel ?? null, (err) => app.log.warn(`ai log: ${err.message}`));

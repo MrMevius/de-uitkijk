@@ -1239,7 +1239,7 @@ body,
   background: #000;
 }
 
-/* AI calls (Beheer → AI-gesprekken) */
+/* AI log (Beheer → AI-log) */
 .ui-aicall {
   padding: 0;
 }
