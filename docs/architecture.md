@@ -30,7 +30,7 @@ The streaming path (camera → go2rtc → edge → browser) contains neither the
    - **live**: bounded polling of Frigate's review API, see [frigate-integration.md](frigate-integration.md).
 3. `StateHub` reconciles alerts through the pure focus reducer (`packages/shared/src/focus.ts`), keeps one timer for the earliest hold expiry, and emits a `DashboardState` only when something meaningful changed.
 4. Clients receive state through `GET /api/events` (SSE) and render `computeLayout(cameraIds, focusedIds, viewport)`.
-5. Each tile owns a `<video>` and an `MsePlayer` keyed by stream name. Layout changes only update absolute position and size (CSS transition, 400 ms), so video connections survive focus changes.
+5. Each tile owns a `<video>` and an `MsePlayer` keyed by stream name. Layout changes only update absolute position and size (CSS transition, 650 ms, staggered per tile), so video connections survive focus changes.
 
 ## Focus state machine
 

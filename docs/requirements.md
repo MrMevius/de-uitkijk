@@ -67,7 +67,7 @@ Consolidated specification for De Uitkijk. Each requirement has a phase:
 | FOC-1 | Only Frigate alerts (review severity `alert`) activate focus. | P1 |
 | FOC-2 | No active alerts → standard layout. One active camera → enlarged. Two → both enlarged. Three or more → prominence distributed among active cameras. Other cameras stay visible. | P1 |
 | FOC-3 | Each camera has an independent 15 s focus hold after its last alert ends; a new alert cancels that camera's hold; standard layout returns after the final hold expires. | P1 |
-| FOC-4 | Subtle 300–500 ms transitions. | P1 (400 ms) |
+| FOC-4 | Smooth focus transitions. | P1 (650 ms glide with soft landing, staggered tiles, glow and ring on the focused tile, other cameras dimmed; since 0.26.0) |
 | FOC-5 | Moving or resizing a tile must not recreate its video connection. | P1 |
 | FOC-6 | Deterministic simulated alert events. | P1 |
 | FOC-7 | Accurate active-alert state from Frigate 0.17.2 via a verified event source or bounded polling; MQTT not required. | P1 |

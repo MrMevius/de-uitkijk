@@ -56,7 +56,7 @@ Verified 2026-11-08 with Docker: a stream with a valid session connects; after `
 
 With `docker compose up --build`:
 
-1. **Focus**: open the dashboard and `/dev`, run `single-alert`, `multi-alert` and `expire-reactivate`. Watch for 400 ms transitions, a red frame for active alerts, an amber frame during the hold, and the return to 2x2.
+1. **Focus**: open the dashboard and `/dev`, run `single-alert`, `multi-alert` and `expire-reactivate`. Watch for smooth 650 ms transitions (focused tile leads and glows, others follow and dim), a red frame for active alerts, an amber frame during the hold, and the return to 2x2.
 2. **Stream failure**: `docker compose stop go2rtc`. Every tile shows "Geen beeld" within about 6 s (no frozen frame), the health indicator turns red within 15 s, and retries back off to 30 s (DevTools → Network → WS). `docker compose start go2rtc`: tiles recover within one backoff interval.
 3. **Backend failure**: `docker compose stop server`. Video keeps playing, the status shows "Server niet bereikbaar", and any focus is released after 15 s. A page reload still shows all tiles (cached camera list; static files come from the edge). `docker compose start server`: the status clears.
 4. **Profiles**: `/?profile=shop` (larger overlays) and `/?profile=bedroom`.

@@ -3,6 +3,11 @@
 Op hoofdlijnen, nieuwste eerst. Wordt getoond op Beheer → Change log. Elke release krijgt hier een kopje
 `## <versie> — <datum>` met een paar bullets; een test controleert dat de bovenste versie gelijk is aan `VERSION`.
 
+## 0.26.0 — 2026-11-11
+
+- Vloeiendere overgang naar focus: de camera met een alert schuift soepel naar voren met een gloed en een ring die op het kader inzoomt, de andere camera's volgen één voor één en worden gedimd.
+- Het alertlabel springt in beeld met een pulserende stip; highlights komen na een alert zacht terug in beeld.
+
 ## 0.25.0 — 2026-11-11
 
 - Na het afspelen blijft een highlight op de tv stilstaan op het interessantste moment (waar de persoon het best te zien is) in plaats van op het laatste beeld.

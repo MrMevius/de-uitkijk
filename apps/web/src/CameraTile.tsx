@@ -1,10 +1,12 @@
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { dutchObjectLabel, type Camera, type FocusEntry, type Rect } from '@uitkijk/shared';
 import { MsePlayer, type PlayerStatus } from './player/mse-player.ts';
 
 interface Props {
   camera: Camera;
   rect: Rect;
+  /** Position in the camera order; staggers the tiles' movement when the layout changes. */
+  order: number;
   streamName: string;
   focus: FocusEntry | undefined;
   showObjectType: boolean;
@@ -16,10 +18,11 @@ export function streamUrl(streamName: string): string {
 }
 
 /**
- * One camera tile. Position and size come from props and animate via CSS; the player lifecycle depends
- * only on the stream name, so moving or resizing a tile never recreates its video connection.
+ * One camera tile. Position and size come from props and animate via CSS (focus transition: the focused tile
+ * glides on top with a glow, the others follow staggered and dim); the player lifecycle depends only on the
+ * stream name, so moving or resizing a tile never recreates its video connection.
  */
-export const CameraTile = memo(function CameraTile({ camera, rect, streamName, focus, showObjectType }: Props) {
+export const CameraTile = memo(function CameraTile({ camera, rect, order, streamName, focus, showObjectType }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [status, setStatus] = useState<PlayerStatus>('connecting');
   // After a failure, reconnect attempts keep showing "Geen beeld" until the stream is live again.
@@ -53,7 +56,7 @@ export const CameraTile = memo(function CameraTile({ camera, rect, streamName, f
     <div
       className={`tile${focus ? ` tile--${focus.reason}` : ''}`}
       data-camera={camera.id}
-      style={{ left: rect.x, top: rect.y, width: rect.w, height: rect.h }}
+      style={{ left: rect.x, top: rect.y, width: rect.w, height: rect.h, '--order': order } as CSSProperties}
     >
       <video ref={videoRef} className={live ? 'tile__video' : 'tile__video tile__video--hidden'} autoPlay muted playsInline />
       {message && <div className="tile__placeholder">{message}</div>}

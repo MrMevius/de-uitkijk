@@ -76,13 +76,17 @@ export function Dashboard({ state, connected, profile }: Props) {
   const health = summarizeHealth(state, connected);
 
   return (
-    <main className={pointerIdle ? 'dashboard dashboard--idle' : 'dashboard'} style={{ '--scale': scale } as CSSProperties}>
+    <main
+      className={`dashboard${focusedIds.length > 0 ? ' dashboard--focus' : ''}${pointerIdle ? ' dashboard--idle' : ''}`}
+      style={{ '--scale': scale } as CSSProperties}
+    >
       {/* Tiles are always rendered in the shared camera order with stable keys. */}
-      {cameras.map((camera) => (
+      {cameras.map((camera, order) => (
         <CameraTile
           key={camera.id}
           camera={camera}
           rect={rects[camera.id]!}
+          order={order}
           streamName={camera.streams[profile.streamQuality]}
           focus={state?.focus.find((f) => f.cameraId === camera.id)}
           showObjectType={profile.showObjectType}
