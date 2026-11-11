@@ -341,6 +341,10 @@ describe('learning from answers (0.13)', () => {
     expect(t.questions.list('open').some((q) => q.key === 'vehicle:x')).toBe(false);
     expect(askableVehicle('Blauwe compacte MPV, merk en model niet leesbaar')).toBe(false);
     expect(askableVehicle('grijze Volvo V60, kenteken niet leesbaar')).toBe(true);
+    // Wheelie bins are not vehicles (0.22.2).
+    expect(askableVehicle('zwarte rolcontainer met oranje deksel')).toBe(false);
+    expect(askableVehicle('groene kliko')).toBe(false);
+    expect(askableVehicle('witte Mercedes-Benz Sprinter-bestelbus')).toBe(true);
   });
 
   it('annotates, describes again, queues a fact and teaches Frigate the face of a named resident or visitor', () => {
