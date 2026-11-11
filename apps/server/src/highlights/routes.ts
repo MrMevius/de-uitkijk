@@ -60,7 +60,8 @@ export function registerHighlights(app: FastifyInstance, { store, clips, frigate
       const source = `${frigate}/api/${encodeURIComponent(h.frigateCamera)}/start/${start.toFixed(1)}/end/${end.toFixed(1)}/clip.mp4`;
       let file: string;
       try {
-        file = await clips.get(`${h.id.replace(/[^A-Za-z0-9._-]/g, '_')}-${kind}`, source);
+        // The window is part of the key: a corrected clip window must not serve the old cached file.
+        file = await clips.get(`${h.id.replace(/[^A-Za-z0-9._-]/g, '_')}-${kind}-${Math.round(start)}`, source);
       } catch (err) {
         request.log.warn({ id: h.id, err: (err as Error).message }, 'highlight clip unavailable');
         return reply.code(502).send({ error: 'Clip niet beschikbaar (mogelijk al verwijderd uit Frigate)' });

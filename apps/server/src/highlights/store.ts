@@ -421,6 +421,18 @@ export class HighlightStore {
     this.db.prepare('UPDATE candidates SET annotation = ?, annotation_known = ? WHERE id = ?').run(text, known ? 1 : 0, id);
   }
 
+  /** Moves clip windows that miss the AI still's moment so they contain it (same rule as `clipStartFor`); returns the count. */
+  moveClipsToFrame(): number {
+    return Number(
+      this.db
+        .prepare(
+          `UPDATE candidates SET clip_start = frame_time - 15, clip_end = MAX(frame_time - 10, MIN(end_time + 2, frame_time + 15))
+             WHERE deleted = 0 AND frame_time IS NOT NULL AND (frame_time < clip_start OR frame_time > clip_end)`,
+        )
+        .run().changes,
+    );
+  }
+
   /** Describe again with the latest answer and facts; the current description stays until the new one is there. */
   requestRedescribe(id: string): void {
     this.db.prepare('UPDATE candidates SET ai_redo = 1, ai_status = NULL, ai_attempts = 0 WHERE id = ? AND deleted = 0').run(id);

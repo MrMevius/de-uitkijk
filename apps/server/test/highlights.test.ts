@@ -9,7 +9,7 @@ import { buildApp } from '../src/app.ts';
 import { AuthStore } from '../src/auth/store.ts';
 import { hashPassword } from '../src/auth/passwords.ts';
 import { ClipCache } from '../src/highlights/clips.ts';
-import { describe as describeGroup, HighlightImporter, hourInAmsterdam, personMoment, platesOf } from '../src/highlights/importer.ts';
+import { describe as describeGroup, clipStartFor, HighlightImporter, hourInAmsterdam, personMoment, platesOf } from '../src/highlights/importer.ts';
 import { buildBaseline, groupItems, scoreGroup, selectHighlights, type ReviewItem } from '../src/highlights/selection.ts';
 import { HighlightStore, toSummary } from '../src/highlights/store.ts';
 import { StateHub } from '../src/hub.ts';
@@ -81,6 +81,35 @@ describe('selection', () => {
     expect(personMoment([car, person], cam)).toBe(1794256019.9);
     expect(personMoment([car, person], 'Vriezenveen_voordeur')).toBeUndefined();
     expect(personMoment([car], cam)).toBeUndefined();
+  });
+
+  it('starts the clip where the person appears, not where a parked car opened the alert (2026-11-11)', () => {
+    const cam = 'Vriezenveen_achter_thuis_2';
+    const alert = 1794379476.6;
+    const path = (t: number) => [[[0.5, 0.8], t]] as [[number, number], number][];
+    const car = { id: 'car', label: 'car', camera: cam, start_time: alert - 1, data: { top_score: 0.71, path_data: path(alert) } };
+    const person = { id: 'p', label: 'person', camera: cam, start_time: alert + 75, data: { top_score: 0.76, box: [0.4, 0.3, 0.1, 0.5], path_data: path(alert + 80) } };
+    const frame = personMoment([car, person], cam)!;
+    expect(clipStartFor([car, person], cam, 'p', alert, frame)).toBeCloseTo(alert + 73);
+    // Without a person: the representative detection, never before the alert.
+    expect(clipStartFor([car], cam, 'car', alert, alert + 1)).toBeCloseTo(alert - 2);
+    // A still far into a long detection stays inside the clip.
+    expect(clipStartFor([car], cam, 'car', alert, alert + 60)).toBeCloseTo(alert + 45);
+  });
+
+  it('moves stored clip windows that miss the AI still once (0.22.3)', () => {
+    const store = new HighlightStore(':memory:');
+    cleanup.push(() => store.close());
+    const rec = (id: string, frameTime: number) => ({
+      id, startTime: 1000, endTime: 1100, cameras: ['achter_2'], camera: 'achter_2', frigateCamera: 'Vriezenveen_achter_thuis_2',
+      repEvent: 'e', clipStart: 998, clipEnd: 1028, frameTime, eventStart: 995, eventEnd: 1105, labels: ['person'], subLabels: [],
+      score: 3, reasons: [], description: 'x', detections: ['e'],
+    });
+    store.insert(rec('late', 1080), ['late']);
+    store.insert(rec('inside', 1010), ['inside']);
+    expect(store.moveClipsToFrame()).toBe(1);
+    expect(store.get('late')).toMatchObject({ clipStart: 1065, clipEnd: 1095 });
+    expect(store.get('inside')).toMatchObject({ clipStart: 998, clipEnd: 1028 });
   });
 
   it('collects the plates Frigate read, in one spelling', () => {

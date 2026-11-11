@@ -61,12 +61,27 @@ interface FrigateEvent {
  * best detection (path points are the bottom centre over time). A car's thumbnail time can be before the
  * person walked into view (2026-11-09: "a parked hatchback" while somebody walked past it).
  */
+const bestPerson = (events: FrigateEvent[], camera: string) =>
+  events
+    .filter((e) => e.label === 'person' && e.camera === camera && e.data?.path_data?.length)
+    .sort((a, b) => (b.data?.top_score ?? 0) - (a.data?.top_score ?? 0))[0];
+
 export function personMoment(events: FrigateEvent[], camera: string): number | undefined {
-  const people = events.filter((e) => e.label === 'person' && e.camera === camera && e.data?.path_data?.length);
-  const best = people.sort((a, b) => (b.data?.top_score ?? 0) - (a.data?.top_score ?? 0))[0];
+  const best = bestPerson(events, camera);
   if (!best) return undefined;
   const bottom = (best.data!.box?.[1] ?? 0) + (best.data!.box?.[3] ?? 1);
   return [...best.data!.path_data!].sort((a, b) => Math.abs(a[0][1] - bottom) - Math.abs(b[0][1] - bottom))[0]![1];
+}
+
+/**
+ * Start of the 30-second clip: where the person (seen best) appears, else the representative detection, never before
+ * the alert. An alert can start long before the interesting part: on 2026-11-11 a parked car opened one at 07:44 and
+ * the person walked by 75 s later, outside the clip. The AI still (`frameTime`) always falls inside the clip.
+ */
+export function clipStartFor(events: FrigateEvent[], camera: string, repEvent: string, alertStart: number, frameTime: number): number {
+  const anchor = (bestPerson(events, camera) ?? events.find((e) => e.id === repEvent))?.start_time ?? alertStart;
+  const start = Math.max(alertStart, anchor) - 2;
+  return frameTime > start + 25 ? frameTime - 15 : start;
 }
 
 /** Plates Frigate's LPR read on these detections, upper case without spaces or dashes, deduplicated. */
@@ -238,7 +253,8 @@ export class HighlightImporter {
       }
     }
     const camera = this.byFrigate.get(rep.camera)!;
-    const clipStart = rep.startTime - 2;
+    const frameTime = personMoment(events, rep.camera) ?? rep.thumbTime ?? rep.startTime + 1;
+    const clipStart = clipStartFor(events, rep.camera, repEvent, rep.startTime, frameTime);
     const clipEnd = Math.max(clipStart + 5, Math.min(rep.endTime + 2, clipStart + 30));
     const groupStart = Math.min(...items.map((i) => i.startTime));
     const groupEnd = Math.max(...items.map((i) => i.endTime));
@@ -253,7 +269,7 @@ export class HighlightImporter {
       detections: [...new Set(items.flatMap((i) => i.detections))],
       clipStart,
       clipEnd,
-      frameTime: personMoment(events, rep.camera) ?? rep.thumbTime ?? rep.startTime + 1,
+      frameTime,
       eventStart: Math.max(rep.startTime - 5, groupStart - 5),
       eventEnd: Math.min(groupEnd + 5, rep.startTime + 600),
       labels: [...new Set(items.flatMap((i) => i.objects))],
