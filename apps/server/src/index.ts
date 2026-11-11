@@ -8,6 +8,8 @@ import { codexFactWriter } from './ai/fact-writer.ts';
 import { FactStore } from './ai/facts.ts';
 import { AiWorker, ffmpegToJpeg } from './ai/worker.ts';
 import { FaceLibrary } from './faces/library.ts';
+import { Bundler, type PersonAnswer } from './household/bundle.ts';
+import { HouseholdStore } from './household/store.ts';
 import { FaceWorker } from './faces/worker.ts';
 import { RecordingFaces } from './faces/recording.ts';
 import { ClipCache, ffmpegThumbnail } from './highlights/clips.ts';
@@ -15,7 +17,7 @@ import { HighlightImporter } from './highlights/importer.ts';
 import { HighlightStore, type StoredCandidate } from './highlights/store.ts';
 import { FactWorker } from './questions/fact-worker.ts';
 import { QuestionGenerator } from './questions/generator.ts';
-import { applyPersonAnswer, VEHICLE_ANNOTATION, vehicleIsSubject } from './questions/routes.ts';
+import { applyPersonAnswer, parsePersonAnswer, VEHICLE_ANNOTATION, vehicleIsSubject } from './questions/routes.ts';
 import { QuestionStore } from './questions/store.ts';
 import { loadConfig } from './config.ts';
 import { frigateFetch, readFrigateAuth } from './frigate/client.ts';
@@ -76,6 +78,23 @@ const ai =
 // Frigate's face library: answers about people who come back teach Frigate their faces (operator decision 2026-11-09).
 const faces = highlightStore && config.frigate ? new FaceLibrary({ frigateUrl: config.frigate.url, ...(frigateHttp ? { fetch: frigateHttp } : {}) }) : undefined;
 let faceWorker: FaceWorker | undefined;
+// Household register (since 0.22.0): bundles facts and answers into who is who and whose vehicle is which.
+const household = highlightStore ? new HouseholdStore(join(config.dataDir, 'uitkijk.db')) : undefined;
+household?.failInterruptedRuns(Date.now() / 1000);
+const bundler = household
+  ? new Bundler(household, {
+      ...(ai ? { call: codexImageCall(codexOptions) } : {}),
+      input: async () => {
+        if (faces) await faces.refresh().catch(() => undefined);
+        const answers: PersonAnswer[] = (questionStore?.list('all', 5000) ?? [])
+          .filter((q) => q.kind === 'person' && q.status === 'answered' && q.answer)
+          .map((q) => ({ questionId: q.id, ...parsePersonAnswer(q.answer!), at: q.answeredAt ?? q.createdAt }))
+          .filter((a) => a.name);
+        return { facts: facts?.list() ?? [], answers, faceNames: faces?.ready ? faces.knownNames() : [] };
+      },
+      log: (msg) => app.log.warn(msg),
+    })
+  : undefined;
 // Answers given before facts (0.11) and face learning (0.13) existed go through the same steps once.
 if (questionStore && highlightStore) {
   for (const q of questionStore.legacyPersonAnswers()) {
@@ -132,6 +151,9 @@ const app = buildApp({
           ...(faces ? { faces, onFaceQueued: () => void faceWorker?.kick() } : {}),
         },
       }
+    : {}),
+  ...(household && bundler
+    ? { household: { store: household, bundler, ...(facts ? { facts } : {}), ...(highlightStore ? { highlights: highlightStore } : {}), ...(faces ? { faces } : {}) } }
     : {}),
   detail: () => ({
     cameras: cameraProbe?.snapshot() ?? [],
@@ -246,6 +268,7 @@ const shutdown = async () => {
   store?.close();
   highlightStore?.close();
   facts?.close();
+  household?.close();
   questionStore?.close();
   process.exit(0);
 };

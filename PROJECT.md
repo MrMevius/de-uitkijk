@@ -30,6 +30,7 @@ The complete agreed scope is in [docs/requirements.md](docs/requirements.md).
 | --- | --- |
 | [docs/requirements.md](docs/requirements.md) | Consolidated product requirements with phases |
 | [docs/architecture.md](docs/architecture.md) | Components, data flow, state machine, layout, resilience, decisions |
+| [docs/household.md](docs/household.md) | Household register: people and vehicles bundled from facts and answers (since 0.22.0) |
 | [docs/frigate-integration.md](docs/frigate-integration.md) | Verified Frigate 0.17.2 API behaviour and alert derivation |
 | [docs/streaming.md](docs/streaming.md) | Streaming evaluation, measurements, real-camera test procedure |
 | [docs/highlights.md](docs/highlights.md) | Highlight selection, rotation, archive, storage |

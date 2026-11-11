@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api.ts';
 import { highlightTime } from '../highlights.tsx';
-import { Card, Empty, Icon, Notice, PageHeader, Stat } from './ui.tsx';
+import { Card, Notice, PageHeader, Stat } from './ui.tsx';
 
 interface AiStatus {
   enabled: boolean;
@@ -24,28 +24,12 @@ interface Fact {
 export function AiTab() {
   const [ai, setAi] = useState<AiStatus | null>(null);
   const [facts, setFacts] = useState<Fact[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
   const loadFacts = () => api<Fact[]>('GET', '/api/admin/facts').then(setFacts, () => setFacts(null));
   useEffect(() => {
     api<AiStatus>('GET', '/api/admin/ai').then(setAi, () => {});
     void loadFacts();
   }, []);
-
-  const run = async (fn: () => Promise<void>) => {
-    setError(null);
-    try {
-      await fn();
-    } catch (err) {
-      setError((err as Error).message);
-    }
-  };
-
-  const remove = (f: Fact) =>
-    run(async () => {
-      await api('DELETE', `/api/admin/facts/${f.id}`);
-      await loadFacts();
-    });
 
   return (
     <>
@@ -70,32 +54,11 @@ export function AiTab() {
         {facts && (
           <Card title={`Feiten voor de AI (${facts.length})`} icon="ai">
             <p className="ui-muted">
-              Feiten ontstaan vanzelf uit je antwoorden op <a className="ui-link" href="#vragen">Vragen</a>: een antwoord over een
-              voertuig wordt direct een feit; bij een persoon schrijft de AI een feit op basis van zichtbare, vaste kenmerken, of
-              niets. De AI noemt een naam alleen als het beeld zo'n feit duidelijk laat zien. Feiten gaan bij elke beschrijving
-              naar OpenAI (Codex). Klopt een feit niet, verwijder het dan.
+              De feiten ontstaan uit je antwoorden op <a className="ui-link" href="#vragen">Vragen</a> en worden gebundeld in{' '}
+              <a className="ui-link" href="#huishouden">Huishouden</a>: wie is wie en welk voertuig van wie is. Daar zie, verbeter en verwijder je ze.
             </p>
-            {facts.length === 0 ? (
-              <Empty>Nog geen feiten. Beantwoord vragen om ze op te bouwen.</Empty>
-            ) : (
-              <ul className="ui-list">
-                {facts.map((f) => (
-                  <li key={f.id}>
-                    <div className="ui-grow">
-                      <div>{f.text}</div>
-                      <div className="ui-muted ui-small">{f.createdBy}</div>
-                    </div>
-                    <button className="ui-btn ui-btn--small ui-btn--danger" onClick={() => void remove(f)}>
-                      <Icon name="trash" size={14} />
-                      Verwijderen
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
           </Card>
         )}
-        {error && <Notice>{error}</Notice>}
       </div>
     </>
   );

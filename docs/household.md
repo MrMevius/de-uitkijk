@@ -1,0 +1,34 @@
+# Household register (since 0.22.0)
+
+The raw household facts ([ai.md](ai.md#household-facts-since-080-automatic-since-0110)) are single lines that pile up: duplicates ("Rode auto, grotendeels verborgen is een Tesla Model 3 is van Jasper Mevius" and "Rode auto onder de carport is een Tesla model 3 …"), contradictions (a white Ford Fiesta and a white Ford Focus for the same owner) and a vague and a precise description of the same car. The register bundles them into structured entries: who is who, and whose vehicle is which. Operator plan of 2026-11-11.
+
+## Contents
+
+- **People:** name, role (the answer categories: bewoner, familie, bezoeker, buren, vaste hulp, bezorger of dienstverlener; empty when not known), relation (free text such as "vriendin van Jasper", only ever set by an administrator), other names ("Tini"), sources.
+- **Vehicles:** kind (auto, bestelbus, motor, scooter, fiets), make, model, colour, plate, fixed features, owner (a person), usual place, sources.
+- **Sightings** (computed, not stored): highlights of the last half year in which Frigate recognised the person's face or an administrator named them; for a vehicle, highlights where Frigate read its plate.
+
+Everything lives in the application database (`household_*` tables). Each entry records its sources ("vraag 30", "feit 4"); a raw fact that is a source of an entry is shown as *verwerkt*.
+
+## Bundling
+
+Beheer → Huishouden → *Nu bundelen* (weekly and automatic from 0.23.0). One run:
+
+1. **People, without AI.** Every answered "Wie is dit?" question with a name gives that person; the newest answer sets the role. Names in Frigate's face library without an answer are added without a role. A changed role becomes an update.
+2. **Vehicles, with AI** (only when AI is on and there are facts). One Codex call without an image and with medium reasoning effort gets the register, the known people, all raw facts with their numbers and the proposals an administrator rejected before. It returns, in a strict schema, one item per new or changed vehicle (with the facts it rests on, optional existing vehicles it merges with) and questions about contradictions or doubts.
+3. **Server checks.** Every item must cite existing facts. Make, model, colour, plate, features, place and owner must appear in those facts or already in the register (Dutch adjective forms compare equal: "rode"/"rood"); anything else is dropped, not guessed. A plate must appear in full. Fields an administrator set are never changed. The summary shown to the administrator is written by the server, not by the AI.
+4. **Proposals.** The run replaces undecided proposals of the previous run. Rejected proposals and questions marked *Gezien* are not suggested again.
+
+Accepting a proposal applies it: a new vehicle's owner is matched to a person by name, other name or unique first name, or created without a role (for example "Tini", which an administrator can then merge into "Tineke Mevius"). Merged vehicles keep the fields only they knew. A proposal that no longer fits the register (a vehicle was deleted meanwhile) becomes stale. Questions change nothing; they ask the administrator to decide and correct the register by hand (from 0.23.0 they become questions on the *Vragen* tab).
+
+## Administrators' corrections
+
+People and vehicles can be added, changed, merged (people) and deleted on the tab. A field an administrator sets is locked: later bundling never changes it. Every change is in the history on the tab.
+
+## Use
+
+In 0.22.0 the register is only shown and maintained; descriptions still use the raw facts. From 0.24.0 the AI gets the register instead of the raw facts and highlights get links to the people and vehicles they show.
+
+## Privacy
+
+The bundling sends the raw facts, names and roles to OpenAI through Codex once per run, under the same confinement as the descriptions ([ai.md](ai.md#confinement)). Relations are not sent in 0.22.0; from 0.24.0 they are part of the description prompt. The register never holds appearance, clothing or behaviour of people.

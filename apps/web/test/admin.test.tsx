@@ -35,6 +35,20 @@ function stubApi(role: 'admin' | 'viewer') {
           { id: 1, kind: 'person', title: 'Wie is dit?', body: 'Persoon bij Voordeur.', data: {}, status: 'open', answer: null, answeredBy: null, createdAt: Date.now() / 1000, answeredAt: null, highlight: { id: 'h1', hasThumbnail: true } },
           { id: 2, kind: 'vehicle', title: 'Van wie is deze auto?', body: 'De AI ziet: zwarte Volkswagen up!.', data: { vehicle: 'zwarte Volkswagen up!' }, status: 'open', answer: null, answeredBy: null, createdAt: Date.now() / 1000, answeredAt: null, highlight: { id: 'h2', hasThumbnail: true } },
         ]);
+      if (url === '/api/admin/household')
+        return json({
+          ai: true,
+          busy: false,
+          lastRun: { status: 'done', startedAt: Date.now() / 1000 - 600, finishedAt: Date.now() / 1000 - 540, error: null, proposals: 2 },
+          people: [{ id: 1, name: 'Noëlle Snippe', role: 'buren', relation: 'vriendin van Jasper', aliases: [], sources: ['vraag 29'], locked: [], face: null, sightings: 4, lastSeen: Date.now() / 1000 - 3600 }],
+          vehicles: [{ id: 1, kind: 'auto', make: 'Volkswagen', model: 'up!', colour: 'donker', plate: '', features: '', ownerId: 1, place: '', sources: ['feit 7', 'feit 10'], label: 'donker Volkswagen up!', owner: 'Noëlle Snippe', sightings: 0, lastSeen: null }],
+          proposals: [
+            { id: 5, kind: 'vehicle', summary: 'Nieuw voertuig: rood Tesla Model 3 van Jasper Mevius', reason: 'Twee feiten over dezelfde auto.', sources: ['feit 4', 'feit 5'] },
+            { id: 6, kind: 'question', summary: 'Is de witte Ford van Gideon een Fiesta of een Focus?', reason: '', sources: ['feit 8', 'feit 9'] },
+          ],
+          history: [],
+          facts: [{ id: 7, text: 'Zwarte compacte hatchback is van Noëlle Snippe', createdBy: 'mark (vraag 24)', processed: true }],
+        });
       if (url === '/api/admin/users') return json([{ id: 1, username: 'mark', role: 'admin', active: true }]);
       if (url.startsWith('/api/highlights')) return json({ items: [], total: 0 });
       if (url === '/api/state') return json({ cameras: [] });
@@ -47,7 +61,7 @@ describe('admin page', () => {
   it('shows all tabs to administrators, starting with the overview', async () => {
     stubApi('admin');
     render(<AdminPage />);
-    await waitFor(() => expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Overzicht', 'Vragen2', 'Gebruikers', 'Highlights', 'AI', 'Gezichten', 'Mijn account']));
+    await waitFor(() => expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Overzicht', 'Vragen2', 'Gebruikers', 'Highlights', 'Huishouden', 'AI', 'Gezichten', 'Mijn account']));
     expect(await screen.findByText(/De Uitkijk 0\.9\.0/)).toBeTruthy();
     expect(screen.getByText(/geen beeld/)).toBeTruthy();
     expect(screen.getByText(/7 in 24 uur/)).toBeTruthy();
@@ -106,5 +120,17 @@ describe('face library tab', () => {
     fireEvent.click(photos[1]!);
     fireEvent.click(screen.getByText('1 foto verwijderen'));
     await waitFor(() => expect(posts).toEqual([{ url: '/api/admin/faces/library/Tineke%20Mevius/delete', body: JSON.stringify({ files: ['b.webp'] }) }]));
+  });
+
+  it('shows the household register with proposals to accept and questions to acknowledge', async () => {
+    stubApi('admin');
+    location.hash = '#huishouden';
+    render(<AdminPage />);
+    expect(await screen.findByText(/Nieuw voertuig: rood Tesla Model 3/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Accepteren/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Gezien' })).toBeTruthy();
+    expect(screen.getByText('vriendin van Jasper')).toBeTruthy();
+    expect(screen.getByText('van Noëlle Snippe')).toBeTruthy();
+    expect(screen.getByText(/2 voorstellen/)).toBeTruthy();
   });
 });
