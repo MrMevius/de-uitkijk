@@ -71,6 +71,12 @@ export class FactStore {
     return this.list().find((f) => f.id === Number(lastInsertRowid))!;
   }
 
+  /** Epoch seconds of the newest added or replaced fact; null without facts. */
+  lastChange(): number | null {
+    const row = this.db.prepare('SELECT MAX(created_at) AS at FROM ai_facts').get() as { at: number | null };
+    return row.at;
+  }
+
   remove(id: number): boolean {
     return this.db.prepare('DELETE FROM ai_facts WHERE id = ?').run(id).changes > 0;
   }

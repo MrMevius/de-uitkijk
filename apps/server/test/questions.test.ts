@@ -97,6 +97,33 @@ describe('question generator', () => {
     expect(v[0]!.data.vehicle).toMatch(/Volkswagen up!/);
   });
 
+  it('describes a highlight again before asking about a vehicle judged against older facts (0.22.1)', () => {
+    const t = setup();
+    // Described at 08:27 against the facts of then; at 10:17 the answer about the same van on another highlight added a fact.
+    const bus = t.add({ labels: ['car'], ai: { real: true, vehicle: 'witte bestelbus met aanhanger vol ladders' } });
+    const bike = t.add({ labels: ['bicycle'], ai: { real: true, vehicle: 'zwarte Gazelle e-bike met fietstassen' } });
+    const factAt = NOW - 60;
+    expect(t.highlights.get(bus)!.aiUpdated).toBeLessThan(factAt);
+    const ai = { enabled: true, provider: 'codex', model: 'm', callsToday: 0, dailyCap: 60, lastSuccessAt: null, lastError: null, pending: 0 } as const;
+    const g = t.generator({ aiStatus: () => ai, factsChangedAt: () => factAt });
+    g.runOnce();
+    expect(t.questions.list('open').filter((q) => q.kind === 'vehicle')).toHaveLength(0);
+    expect(t.highlights.get(bus)).toMatchObject({ aiRedo: true, aiStatus: null });
+    // Still waiting for the new description: nothing asked.
+    g.runOnce();
+    expect(t.questions.list('open').filter((q) => q.kind === 'vehicle')).toHaveLength(0);
+    // With the new fact the AI recognises the van; the bicycle is still unknown and is asked about now.
+    t.highlights.setAiResult(bus, 'De bestelbus van Roel rijdt weg.', true, factAt + 60, 'witte bestelbus met aanhanger vol ladders', true);
+    t.highlights.setAiResult(bike, 'Iemand fietst weg.', true, factAt + 60, 'zwarte Gazelle e-bike met fietstassen', false);
+    g.runOnce();
+    expect(t.questions.list('open').filter((q) => q.kind === 'vehicle').map((q) => q.highlightId)).toEqual([bike]);
+    // Without AI the verdict cannot be refreshed and the question is asked straight away.
+    const u = setup();
+    u.add({ labels: ['car'], ai: { real: true, vehicle: 'witte bestelbus met aanhanger vol ladders' } });
+    u.generator({ factsChangedAt: () => NOW }).runOnce();
+    expect(u.questions.list('open').filter((q) => q.kind === 'vehicle')).toHaveLength(1);
+  });
+
   it('suggests a check after recurring false alarms and asks about borderline highlights', () => {
     const t = setup();
     for (let i = 0; i < 5; i++) t.add({ ai: { real: false }, startTime: Date.UTC(2026, 10, 7 - i, 1, 0) / 1000 });

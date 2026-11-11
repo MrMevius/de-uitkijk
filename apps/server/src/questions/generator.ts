@@ -14,6 +14,8 @@ export interface GeneratorOptions {
   aiStatus?: () => AiStatus | undefined;
   /** Frigate's face library: a person question needs a face Frigate can learn (or another stable feature). */
   faces?: Pick<FaceLibrary, 'ready' | 'attemptsFor' | 'refresh'>;
+  /** Epoch seconds of the newest fact: an AI verdict "unknown vehicle" from before it may be outdated. */
+  factsChangedAt?: () => number | null;
   intervalMs?: number;
   /** Epoch seconds. */
   now?: () => number;
@@ -63,6 +65,7 @@ export class QuestionGenerator {
       cameraStatus: () => [],
       aiStatus: () => undefined,
       faces: { ready: false, attemptsFor: () => [], refresh: async () => {} },
+      factsChangedAt: () => null,
       intervalMs: 10 * 60_000,
       now: () => Date.now() / 1000,
       ...options,
@@ -143,7 +146,8 @@ export class QuestionGenerator {
     const busy = new Set<string>();
     const vehicles: { c: StoredCandidate; vehicle: string; key: string }[] = [];
     for (const c of [...recent].sort((a, b) => b.startTime - a.startTime)) {
-      if (!c.hasThumbnail || this.questions.hasOpenForHighlight(c.id)) continue;
+      // A highlight waiting for a new description is judged again first.
+      if (!c.hasThumbnail || c.aiRedo || this.questions.hasOpenForHighlight(c.id)) continue;
       const seen = [...(c.aiVehicle && !c.aiVehicleKnown ? [c.aiVehicle] : []), ...c.aiVehicles.filter((v) => !v.known).map((v) => v.description)];
       for (const vehicle of seen) {
         const key = normalizeVehicle(vehicle);
@@ -153,7 +157,15 @@ export class QuestionGenerator {
         vehicles.push({ c, vehicle, key });
       }
     }
+    // The AI judged "unknown" against the facts of that moment. Described before the newest fact (for example the
+    // answer about the same van on another highlight), the highlight is described again first; the question follows
+    // in a later run if the vehicle is still unknown. Without AI there is nothing to redo.
+    const factsAt = this.opts.aiStatus() ? this.opts.factsChangedAt() : null;
     for (const { c, vehicle, key } of vehicles.slice(0, Math.max(0, room('vehicle')))) {
+      if (factsAt !== null && (c.aiUpdated ?? 0) < factsAt) {
+        this.highlights.requestRedescribe(c.id);
+        continue;
+      }
       const noun = vehicleNoun(vehicle);
       add({
         kind: 'vehicle',

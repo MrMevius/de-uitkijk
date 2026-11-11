@@ -55,6 +55,7 @@ interface Row {
   ai_real: number | null;
   ai_status: string | null;
   ai_attempts: number;
+  ai_updated: number | null;
   base_score: number | null;
   feedback_adj: number;
   frame_time: number | null;
@@ -80,6 +81,8 @@ export interface StoredCandidate extends CandidateRecord {
   aiRealEvent: boolean | null;
   aiStatus: 'done' | 'failed' | null;
   aiAttempts: number;
+  /** Epoch seconds of the last AI description (or failed attempt). */
+  aiUpdated: number | null;
   /** Rule-based score before feedback learning. */
   baseScore: number;
   /** Adjustment learned from feedback on similar highlights (part of `score`). */
@@ -103,7 +106,7 @@ export interface StoredCandidate extends CandidateRecord {
 }
 
 const COLUMNS =
-  'id, start_time, end_time, cameras, camera, frigate_camera, rep_event, clip_start, clip_end, event_start, event_end, labels, sub_labels, score, reasons, description, selected, feedback, deleted, thumbnail IS NOT NULL AS has_thumbnail, ai_description, ai_real, ai_status, ai_attempts, base_score, feedback_adj, frame_time, ai_vehicle, ai_vehicle_known, annotation, detections, annotation_known, known_factor, ai_person_marker, ai_redo, ai_vehicles, plates';
+  'id, start_time, end_time, cameras, camera, frigate_camera, rep_event, clip_start, clip_end, event_start, event_end, labels, sub_labels, score, reasons, description, selected, feedback, deleted, thumbnail IS NOT NULL AS has_thumbnail, ai_description, ai_real, ai_status, ai_attempts, ai_updated, base_score, feedback_adj, frame_time, ai_vehicle, ai_vehicle_known, annotation, detections, annotation_known, known_factor, ai_person_marker, ai_redo, ai_vehicles, plates';
 
 const fromRow = (r: Row): StoredCandidate => ({
   id: r.id,
@@ -131,6 +134,7 @@ const fromRow = (r: Row): StoredCandidate => ({
   aiRealEvent: r.ai_real === null ? null : r.ai_real === 1,
   aiStatus: r.ai_status === 'done' || r.ai_status === 'failed' ? r.ai_status : null,
   aiAttempts: Number(r.ai_attempts),
+  aiUpdated: r.ai_updated,
   baseScore: r.base_score ?? r.score,
   feedbackAdj: Number(r.feedback_adj ?? 0),
   aiVehicle: r.ai_vehicle,

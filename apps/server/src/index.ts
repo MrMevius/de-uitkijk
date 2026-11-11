@@ -186,6 +186,7 @@ const questionGenerator =
         ...(cameraProbe ? { cameraStatus: () => cameraProbe.snapshot() } : {}),
         ...(ai ? { aiStatus: () => ai.status() } : {}),
         ...(faces ? { faces } : {}),
+        ...(facts ? { factsChangedAt: () => facts.lastChange() } : {}),
       })
     : undefined;
 questionGenerator?.start();
