@@ -231,7 +231,16 @@ export class HouseholdStore {
         by TEXT NOT NULL,
         text TEXT NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS household_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
     `);
+  }
+
+  getMeta(key: string): string | undefined {
+    return (this.db.prepare('SELECT value FROM household_meta WHERE key = ?').get(key) as { value: string } | undefined)?.value;
+  }
+
+  setMeta(key: string, value: string): void {
+    this.db.prepare('INSERT INTO household_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(key, value);
   }
 
   close(): void {

@@ -12,7 +12,11 @@ Everything lives in the application database (`household_*` tables). Each entry 
 
 ## Bundling
 
-Beheer → Huishouden → *Nu bundelen* (weekly and automatic from 0.23.0). One run:
+Beheer → Huishouden → *Nu bundelen*, or automatically (since 0.28.0) at the moment set under *Automatisch bundelen*: off, every day or every week on a chosen day, at a chosen time (Europe/Amsterdam). The default is weekly on Sunday at 05:00, after the nightly database copy and the VM backup. The automatic run was planned for 0.23.0 but not built until 0.28.0; until then nothing was bundled unless an administrator clicked the button.
+
+The scheduler checks every minute and stores the moment it handled (`household_meta`), so a restart neither runs twice nor skips a run. The first start and every change of the schedule count the moment that just passed as handled: no run right after a deployment or a change. A moment missed while the server was down is made up for within six hours, later it waits for the next one. A run already in progress delays the automatic one by a minute. Automatic runs show as *automatisch* (run by `systeem`). Like a manual run, they only make proposals.
+
+One run:
 
 1. **People, without AI.** Every answered "Wie is dit?" question with a name gives that person; the newest answer sets the role. Names in Frigate's face library without an answer are added without a role. A changed role becomes an update.
 2. **Vehicles, with AI** (only when AI is on and there are facts). One Codex call without an image and with medium reasoning effort gets the register, the known people, all raw facts with their numbers and the proposals an administrator rejected before. It returns, in a strict schema, one item per new or changed vehicle (with the facts it rests on, optional existing vehicles it merges with) and questions about contradictions or doubts.

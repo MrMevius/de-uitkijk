@@ -55,12 +55,72 @@ interface Proposal {
 interface Household {
   ai: boolean;
   busy: boolean;
-  lastRun: { status: 'running' | 'done' | 'failed'; startedAt: number; finishedAt: number | null; error: string | null; proposals: number } | null;
+  lastRun: { status: 'running' | 'done' | 'failed'; startedAt: number; finishedAt: number | null; error: string | null; proposals: number; by?: string } | null;
   people: Person[];
   vehicles: Vehicle[];
   proposals: Proposal[];
   history: { id: number; at: number; by: string; text: string }[];
   facts: { id: number; text: string; createdBy: string; processed: boolean }[];
+  /** Automatic bundling (since 0.28.0); `next` in epoch seconds, null when off. */
+  schedule: (Schedule & { next: number | null }) | null;
+}
+
+interface Schedule {
+  frequency: 'off' | 'daily' | 'weekly';
+  weekday: number;
+  time: string;
+}
+
+const WEEKDAYS = ['maandag', 'dinsdag', 'woensdag', 'donderdag', 'vrijdag', 'zaterdag', 'zondag'];
+
+/** When the bundling runs by itself: off, daily or weekly at a chosen time (since 0.28.0). */
+function ScheduleCard({ schedule, onSaved }: { schedule: NonNullable<Household['schedule']>; onSaved: () => void }) {
+  const [draft, setDraft] = useState<Schedule>({ frequency: schedule.frequency, weekday: schedule.weekday, time: schedule.time });
+  const [message, setMessage] = useState<string | null>(null);
+  const changed = draft.frequency !== schedule.frequency || draft.weekday !== schedule.weekday || draft.time !== schedule.time;
+  const save = async () => {
+    setMessage(null);
+    try {
+      await api('PUT', '/api/admin/household/schedule', draft);
+      setMessage('Opgeslagen.');
+      onSaved();
+    } catch (err) {
+      setMessage((err as Error).message);
+    }
+  };
+  return (
+    <Card title="Automatisch bundelen" icon="history">
+      <div className="ui-toolbar ui-toolbar--plain">
+        <select value={draft.frequency} onChange={(e) => setDraft({ ...draft, frequency: e.target.value as Schedule['frequency'] })} aria-label="Hoe vaak">
+          <option value="off">Uit (alleen met de knop)</option>
+          <option value="daily">Elke dag</option>
+          <option value="weekly">Elke week</option>
+        </select>
+        {draft.frequency === 'weekly' && (
+          <select value={draft.weekday} onChange={(e) => setDraft({ ...draft, weekday: Number(e.target.value) })} aria-label="Dag">
+            {WEEKDAYS.map((d, i) => (
+              <option key={d} value={i + 1}>
+                op {d}
+              </option>
+            ))}
+          </select>
+        )}
+        {draft.frequency !== 'off' && (
+          <label className="ui-toolbar__date">
+            om <input type="time" value={draft.time} onChange={(e) => setDraft({ ...draft, time: e.target.value })} aria-label="Tijd" required />
+          </label>
+        )}
+        <button className="ui-btn ui-btn--primary" disabled={!changed || (draft.frequency !== 'off' && !draft.time)} onClick={() => void save()}>
+          Opslaan
+        </button>
+      </div>
+      <p className="ui-muted ui-small">
+        {schedule.next ? `Volgende keer: ${highlightTime(schedule.next)}.` : 'Bundelen gebeurt alleen als je op "Nu bundelen" klikt.'} Met AI kost een run één
+        AI-aanroep en duurt hij een minuut of twee; nieuwe voorstellen verschijnen hier om te controleren, er verandert niets vanzelf.
+        {message && <> {message}</>}
+      </p>
+    </Card>
+  );
 }
 
 const roleLabel = (role: string) => ROLES.find(([r]) => r === role)?.[1] ?? role;
@@ -122,6 +182,7 @@ export function HouseholdTab() {
       <div className="ui-stack">
         {error && <Notice>{error}</Notice>}
         <RunStatus data={data} />
+        {data.schedule && <ScheduleCard key={JSON.stringify(data.schedule)} schedule={data.schedule} onSaved={() => void load()} />}
 
         {data.proposals.length > 0 && (
           <Card title={`Voorstellen (${data.proposals.length})`} icon="ai" className="ui-card--accent">
@@ -311,12 +372,12 @@ export function HouseholdTab() {
 function RunStatus({ data }: { data: Household }) {
   const r = data.lastRun;
   if (!data.ai) return <Notice level="info">AI staat uit: bundelen neemt alleen personen en rollen uit je antwoorden over, geen voertuigen.</Notice>;
-  if (!r) return <Notice level="info">Nog niet gebundeld. Klik op "Nu bundelen"; dat duurt met AI een minuut of twee.</Notice>;
+  if (!r) return <Notice level="info">Nog niet gebundeld. Klik op "Nu bundelen" of wacht op de automatische run hieronder; dat duurt met AI een minuut of twee.</Notice>;
   if (r.status === 'running') return <Notice level="info">Bezig met bundelen sinds {highlightTime(r.startedAt)}…</Notice>;
   if (r.status === 'failed') return <Notice level="warn">Bundelen mislukt ({highlightTime(r.startedAt)}): {r.error}</Notice>;
   return (
     <p className="ui-muted ui-small">
-      Laatst gebundeld {highlightTime(r.finishedAt ?? r.startedAt)}: {r.proposals === 0 ? 'niets nieuws' : `${r.proposals} ${r.proposals === 1 ? 'voorstel' : 'voorstellen'}`}.
+      Laatst gebundeld {highlightTime(r.finishedAt ?? r.startedAt)}{r.by === 'systeem' ? ' (automatisch)' : ''}: {r.proposals === 0 ? 'niets nieuws' : `${r.proposals} ${r.proposals === 1 ? 'voorstel' : 'voorstellen'}`}.
     </p>
   );
 }

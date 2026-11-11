@@ -11,6 +11,7 @@ import { AiWorker, ffmpegToJpeg } from './ai/worker.ts';
 import { FaceLibrary } from './faces/library.ts';
 import { Bundler, type PersonAnswer } from './household/bundle.ts';
 import { HouseholdStore } from './household/store.ts';
+import { BundleScheduler } from './household/schedule.ts';
 import { DisplayRegistry } from './displays.ts';
 import { DbBackup } from './backup.ts';
 import { FaceWorker } from './faces/worker.ts';
@@ -106,6 +107,8 @@ const bundler = household
       log: (msg) => app.log.warn(msg),
     })
   : undefined;
+// Bundling at the time an administrator chose (weekly on Sunday 05:00 by default; since 0.28.0).
+const bundleScheduler = household && bundler ? new BundleScheduler(household, bundler) : undefined;
 // Answers given before facts (0.11) and face learning (0.13) existed go through the same steps once.
 if (questionStore && highlightStore) {
   for (const q of questionStore.legacyPersonAnswers()) {
@@ -172,7 +175,7 @@ const app = buildApp({
       }
     : {}),
   ...(household && bundler
-    ? { household: { store: household, bundler, ...(facts ? { facts } : {}), ...(highlightStore ? { highlights: highlightStore } : {}), ...(faces ? { faces } : {}) } }
+    ? { household: { store: household, bundler, ...(bundleScheduler ? { scheduler: bundleScheduler } : {}), ...(facts ? { facts } : {}), ...(highlightStore ? { highlights: highlightStore } : {}), ...(faces ? { faces } : {}) } }
     : {}),
   ...(aiLog ? { aiLog } : {}),
   ...(displays ? { displays } : {}),
@@ -250,6 +253,7 @@ factWorker?.start();
 cameraProbe?.start();
 ai?.start();
 backup?.start();
+bundleScheduler?.start();
 
 mock?.start(config.mockScenario);
 const frigate = config.frigate
@@ -299,6 +303,7 @@ const shutdown = async () => {
   cameraProbe?.stop();
   ai?.stop();
   backup?.stop();
+  bundleScheduler?.stop();
   hub.stop();
   clearInterval(purge);
   await app.close();

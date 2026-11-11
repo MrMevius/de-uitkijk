@@ -3,6 +3,7 @@ import type { FactStore } from '../ai/facts.ts';
 import type { FaceLibrary } from '../faces/library.ts';
 import type { HighlightStore } from '../highlights/store.ts';
 import { acceptProposal, rejectProposal, type Bundler } from './bundle.ts';
+import { parseSchedule, type BundleScheduler } from './schedule.ts';
 import {
   cleanText,
   findPerson,
@@ -24,6 +25,8 @@ export interface HouseholdRouteOptions {
   facts?: FactStore;
   highlights?: HighlightStore;
   faces?: FaceLibrary;
+  /** Automatic bundling at a time an administrator chooses (since 0.28.0). */
+  scheduler?: BundleScheduler;
   now?: () => number;
 }
 
@@ -67,7 +70,7 @@ function vehicleFields(body: Record<string, unknown>, people: Person[]): Partial
 }
 
 /** The household register on the admin page (`/api/admin/`, admin role; since 0.22.0). */
-export function registerHousehold(app: FastifyInstance, { store, bundler, facts, highlights, faces, now = () => Date.now() / 1000 }: HouseholdRouteOptions): void {
+export function registerHousehold(app: FastifyInstance, { store, bundler, facts, highlights, faces, scheduler, now = () => Date.now() / 1000 }: HouseholdRouteOptions): void {
   const by = (request: { user?: { username: string } }) => request.user?.username ?? 'beheerder';
 
   app.get('/api/admin/household', async () => {
@@ -87,6 +90,7 @@ export function registerHousehold(app: FastifyInstance, { store, bundler, facts,
       ai: bundler.aiEnabled,
       busy: bundler.busy,
       lastRun: store.lastRun() ?? null,
+      schedule: scheduler ? { ...scheduler.schedule(), next: scheduler.next() } : null,
       people: people.map((p) => {
         const names = [p.name, ...p.aliases].map((n) => n.toLowerCase());
         const face = library.find((l) => names.includes(l.name.toLowerCase()));
@@ -106,6 +110,15 @@ export function registerHousehold(app: FastifyInstance, { store, bundler, facts,
       history: store.history(30),
       facts: (facts?.list() ?? []).map((f) => ({ ...f, processed: used.has(`feit ${f.id}`) })),
     };
+  });
+
+  app.put<{ Body: unknown }>('/api/admin/household/schedule', async (request, reply) => {
+    if (!scheduler) return reply.code(404).send({ error: 'Automatisch bundelen is niet beschikbaar' });
+    const parsed = parseSchedule(request.body);
+    if (typeof parsed === 'string') return reply.code(400).send({ error: parsed });
+    scheduler.setSchedule(parsed);
+    request.log.info({ by: by(request), ...parsed }, 'household bundling schedule changed');
+    return { ...parsed, next: scheduler.next() };
   });
 
   app.post('/api/admin/household/bundle', async (_request, reply) => {

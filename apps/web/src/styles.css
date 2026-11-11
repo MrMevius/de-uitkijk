@@ -1563,6 +1563,13 @@ body,
   border-radius: var(--ui-radius);
 }
 
+.ui-toolbar--plain {
+  padding: 0;
+  margin-bottom: 0.6rem;
+  background: none;
+  border: 0;
+}
+
 .ui-toolbar__search {
   flex: 1 1 100%;
 }

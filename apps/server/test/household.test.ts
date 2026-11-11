@@ -4,6 +4,7 @@ import { FactStore } from '../src/ai/facts.ts';
 import { hashPassword } from '../src/auth/passwords.ts';
 import { AuthStore } from '../src/auth/store.ts';
 import { acceptProposal, Bundler, parseBundle, personProposals, rejectProposal, supported, vehicleProposals, type PersonAnswer } from '../src/household/bundle.ts';
+import { BundleScheduler, parseSchedule, slots } from '../src/household/schedule.ts';
 import { HouseholdStore } from '../src/household/store.ts';
 import { StateHub } from '../src/hub.ts';
 
@@ -239,5 +240,73 @@ describe('household API', () => {
     expect((await app.inject({ method: 'POST', url: `/api/admin/household/proposals/${first!.id}/accept`, headers })).statusCode).toBe(409);
     expect((await app.inject({ method: 'POST', url: `/api/admin/household/proposals/${second!.id}/reject`, headers })).statusCode).toBe(200);
     expect(store.people()).toHaveLength(1);
+  });
+});
+
+describe('bundling schedule (0.28.0)', () => {
+  const ams = (iso: string) => Date.parse(iso); // ISO strings below are UTC
+  it('computes the moments in Amsterdam time, also across the end of summer time', () => {
+    // Sunday 2026-11-15 05:00 CET = 04:00 UTC.
+    expect(slots({ frequency: 'weekly', weekday: 7, time: '05:00' }, ams('2026-11-12T12:00:00Z'))).toEqual({
+      last: ams('2026-11-08T04:00:00Z'),
+      next: ams('2026-11-15T04:00:00Z'),
+    });
+    // Daily 02:30 around 2026-10-25 (CEST → CET).
+    expect(slots({ frequency: 'daily', weekday: 1, time: '02:30' }, ams('2026-10-25T12:00:00Z'))).toEqual({
+      last: ams('2026-10-25T01:30:00Z'),
+      next: ams('2026-10-26T01:30:00Z'),
+    });
+    expect(slots({ frequency: 'off', weekday: 1, time: '02:30' }, 0)).toBeNull();
+    expect(parseSchedule({ frequency: 'weekly', weekday: 8, time: '05:00' })).toBe('Kies een dag van de week');
+    expect(parseSchedule({ frequency: 'daily', time: '24:00' })).toBe('Kies een tijd (uu:mm)');
+  });
+
+  it('runs once per scheduled moment, not right after a deployment or a change, and catches up a short outage', () => {
+    const store = new HouseholdStore(':memory:');
+    cleanup.push(() => store.close());
+    const runs: string[] = [];
+    let busy = false;
+    const bundler = { start: (by: string) => (runs.push(by), runs.length), get busy() { return busy; } };
+    let now = ams('2026-11-15T04:30:00Z'); // half an hour after Sunday 05:00
+    const s = new BundleScheduler(store, bundler, { now: () => now });
+    s.start();
+    s.stop();
+    expect(s.tick()).toBeNull();
+    expect(s.next()).toBe(ams('2026-11-22T04:00:00Z') / 1000);
+    now = ams('2026-11-22T04:00:30Z');
+    busy = true;
+    expect(s.tick()).toBeNull();
+    busy = false;
+    expect(s.tick()).toBe(1);
+    expect(s.tick()).toBeNull();
+    expect(runs).toEqual(['systeem']);
+    // A new daily time that already passed today waits for tomorrow.
+    s.setSchedule({ frequency: 'daily', weekday: 7, time: '04:00' });
+    expect(s.tick()).toBeNull();
+    // Down from Sunday night until Monday 07:00: the 04:00 run is made up; a whole day later it is not.
+    now = ams('2026-11-23T06:00:00Z');
+    expect(s.tick()).toBe(2);
+    now = ams('2026-11-25T02:00:00Z'); // 03:00 on Wednesday: Tuesday's 04:00 is more than 6 h ago
+    expect(s.tick()).toBeNull();
+    expect(runs).toHaveLength(2);
+  });
+
+  it('lets administrators choose the schedule', async () => {
+    const store = new HouseholdStore(':memory:');
+    const auth = new AuthStore(':memory:');
+    const hub = new StateHub('live', [], 15_000);
+    const bundler = new Bundler(store, { input: async () => ({ facts: [], answers: [], faceNames: [] }) });
+    const scheduler = new BundleScheduler(store, bundler, { now: () => ams('2026-11-12T12:00:00Z') });
+    const app = buildApp({ hub, auth: { store: auth, publicUrl: 'https://u.example' }, household: { store, bundler, scheduler } });
+    cleanup.push(() => app.close(), () => hub.stop(), () => auth.close(), () => store.close());
+    const user = auth.createUser('mevius', 'admin');
+    auth.redeemLink(auth.createLink(user.id, 'activate'), await hashPassword('correct horse battery'));
+    const headers = { cookie: `uitkijk_session=${auth.createSession(user.id)}`, origin: 'https://u.example' };
+    expect((await app.inject({ url: '/api/admin/household', headers })).json().schedule).toEqual({ frequency: 'weekly', weekday: 7, time: '05:00', next: ams('2026-11-15T04:00:00Z') / 1000 });
+    const put = (payload: object) => app.inject({ method: 'PUT', url: '/api/admin/household/schedule', headers, payload });
+    expect((await put({ frequency: 'sometimes' })).statusCode).toBe(400);
+    expect((await put({ frequency: 'weekly', weekday: 3, time: '21:15' })).json()).toEqual({ frequency: 'weekly', weekday: 3, time: '21:15', next: ams('2026-11-18T20:15:00Z') / 1000 });
+    expect((await put({ frequency: 'off', weekday: 3, time: '21:15' })).json().next).toBeNull();
+    expect(scheduler.schedule().frequency).toBe('off');
   });
 });

@@ -62,7 +62,9 @@ function stubApi(role: 'admin' | 'viewer') {
           ],
           history: [],
           facts: [{ id: 7, text: 'Zwarte compacte hatchback is van Noëlle Snippe', createdBy: 'mark (vraag 24)', processed: true }],
+          schedule: { frequency: 'weekly', weekday: 7, time: '05:00', next: Date.UTC(2026, 10, 15, 4) / 1000 },
         });
+      if (url === '/api/admin/household/schedule') return json({ frequency: 'daily', weekday: 7, time: '06:30', next: null });
       if (url === '/api/admin/users') return json([{ id: 1, username: 'mark', role: 'admin', active: true }]);
       if (url.startsWith('/api/highlights')) return json({ items: [], total: 0 });
       if (url === '/api/state') return json({ cameras: [] });
@@ -170,6 +172,15 @@ describe('face library tab', () => {
     expect(screen.getByText('vriendin van Jasper')).toBeTruthy();
     expect(screen.getByText('van Noëlle Snippe')).toBeTruthy();
     expect(screen.getByText(/2 voorstellen/)).toBeTruthy();
+    // Automatic bundling at a chosen moment (0.28.0).
+    expect(screen.getByText(/Volgende keer: .*15 nov/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Hoe vaak'), { target: { value: 'daily' } });
+    expect(screen.queryByLabelText('Dag')).toBeNull();
+    fireEvent.change(screen.getByLabelText('Tijd'), { target: { value: '06:30' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Opslaan' }));
+    const calls = (fetch as unknown as { mock: { calls: [string, RequestInit?][] } }).mock.calls;
+    await waitFor(() => expect(calls.some(([u]) => u === '/api/admin/household/schedule')).toBe(true));
+    expect(JSON.parse(String(calls.find(([u]) => u === '/api/admin/household/schedule')![1]!.body))).toEqual({ frequency: 'daily', weekday: 7, time: '06:30' });
   });
 });
 
