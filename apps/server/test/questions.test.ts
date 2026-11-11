@@ -11,7 +11,7 @@ import { moments, personRect, RecordingFaces, singlePeople, type PersonTrack } f
 import { HighlightStore, type CandidateRecord } from '../src/highlights/store.ts';
 import { StateHub } from '../src/hub.ts';
 import { OPEN_LIMITS, QuestionGenerator } from '../src/questions/generator.ts';
-import { applyPersonAnswer, parsePersonAnswer, vehicleIsSubject } from '../src/questions/routes.ts';
+import { answeredName, applyPersonAnswer, parsePersonAnswer, vehicleIsSubject } from '../src/questions/routes.ts';
 import { askableVehicle } from '../src/questions/vehicles.ts';
 import { QuestionStore } from '../src/questions/store.ts';
 
@@ -178,6 +178,25 @@ describe('answering questions', () => {
     const answer = (id: number, payload: object) => app.inject({ method: 'POST', url: `/api/admin/questions/${id}/answer`, headers, payload });
     return { ...t, facts, app, headers, answer };
   }
+
+  it('offers names from earlier answers as buttons and matches them like library names (0.22.5)', async () => {
+    const t = await api();
+    const p = t.add({ ai: { real: true, marker: true } });
+    t.add({ labels: ['car'], ai: { real: true, vehicle: 'witte Hyundai bestelbus' } });
+    t.generator().runOnce();
+    const qs = t.questions.list('open');
+    const person = qs.find((q) => q.kind === 'person' && q.highlightId === p)!;
+    const vehicle = qs.find((q) => q.kind === 'vehicle')!;
+    expect((await t.app.inject({ url: '/api/admin/faces', headers: t.headers })).json()).toMatchObject({ names: [] });
+    await t.answer(person.id, { category: 'buren', name: 'Roel Snippe' });
+    expect((await t.app.inject({ url: '/api/admin/faces', headers: t.headers })).json()).toMatchObject({ names: ['Roel Snippe'] });
+    // A typed first name becomes the full name, as with Frigate's library.
+    expect((await t.answer(vehicle.id, { owner: 'roel', vehicle: 'witte Hyundai bestelbus' })).json()).toMatchObject({ answer: 'Witte Hyundai bestelbus is van Roel Snippe' });
+    expect(answeredName({ kind: 'vehicle', answer: 'Witte Hyundai bestelbus is van Bert Hemmer' })).toBe('Bert Hemmer');
+    expect(answeredName({ kind: 'vehicle', answer: 'onbekende auto' })).toBeNull();
+    expect(answeredName({ kind: 'person', answer: 'PostNL (bezorger of dienstverlener)' })).toBeNull();
+    expect(answeredName({ kind: 'person', answer: 'onbekend' })).toBeNull();
+  });
 
   it('labels a person and a vehicle; the vehicle answer becomes a fact for the AI', async () => {
     const t = await api();

@@ -74,14 +74,17 @@ function Faces({ files }: { files: string[] }) {
   );
 }
 
-/** One-click names from Frigate's face library, so the same person always gets the same name. */
+/** One-click names (face library and earlier answers), so the same person always gets the same name. */
 function NameChips({ names, value, onPick }: { names: string[]; value: string; onPick: (name: string) => void }) {
   if (!names.length) return null;
+  const first = (n: string) => n.split(' ')[0]!;
+  // The first name, unless two people share it.
+  const label = (n: string) => (names.filter((m) => first(m).toLowerCase() === first(n).toLowerCase()).length > 1 ? n : first(n));
   return (
     <div className="ui-chips">
       {names.map((n) => (
         <button key={n} type="button" className={n === value ? 'ui-chip ui-chip--on' : 'ui-chip'} onClick={() => onPick(n)}>
-          {n.split(' ')[0]}
+          {label(n)}
         </button>
       ))}
     </div>
@@ -198,15 +201,17 @@ export function QuestionsTab({ onCountChange }: { onCountChange?: (open: number)
   const [showHistory, setShowHistory] = useState(false);
   const [names, setNames] = useState<string[]>([]);
 
-  const load = () =>
-    api<Question[]>('GET', '/api/admin/questions').then((qs) => {
+  // Also after each answer: a newly named person gets a button straight away.
+  const load = () => {
+    void api<{ names: string[] }>('GET', '/api/admin/faces').then((r) => setNames(r.names), () => {});
+    return api<Question[]>('GET', '/api/admin/questions').then((qs) => {
       setOpen(qs);
       onCountChange?.(qs.length);
     }, () => setOpen([]));
+  };
 
   useEffect(() => {
     void load();
-    void api<{ names: string[] }>('GET', '/api/admin/faces').then((r) => setNames(r.names), () => {});
   }, []);
 
   useEffect(() => {

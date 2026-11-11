@@ -46,6 +46,17 @@ export function parsePersonAnswer(answer: string): { name: string; category: str
   return { name: '', category: answer };
 }
 
+/** The person an answered question names: someone who comes back ("Roel Snippe (buren)") or a vehicle owner. */
+export function answeredName(q: { kind: string; answer: string | null }): string | null {
+  const answer = q.answer ?? '';
+  if (q.kind === 'person') {
+    const { name, category } = parsePersonAnswer(answer);
+    return name && KNOWN_CATEGORIES.has(category) ? name : null;
+  }
+  const owner = q.kind === 'vehicle' ? answer.split(' is van ').at(-1) : undefined;
+  return owner && owner !== answer ? owner : null;
+}
+
 /**
  * What an answer about a person does besides closing the question: annotate the highlight (known when it
  * names someone who comes back), describe it again, queue a fact and queue face learning.
@@ -89,8 +100,22 @@ const clean = (v: unknown, max: number) =>
 /** Questions for administrators (`/api/admin/`, admin role). Answers feed back into highlights and facts. */
 export function registerQuestions(app: FastifyInstance, options: QuestionRouteOptions): void {
   const { questions, highlights, facts, autoFacts = false, faces, onFaceQueued, now = () => Date.now() / 1000 } = options;
+  // Names for the answer form: Frigate's face library first, then people named in earlier answers whose face Frigate
+  // could not learn (neighbours seen from the side, vehicle owners), so they get a one-click button too (since 0.22.5).
+  const knownNames = () => {
+    const library = faces?.ready ? faces.knownNames() : [];
+    const seen = new Set(library.map((n) => n.toLowerCase()));
+    const named: string[] = [];
+    for (const name of questions.list('answered', 10_000).map(answeredName)) {
+      if (name && !seen.has(name.toLowerCase())) {
+        seen.add(name.toLowerCase());
+        named.push(name);
+      }
+    }
+    return [...library, ...named.sort((a, b) => a.localeCompare(b, 'nl'))];
+  };
   // One spelling per person across faces, vehicles and highlights ("Jasper" → "Jasper Mevius"), so the AI can tell who is who.
-  const person = (typed: string) => (typed && faces?.ready ? matchFaceName(typed, faces.knownNames()) : typed);
+  const person = (typed: string) => (typed ? matchFaceName(typed, knownNames()) : typed);
   app.get<{ Querystring: { status?: string } }>('/api/admin/questions', async (request) => {
     const status = request.query.status === 'all' ? 'all' : 'open';
     return questions.list(status, status === 'all' ? 200 : 100).map((q) => {
@@ -100,7 +125,7 @@ export function registerQuestions(app: FastifyInstance, options: QuestionRouteOp
   });
 
   // Frigate's face library: names for the answer form and the unrecognised face crops of a question.
-  app.get('/api/admin/faces', async () => ({ available: Boolean(faces?.ready), names: faces?.knownNames() ?? [] }));
+  app.get('/api/admin/faces', async () => ({ available: Boolean(faces?.ready), names: knownNames() }));
 
   app.get<{ Params: { file: string } }>('/api/admin/faces/train/:file', async (request, reply) => {
     const file = request.params.file;
