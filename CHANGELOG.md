@@ -3,6 +3,10 @@
 Op hoofdlijnen, nieuwste eerst. Wordt getoond op Beheer → Change log. Elke release krijgt hier een kopje
 `## <versie> — <datum>` met een paar bullets; een test controleert dat de bovenste versie gelijk is aan `VERSION`.
 
+## 0.28.2 — 2026-11-11
+
+- De highlights onder "Zelfde bezoek" zijn af te spelen: klik op het plaatje en de clip speelt groot onder de lijst.
+
 ## 0.28.1 — 2026-11-11
 
 - Na het beantwoorden of overslaan van een vraag blijft de kaart staan met je antwoord, zodat je de highlight nog 👍/👎 kunt geven; "Sluiten" haalt hem weg.

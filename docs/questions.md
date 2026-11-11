@@ -50,7 +50,7 @@ Up to 2026-11-11, 17 of 43 vehicle questions and 6 of 54 person questions were s
 
 ## Same visit (since 0.27.0)
 
-A person question lists the other highlights within 15 minutes (any camera) with a person nobody named, that Frigate did not recognise, that are not noise and not too small, at most six, closest first. They are ticked; the answer applies to every ticked one: it gets its own answered question (`person:<id>`, so its face is learned too), its label and a new description. Only the first answer becomes a fact, so the same fact is not written six times. Highlights with an earlier answer are never changed.
+A person question lists the other highlights within 15 minutes (any camera) with a person nobody named, that Frigate did not recognise, that are not noise and not too small, at most six, closest first. They are ticked; the answer applies to every ticked one: it gets its own answered question (`person:<id>`, so its face is learned too), its label and a new description. Only the first answer becomes a fact, so the same fact is not written six times. Highlights with an earlier answer are never changed. Since 0.28.2 a click on a thumbnail plays that clip large under the list; the tick box is separate.
 
 ## Rating from the questions tab (since 0.27.0)
 

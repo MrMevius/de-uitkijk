@@ -1372,7 +1372,6 @@ body,
   padding: 0.4rem;
   border: 1px solid #2a313b;
   border-radius: 8px;
-  cursor: pointer;
   font-size: 0.85rem;
   opacity: 0.6;
   transition: opacity 120ms, border-color 120ms;
@@ -1383,19 +1382,37 @@ body,
   border-color: #8db3ff;
 }
 
-.ui-visit__item img {
+.ui-visit__item--playing {
+  opacity: 1;
+  box-shadow: 0 0 0 2px color-mix(in srgb, #8db3ff 40%, transparent);
+}
+
+.ui-visit__thumb {
   width: 5.5rem;
-  aspect-ratio: 16 / 9;
-  object-fit: cover;
-  border-radius: 5px;
   flex: none;
 }
 
-.ui-visit__item > span {
+.ui-visit__thumb img {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 5px;
+  display: block;
+}
+
+.ui-visit__text {
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
   min-width: 0;
+  cursor: pointer;
+}
+
+.ui-visit__video {
+  width: 100%;
+  max-height: 22rem;
+  border-radius: 8px;
+  background: #000;
 }
 
 .ui-visit__item .ui-muted {

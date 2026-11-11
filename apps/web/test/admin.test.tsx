@@ -123,6 +123,11 @@ describe('admin page', () => {
     render(<AdminPage />);
     expect(await screen.findByText(/Zelfde bezoek/)).toBeTruthy();
     fireEvent.click(screen.getByText('Iemand bij de schuur.'));
+    // A same-visit clip plays under the list (0.28.2); playing it does not change the tick.
+    const visit = document.querySelector('.ui-visit')!;
+    fireEvent.click(visit.querySelectorAll('button')[0]!);
+    expect(visit.querySelector('video')!.getAttribute('src')).toBe('/api/highlights/h3/clip.mp4');
+    expect((visit.querySelectorAll('input[type=checkbox]')[0] as HTMLInputElement).checked).toBe(true);
     fireEvent.click(screen.getAllByTitle('Goede highlight')[0]!);
     fireEvent.click(screen.getByRole('button', { name: 'Bewoner' }));
     const calls = (fetch as unknown as { mock: { calls: [string, RequestInit?][] } }).mock.calls;

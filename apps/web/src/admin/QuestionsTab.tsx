@@ -66,32 +66,48 @@ function Media({ highlight }: { highlight: Question['highlight'] }) {
 
 /** Highlights of the same visit, ticked by default: one answer names the person on all of them. */
 function SameVisit({ items, chosen, onToggle }: { items: NonNullable<Question['sameVisit']>; chosen: Set<string>; onToggle: (id: string) => void }) {
+  // One clip at a time plays under the list, large enough to judge (since 0.28.2).
+  const [playing, setPlaying] = useState<string | null>(null);
   if (!items.length) return null;
   return (
     <div className="ui-visit">
       <span className="ui-field__label">Zelfde bezoek: geldt het antwoord ook voor deze highlights?</span>
       <ul>
-        {items.map((h) => (
-          <li key={h.id}>
-            <label className={chosen.has(h.id) ? 'ui-visit__item ui-visit__item--on' : 'ui-visit__item'}>
-              <input type="checkbox" checked={chosen.has(h.id)} onChange={() => onToggle(h.id)} />
-              <img src={`/api/highlights/${encodeURIComponent(h.id)}/thumb.webp`} alt="" loading="lazy" />
-              <span>
+        {items.map((h) => {
+          const id = encodeURIComponent(h.id);
+          return (
+            <li key={h.id} className={`ui-visit__item${chosen.has(h.id) ? ' ui-visit__item--on' : ''}${playing === h.id ? ' ui-visit__item--playing' : ''}`}>
+              <input type="checkbox" checked={chosen.has(h.id)} onChange={() => onToggle(h.id)} aria-label={`Ook voor ${highlightTime(h.startTime)}`} />
+              <button
+                type="button"
+                className="ui-thumb ui-visit__thumb"
+                onClick={() => setPlaying(playing === h.id ? null : h.id)}
+                aria-label={playing === h.id ? 'Clip sluiten' : 'Clip afspelen'}
+              >
+                <img src={`/api/highlights/${id}/thumb.webp`} alt="" loading="lazy" />
+                <span className="ui-thumb__play">
+                  <Icon name="play" size={12} />
+                </span>
+              </button>
+              <span className="ui-visit__text" onClick={() => onToggle(h.id)}>
                 <strong>{highlightTime(h.startTime)}</strong>
                 <span className="ui-muted">{h.description}</span>
               </span>
-            </label>
-          </li>
-        ))}
+            </li>
+          );
+        })}
       </ul>
+      {playing && (
+        <video key={playing} className="ui-visit__video" src={`/api/highlights/${encodeURIComponent(playing)}/clip.mp4`} controls autoPlay playsInline />
+      )}
     </div>
   );
 }
 
-/** 👍/👎 on the highlight of a question: rating while answering costs one tap (since 0.27.0). */
 /** Ratings given in this tab, so the card after answering shows a rating given just before. */
 const ratings = new Map<string, -1 | 1 | null>();
 
+/** 👍/👎 on the highlight of a question: rating while answering costs one tap (since 0.27.0). */
 function Rating({ highlight }: { highlight: NonNullable<Question['highlight']> }) {
   const [value, setValue] = useState<-1 | 1 | null>(ratings.has(highlight.id) ? ratings.get(highlight.id)! : (highlight.feedback ?? null));
   const rate = (v: -1 | 1) => {
