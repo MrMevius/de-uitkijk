@@ -426,7 +426,7 @@ export class HighlightStore {
     return Number(
       this.db
         .prepare(
-          `UPDATE candidates SET clip_start = frame_time - 15, clip_end = MAX(frame_time - 10, MIN(end_time + 2, frame_time + 15))
+          `UPDATE candidates SET clip_start = frame_time - 15, clip_end = MIN(frame_time + 15, MAX(frame_time - 10, end_time + 2, frame_time + 5))
              WHERE deleted = 0 AND frame_time IS NOT NULL AND (frame_time < clip_start OR frame_time > clip_end)`,
         )
         .run().changes,

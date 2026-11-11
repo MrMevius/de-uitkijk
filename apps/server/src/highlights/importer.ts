@@ -255,7 +255,8 @@ export class HighlightImporter {
     const camera = this.byFrigate.get(rep.camera)!;
     const frameTime = personMoment(events, rep.camera) ?? rep.thumbTime ?? rep.startTime + 1;
     const clipStart = clipStartFor(events, rep.camera, repEvent, rep.startTime, frameTime);
-    const clipEnd = Math.max(clipStart + 5, Math.min(rep.endTime + 2, clipStart + 30));
+    // Also when Frigate kept following the person after the alert ended (the still can be after the end).
+    const clipEnd = Math.min(clipStart + 30, Math.max(clipStart + 5, rep.endTime + 2, frameTime + 5));
     const groupStart = Math.min(...items.map((i) => i.startTime));
     const groupEnd = Math.max(...items.map((i) => i.endTime));
     const record: CandidateRecord = {

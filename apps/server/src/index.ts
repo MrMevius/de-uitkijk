@@ -111,9 +111,10 @@ if (highlightStore && ai && !highlightStore.getMeta('vehicles_backfill')) {
 }
 // Before 0.22.3 the clip started at the alert, so a person who came later (the moment of the AI still) could be missing
 // from it. Such clip windows are moved once so they contain that moment.
-if (highlightStore && !highlightStore.getMeta('clip_window_fix')) {
+// Again in 0.22.4: in 0.22.3 a still after the end of the alert stayed outside the moved clip.
+if (highlightStore && highlightStore.getMeta('clip_window_fix') !== '2') {
   highlightStore.moveClipsToFrame();
-  highlightStore.setMeta('clip_window_fix', '1');
+  highlightStore.setMeta('clip_window_fix', '2');
 }
 // Before 0.19.2 an answer about any vehicle in view labelled the highlight ("auto van Bert") and made it count as
 // known, also for a vehicle parked in the background. Such labels are removed once and the highlight is described again.

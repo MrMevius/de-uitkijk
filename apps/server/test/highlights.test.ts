@@ -107,7 +107,9 @@ describe('selection', () => {
     });
     store.insert(rec('late', 1080), ['late']);
     store.insert(rec('inside', 1010), ['inside']);
-    expect(store.moveClipsToFrame()).toBe(1);
+    store.insert(rec('after', 1130), ['after']); // Frigate followed the person after the alert ended (0.22.4).
+    expect(store.moveClipsToFrame()).toBe(2);
+    expect(store.get('after')).toMatchObject({ clipStart: 1115, clipEnd: 1135 });
     expect(store.get('late')).toMatchObject({ clipStart: 1065, clipEnd: 1095 });
     expect(store.get('inside')).toMatchObject({ clipStart: 998, clipEnd: 1028 });
   });
