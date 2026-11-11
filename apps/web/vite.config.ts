@@ -5,7 +5,7 @@ import { defineConfig } from 'vitest/config';
 
 // The release version is built into the page, so a running TV can notice that a newer release is live.
 const version = readFileSync(join(import.meta.dirname, '../../VERSION'), 'utf8').trim();
-// Beheer → Wijzigingen shows the changelog of this build.
+// Beheer → Change log shows the changelog of this build.
 const changelog = readFileSync(join(import.meta.dirname, '../../CHANGELOG.md'), 'utf8');
 
 // The dev server mirrors the edge proxy (deploy/nginx): /api goes to the backend, /stream/ws to go2rtc's

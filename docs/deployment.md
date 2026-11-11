@@ -18,7 +18,7 @@ Phones: verified on an iPhone (Brave, which uses WebKit) on 2026-11-08: all four
 
 ## Delivery
 
-`deployctl` on the host deploys `main` (pull-based), after the GitHub checks `test` and `docker` succeed. It builds `server` and `web`, starts the three runtime services, checks `http://10.0.0.171:8088/api/health` and rolls back on failure. The root `VERSION` file names the release. Every release also adds an entry at the top of `CHANGELOG.md` (`## <version> — <date>`, a few Dutch bullets on main points); it is shown on Beheer → Wijzigingen, and a test fails when the top entry does not match `VERSION`.
+`deployctl` on the host deploys `main` (pull-based), after the GitHub checks `test` and `docker` succeed. It builds `server` and `web`, starts the three runtime services, checks `http://10.0.0.171:8088/api/health` and rolls back on failure. The root `VERSION` file names the release. Every release also adds an entry at the top of `CHANGELOG.md` (`## <version> — <date>`, a few Dutch bullets on main points); it is shown on Beheer → Change log (named Wijzigingen in 0.24.0; at the bottom of the menu since 0.24.1), and a test fails when the top entry does not match `VERSION`.
 
 | Item | Location on `503-web-ubuntu` |
 | --- | --- |

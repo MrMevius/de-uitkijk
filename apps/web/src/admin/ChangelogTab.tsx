@@ -5,11 +5,11 @@ const releases = parseChangelog(__CHANGELOG__);
 const dateText = (iso: string) =>
   new Intl.DateTimeFormat('nl-NL', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${iso}T12:00:00Z`));
 
-/** Beheer → Wijzigingen: what changed per release, on main points (from CHANGELOG.md). */
+/** Beheer → Change log: what changed per release, on main points (from CHANGELOG.md). */
 export function ChangelogTab() {
   return (
     <>
-      <PageHeader title="Wijzigingen" description={`Wat er per versie veranderd is, op hoofdlijnen en nieuwste eerst. Deze pagina hoort bij versie ${__APP_VERSION__}.`} />
+      <PageHeader title="Change log" description={`Wat er per versie veranderd is, op hoofdlijnen en nieuwste eerst. Deze pagina hoort bij versie ${__APP_VERSION__}.`} />
       <div className="ui-stack">
         {releases.map((r) => (
           <Card

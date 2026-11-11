@@ -1,7 +1,11 @@
-# Wijzigingen
+# Change log
 
-Op hoofdlijnen, nieuwste eerst. Wordt getoond op Beheer → Wijzigingen. Elke release krijgt hier een kopje
+Op hoofdlijnen, nieuwste eerst. Wordt getoond op Beheer → Change log. Elke release krijgt hier een kopje
 `## <versie> — <datum>` met een paar bullets; een test controleert dat de bovenste versie gelijk is aan `VERSION`.
+
+## 0.24.1 — 2026-11-11
+
+- Wijzigingen heet nu Change log en staat onderaan in het menu, net boven Naar dashboard.
 
 ## 0.24.0 — 2026-11-11
 

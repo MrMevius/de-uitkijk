@@ -28,6 +28,8 @@ interface Tab {
   label: string;
   icon: IconName;
   adminOnly: boolean;
+  /** Shown at the bottom of the sidebar, above "Naar dashboard", instead of in the tab list. */
+  foot?: boolean;
   render: (ctx: TabContext) => ReactNode;
 }
 
@@ -40,8 +42,8 @@ const TABS: Tab[] = [
   { id: 'ai', label: 'AI', icon: 'ai', adminOnly: true, render: () => <AiTab /> },
   { id: 'ai-log', label: 'AI-log', icon: 'ai', adminOnly: true, render: () => <AiCallsTab /> },
   { id: 'gezichten', label: 'Gezichten', icon: 'account', adminOnly: true, render: () => <FacesTab /> },
-  { id: 'wijzigingen', label: 'Wijzigingen', icon: 'history', adminOnly: true, render: () => <ChangelogTab /> },
   { id: 'account', label: 'Mijn account', icon: 'account', adminOnly: false, render: ({ me }) => <AccountTab me={me} /> },
+  { id: 'changelog', label: 'Change log', icon: 'history', adminOnly: true, foot: true, render: () => <ChangelogTab /> },
 ];
 
 const tabFromHash = (tabs: Tab[]) => tabs.find((t) => `#${t.id}` === location.hash)?.id ?? tabs[0]!.id;
@@ -97,7 +99,7 @@ export function AdminPage() {
         </div>
         {me && (
           <nav className="admin__tabs" role="tablist" aria-orientation="vertical">
-            {tabs.map((t) => (
+            {tabs.filter((t) => !t.foot).map((t) => (
               <a
                 key={t.id}
                 href={`#${t.id}`}
@@ -113,6 +115,14 @@ export function AdminPage() {
           </nav>
         )}
         <div className="admin__sidefoot">
+          {tabs
+            .filter((t) => t.foot)
+            .map((t) => (
+              <a key={t.id} href={`#${t.id}`} className={t.id === active ? 'admin__dashlink admin__dashlink--active' : 'admin__dashlink'} aria-current={t.id === active ? 'page' : undefined}>
+                <Icon name={t.icon} />
+                <span>{t.label}</span>
+              </a>
+            ))}
           <a className="admin__dashlink" href="/">
             <Icon name="monitor" />
             <span>Naar dashboard</span>

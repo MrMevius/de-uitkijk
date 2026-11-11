@@ -61,8 +61,11 @@ describe('admin page', () => {
   it('shows all tabs to administrators, starting with the overview', async () => {
     stubApi('admin');
     render(<AdminPage />);
-    await waitFor(() => expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Overzicht', 'Vragen2', 'Gebruikers', 'Highlights', 'Huishouden', 'AI', 'AI-log', 'Gezichten', 'Wijzigingen', 'Mijn account']));
+    await waitFor(() => expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Overzicht', 'Vragen2', 'Gebruikers', 'Highlights', 'Huishouden', 'AI', 'AI-log', 'Gezichten', 'Mijn account']));
     expect(await screen.findByText(/De Uitkijk 0\.9\.0/)).toBeTruthy();
+    // The change log sits at the bottom of the sidebar, right above the dashboard link.
+    const foot = screen.getByText('Naar dashboard').closest('.admin__sidefoot')!;
+    expect([...foot.querySelectorAll('a')].map((a) => a.textContent)).toEqual(['Change log', 'Naar dashboard', expect.stringContaining('mark')]);
     expect(screen.getByText(/geen beeld/)).toBeTruthy();
     expect(screen.getByText(/7 in 24 uur/)).toBeTruthy();
   });

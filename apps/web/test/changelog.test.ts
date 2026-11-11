@@ -5,7 +5,7 @@ import { parseChangelog } from '../src/admin/changelog.ts';
 const version = __APP_VERSION__;
 const releases = parseChangelog(__CHANGELOG__);
 
-describe('changelog (Beheer → Wijzigingen)', () => {
+describe('changelog (Beheer → Change log)', () => {
   it('has an entry for the current VERSION at the top: every release updates CHANGELOG.md', () => {
     expect(releases[0]?.version).toBe(version);
   });
