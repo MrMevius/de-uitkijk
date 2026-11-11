@@ -1,7 +1,7 @@
-import { act, cleanup, renderHook } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { HighlightSummary } from '@uitkijk/shared';
-import { highlightCapacity, highlightStrip, highlightTime, useHighlightRotation } from '../src/highlights.tsx';
+import { HighlightTile, highlightCapacity, highlightStrip, highlightTime, useHighlightRotation } from '../src/highlights.tsx';
 
 const h = (id: string, score = 3): HighlightSummary => ({
   id,
@@ -10,6 +10,7 @@ const h = (id: string, score = 3): HighlightSummary => ({
   startTime: 1_794_000_000,
   endTime: 1_794_000_020,
   clipDuration: 24,
+  stillOffset: 6,
   description: 'Persoon bij Voordeur',
   ruleDescription: 'Persoon bij Voordeur',
   aiDescribed: false,
@@ -145,5 +146,14 @@ describe('highlight rotation', () => {
     const now = Date.UTC(2026, 10, 8, 19, 0);
     expect(highlightTime(Date.UTC(2026, 10, 8, 13, 32) / 1000, now)).toBe('vandaag 14:32');
     expect(highlightTime(Date.UTC(2026, 10, 7, 21, 10) / 1000, now)).toBe('gisteren 22:10');
+  });
+});
+
+describe('highlight tile', () => {
+  it('stops at the most interesting moment after playing (0.25.0)', () => {
+    const { container } = render(<HighlightTile highlight={h('a')} rect={{ x: 0, y: 0, w: 320, h: 180 }} cameraName="Voordeur" onFail={() => {}} />);
+    const video = container.querySelector('video')!;
+    fireEvent.ended(video);
+    expect(video.currentTime).toBe(6);
   });
 });

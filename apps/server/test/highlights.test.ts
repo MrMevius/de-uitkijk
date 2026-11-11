@@ -295,7 +295,7 @@ describe('highlight API', () => {
     const { cookie } = await t.login('kijker', 'viewer');
     const rotation = (await t.app.inject({ url: '/api/highlights/rotation', headers: { cookie } })).json<HighlightSummary[]>();
     expect(rotation.map((h) => h.id)).toEqual(['h2', 'h1']);
-    expect(rotation[1]).toMatchObject({ cameraId: 'voordeur', clipDuration: 24, hasThumbnail: true });
+    expect(rotation[1]).toMatchObject({ cameraId: 'voordeur', clipDuration: 24, stillOffset: 3, hasThumbnail: true });
     const archive = (await t.app.inject({ url: '/api/highlights?minScore=3.5', headers: { cookie } })).json();
     expect(archive).toMatchObject({ total: 2 });
     expect((await t.app.inject({ url: '/api/highlights/h1/thumb.webp', headers: { cookie } })).statusCode).toBe(200);

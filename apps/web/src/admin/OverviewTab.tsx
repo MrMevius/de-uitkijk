@@ -109,7 +109,7 @@ function HighlightSettings() {
           />
           <span className="ui-field__help">
             {settings.replay.min}–{settings.replay.max} minuten, standaard {settings.replay.default}. Elke highlight speelt één
-            keer af en blijft daarna stilstaan; na deze tijd speelt het vak opnieuw af, met een highlight die nog niet in
+            keer af en blijft daarna stilstaan op het interessantste moment; na deze tijd speelt het vak opnieuw af, met een highlight die nog niet in
             beeld was als die er is. Een nieuwe highlight verschijnt meteen.
           </span>
         </label>

@@ -156,6 +156,7 @@ export const toSummary = (c: StoredCandidate): HighlightSummary => ({
   startTime: c.startTime,
   endTime: c.endTime,
   clipDuration: Math.round(c.clipEnd - c.clipStart),
+  stillOffset: Math.round(Math.min(Math.max((c.frameTime ?? c.clipStart + 3) - c.clipStart, 0), c.clipEnd - c.clipStart) * 10) / 10,
   description: c.aiDescription ?? c.description,
   ruleDescription: c.description,
   aiDescribed: c.aiDescription !== null,

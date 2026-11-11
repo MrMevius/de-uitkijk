@@ -87,6 +87,8 @@ export interface HighlightSummary {
   endTime: number;
   /** Seconds. */
   clipDuration: number;
+  /** Seconds from the clip start to the most interesting moment (the AI still); the tile stops there after playing. */
+  stillOffset: number;
   /** Short Dutch description: the AI description when available, otherwise the rule-based one. */
   description: string;
   ruleDescription: string;

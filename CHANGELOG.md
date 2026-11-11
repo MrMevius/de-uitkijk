@@ -3,6 +3,10 @@
 Op hoofdlijnen, nieuwste eerst. Wordt getoond op Beheer → Change log. Elke release krijgt hier een kopje
 `## <versie> — <datum>` met een paar bullets; een test controleert dat de bovenste versie gelijk is aan `VERSION`.
 
+## 0.25.0 — 2026-11-11
+
+- Na het afspelen blijft een highlight op de tv stilstaan op het interessantste moment (waar de persoon het best te zien is) in plaats van op het laatste beeld.
+
 ## 0.24.2 — 2026-11-11
 
 - Bijnamen uit Huishouden tellen als dezelfde persoon: "Tini" wordt Tineke Mevius en krijgt geen eigen knop meer.

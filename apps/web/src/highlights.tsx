@@ -84,7 +84,7 @@ interface Slot {
  * The highlights to show now: one entry per tile (`slots` tiles), null for an empty tile.
  *
  * - Polls the rotation (the best 0–15 of the last 24 h) and the replay interval every minute.
- * - A tile plays its clip once and then keeps the last frame. Every `replayMinutes` (set in the admin page,
+ * - A tile plays its clip once and then stops at the most interesting moment (the AI still). Every `replayMinutes` (set in the admin page,
  *   default 10) it plays again: the highlight that has been off screen longest, or the same one when all
  *   others are on screen.
  * - A highlight that arrives while all tiles are in use takes over the tile that started longest ago, at once.
@@ -259,7 +259,8 @@ interface TileProps {
 
 /**
  * Shows one highlight: its still right away, then the clip once, muted, with time and description. After the
- * clip the last frame stays; a new `round` plays it again in place (no reload).
+ * clip it stops at the most interesting moment (the AI still, since 0.25.0; before, the last frame stayed);
+ * a new `round` plays it again in place (no reload).
  */
 export function HighlightTile({ highlight, rect, cameraName, round = 0, onFail }: TileProps) {
   const [playing, setPlaying] = useState(false);
@@ -297,7 +298,10 @@ export function HighlightTile({ highlight, rect, cameraName, round = 0, onFail }
         muted
         playsInline
         onPlaying={() => setPlaying(true)}
-        onEnded={() => (endedRound.current = round)}
+        onEnded={(e) => {
+          endedRound.current = round;
+          e.currentTarget.currentTime = highlight.stillOffset;
+        }}
         onError={() => onFail()}
       />
       {!playing && !highlight.hasThumbnail && <div className="tile__placeholder">Highlight laden…</div>}
