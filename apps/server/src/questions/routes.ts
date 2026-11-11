@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { FactStore } from '../ai/facts.ts';
 import { ATTEMPT_FILE, matchFaceName, type FaceLibrary } from '../faces/library.ts';
 import type { HighlightStore } from '../highlights/store.ts';
+import { findPerson, type HouseholdStore } from '../household/store.ts';
 import type { QuestionStore } from './store.ts';
 import { normalizeVehicle, vehicleNoun } from './vehicles.ts';
 
@@ -13,6 +14,8 @@ export interface QuestionRouteOptions {
   autoFacts?: boolean;
   /** Frigate's face library: answers naming a person who comes back (resident, family, visitor, ...) teach Frigate that face. */
   faces?: FaceLibrary;
+  /** Household register: its people get a button, and their aliases ("Tini") resolve to the full name (since 0.24.2). */
+  household?: Pick<HouseholdStore, 'people'>;
   /** Called after an answer queued face learning, to process it right away. */
   onFaceQueued?: () => void;
   /** Epoch seconds. */
@@ -99,14 +102,18 @@ const clean = (v: unknown, max: number) =>
 
 /** Questions for administrators (`/api/admin/`, admin role). Answers feed back into highlights and facts. */
 export function registerQuestions(app: FastifyInstance, options: QuestionRouteOptions): void {
-  const { questions, highlights, facts, autoFacts = false, faces, onFaceQueued, now = () => Date.now() / 1000 } = options;
+  const { questions, highlights, facts, autoFacts = false, faces, household, onFaceQueued, now = () => Date.now() / 1000 } = options;
   // Names for the answer form: Frigate's face library first, then people named in earlier answers whose face Frigate
   // could not learn (neighbours seen from the side, vehicle owners), so they get a one-click button too (since 0.22.5).
+  // A nickname from the household register counts as that person ("Tini" → "Tineke Mevius"), not as someone new.
   const knownNames = () => {
     const library = faces?.ready ? faces.knownNames() : [];
+    const people = household?.people() ?? [];
     const seen = new Set(library.map((n) => n.toLowerCase()));
     const named: string[] = [];
-    for (const name of questions.list('answered', 10_000).map(answeredName)) {
+    const answered = questions.list('answered', 10_000).map(answeredName);
+    for (const raw of [...people.map((p) => p.name), ...answered]) {
+      const name = raw && (people.find((p) => p.aliases.some((a) => a.toLowerCase() === raw.toLowerCase()))?.name ?? raw);
       if (name && !seen.has(name.toLowerCase())) {
         seen.add(name.toLowerCase());
         named.push(name);
@@ -115,7 +122,7 @@ export function registerQuestions(app: FastifyInstance, options: QuestionRouteOp
     return [...library, ...named.sort((a, b) => a.localeCompare(b, 'nl'))];
   };
   // One spelling per person across faces, vehicles and highlights ("Jasper" → "Jasper Mevius"), so the AI can tell who is who.
-  const person = (typed: string) => (typed ? matchFaceName(typed, knownNames()) : typed);
+  const person = (typed: string) => (typed ? (household && findPerson(household.people(), typed)?.name) || matchFaceName(typed, knownNames()) : typed);
   app.get<{ Querystring: { status?: string } }>('/api/admin/questions', async (request) => {
     const status = request.query.status === 'all' ? 'all' : 'open';
     return questions.list(status, status === 'all' ? 200 : 100).map((q) => {

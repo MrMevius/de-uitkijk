@@ -13,6 +13,7 @@ import { StateHub } from '../src/hub.ts';
 import { OPEN_LIMITS, QuestionGenerator } from '../src/questions/generator.ts';
 import { answeredName, applyPersonAnswer, parsePersonAnswer, vehicleIsSubject } from '../src/questions/routes.ts';
 import { askableVehicle } from '../src/questions/vehicles.ts';
+import type { Person } from '../src/household/store.ts';
 import { QuestionStore } from '../src/questions/store.ts';
 
 const cameras = parseCameraConfig(
@@ -165,12 +166,12 @@ describe('question generator', () => {
 });
 
 describe('answering questions', () => {
-  async function api(faces?: FaceLibrary) {
+  async function api(faces?: FaceLibrary, household?: { people: () => Person[] }) {
     const t = setup();
     const facts = new FactStore(':memory:');
     const auth = new AuthStore(':memory:');
     const hub = new StateHub('live', cameras, 15_000);
-    const app = buildApp({ hub, auth: { store: auth, publicUrl: 'https://u.example' }, questions: { questions: t.questions, highlights: t.highlights, facts, autoFacts: true, faces, now: () => NOW } });
+    const app = buildApp({ hub, auth: { store: auth, publicUrl: 'https://u.example' }, questions: { questions: t.questions, highlights: t.highlights, facts, autoFacts: true, faces, ...(household ? { household } : {}), now: () => NOW } });
     cleanup.push(() => app.close(), () => hub.stop(), () => auth.close(), () => facts.close());
     const user = auth.createUser('mark', 'admin');
     auth.redeemLink(auth.createLink(user.id, 'activate'), await hashPassword('correct horse battery'));
@@ -178,6 +179,19 @@ describe('answering questions', () => {
     const answer = (id: number, payload: object) => app.inject({ method: 'POST', url: `/api/admin/questions/${id}/answer`, headers, payload });
     return { ...t, facts, app, headers, answer };
   }
+
+  it('treats a nickname from the household register as that person (0.24.2)', async () => {
+    const tineke = { id: 1, name: 'Tineke Mevius', role: 'bewoner', relation: '', aliases: ['Tini'], sources: [], locked: [], createdAt: 0, updatedAt: 0 } as unknown as Person;
+    const t = await api(undefined, { people: () => [tineke] });
+    t.add({ labels: ['car'], ai: { real: true, vehicle: 'lichtblauwe Volkswagen e-up!' } });
+    t.add({ labels: ['car'], ai: { real: true, vehicle: 'rode Tesla Model 3' } });
+    t.generator().runOnce();
+    const [a, b] = t.questions.list('open').filter((q) => q.kind === 'vehicle');
+    // An older answer with the nickname gives no extra button.
+    t.questions.resolve(b!.id, 'answered', 'Rode Tesla Model 3 is van Tini', 'mark', NOW);
+    expect((await t.app.inject({ url: '/api/admin/faces', headers: t.headers })).json()).toMatchObject({ names: ['Tineke Mevius'] });
+    expect((await t.answer(a!.id, { owner: 'tini', vehicle: 'lichtblauwe Volkswagen e-up!' })).json()).toMatchObject({ answer: 'Lichtblauwe Volkswagen e-up! is van Tineke Mevius' });
+  });
 
   it('offers names from earlier answers as buttons and matches them like library names (0.22.5)', async () => {
     const t = await api();

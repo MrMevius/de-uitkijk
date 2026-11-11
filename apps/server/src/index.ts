@@ -161,6 +161,7 @@ const app = buildApp({
           autoFacts: Boolean(ai),
           ...(facts ? { facts } : {}),
           ...(faces ? { faces, onFaceQueued: () => void faceWorker?.kick() } : {}),
+          ...(household ? { household } : {}),
         },
       }
     : {}),
