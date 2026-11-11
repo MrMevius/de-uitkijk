@@ -382,6 +382,24 @@ describe('questions from the household register (0.29.0)', () => {
     expect(t.open().map((q) => q.title)).toEqual(['Wie is Iemand?', 'Wie is Mark Mevius?']);
   });
 
+  it('gives an open doubt the answer options of a later bundling (0.29.1)', async () => {
+    const t = await withQuestions();
+    const ford = t.store.proposals('pending').find((p) => p.summary.startsWith('Is de witte Ford'))!;
+    // As if asked while the bundling that adds options was still running.
+    const options = ford.data.options!;
+    delete ford.data.options;
+    t.store.decide(ford.id, 'stale', 'systeem', NOW);
+    t.store.addProposal({ ...ford, data: {}, runId: ford.runId, createdAt: NOW });
+    t.generator.runOnce();
+    const q = t.open().find((x) => x.title.startsWith('Is de witte Ford'))!;
+    expect(q.data.options).toEqual([]);
+    const current = t.store.proposals('pending').find((p) => p.summary === ford.summary)!;
+    t.store.decide(current.id, 'stale', 'systeem', NOW);
+    t.store.addProposal({ ...ford, data: { options }, runId: ford.runId, createdAt: NOW });
+    t.generator.runOnce();
+    expect((t.questions.get(q.id)!.data.options as unknown[]).length).toBe(3);
+  });
+
   it('fills in make, model and plate of a vague vehicle and the role of a person', async () => {
     const t = await withQuestions();
     for (const p of t.store.proposals('pending')) if (p.kind === 'question') t.store.decide(p.id, 'accepted', 'mark', NOW);

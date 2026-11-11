@@ -36,7 +36,7 @@ The register asks what it is unsure about or misses, on the *Vragen* tab (kind *
 
 Order: doubts, make and model, roles, plates. *Weet ik niet* skips a question for good (its key is used once). A question whose subject changed meanwhile (filled in by hand, vehicle deleted, doubt gone after a new bundling) is withdrawn. Two minutes after the last answer the register is bundled again, so the new facts become proposals and new doubts questions.
 
-The AI writes the options in the bundling call (schema field `options`: `label`, `fact`, `retire`); `retire` is limited to the facts the question cites. The first start of 0.29.0 bundles once more when pending doubts have no options yet.
+The AI writes the options in the bundling call (schema field `options`: `label`, `fact`, `retire`); `retire` is limited to the facts the question cites. The first start of 0.29.0 bundles once more when pending doubts have no options yet. Since 0.29.1 an open household question is refreshed on every generator run, so a doubt asked while that bundling was still running gets its options when it is done.
 
 Accepting a proposal applies it: a new vehicle's owner is matched to a person by name, other name or unique first name, or created without a role (for example "Tini", which an administrator can then merge into "Tineke Mevius"). Merged vehicles keep the fields only they knew. A proposal that no longer fits the register (a vehicle was deleted meanwhile) becomes stale. Questions change nothing by themselves; since 0.29.0 they are answerable on the *Vragen* tab (see above), *Gezien* on this tab only dismisses them.
 

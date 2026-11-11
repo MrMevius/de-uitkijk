@@ -216,6 +216,13 @@ export class QuestionGenerator {
         if (q.kind === 'household' && !householdQuestionApplies(q, household)) this.questions.withdraw(q.id, now);
       }
       for (const q of householdQuestions(household, this.opts.facts)) {
+        // An open question keeps up with the register: a doubt asked while a bundling was still running gets its
+        // answer options when that bundling is done.
+        const existing = this.questions.getByKey(q.key);
+        if (existing?.status === 'open') {
+          if (JSON.stringify(existing.data) !== JSON.stringify(q.data)) this.questions.refresh(existing.id, q.title, q.data as unknown as Record<string, unknown>);
+          continue;
+        }
         if (room('household') <= 0) break;
         add({ kind: 'household', ...q, data: q.data as unknown as Record<string, unknown> });
       }

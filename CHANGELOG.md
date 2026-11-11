@@ -3,6 +3,10 @@
 Op hoofdlijnen, nieuwste eerst. Wordt getoond op Beheer → Change log. Elke release krijgt hier een kopje
 `## <versie> — <datum>` met een paar bullets; een test controleert dat de bovenste versie gelijk is aan `VERSION`.
 
+## 0.29.1 — 2026-11-11
+
+- Een twijfelvraag die al openstond, krijgt alsnog de antwoordknoppen zodra de nieuwe bundeling klaar is.
+
 ## 0.29.0 — 2026-11-11
 
 - Het huishouden stelt zelf vragen op Vragen: bij twijfel ("Fiesta of Focus?") met antwoordknoppen, en over wat ontbreekt: merk en model van vage voertuigen, kentekens en wie iemand is.

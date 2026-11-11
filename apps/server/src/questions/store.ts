@@ -183,6 +183,11 @@ export class QuestionStore {
     return row && fromRow(row);
   }
 
+  /** Replaces the data of an open question (an open household doubt gets the answer options of a newer bundling). */
+  refresh(id: number, title: string, data: Record<string, unknown>): void {
+    this.db.prepare("UPDATE questions SET title = ?, data = ? WHERE id = ? AND status = 'open'").run(title, JSON.stringify(data), id);
+  }
+
   getByKey(key: string): Question | undefined {
     const row = this.db.prepare('SELECT * FROM questions WHERE key = ?').get(key) as Row | undefined;
     return row && fromRow(row);
