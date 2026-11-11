@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { api, ApiError } from '../api.ts';
 import { ArchiveView } from '../Archive.tsx';
 import { AccountTab } from './AccountTab.tsx';
+import { AiCallsTab } from './AiCallsTab.tsx';
 import { AiTab } from './AiTab.tsx';
 import { FacesTab } from './FacesTab.tsx';
 import { HouseholdTab } from './HouseholdTab.tsx';
@@ -36,6 +37,7 @@ const TABS: Tab[] = [
   { id: 'highlights', label: 'Highlights', icon: 'highlights', adminOnly: false, render: () => <ArchiveView embedded /> },
   { id: 'huishouden', label: 'Huishouden', icon: 'home', adminOnly: true, render: () => <HouseholdTab /> },
   { id: 'ai', label: 'AI', icon: 'ai', adminOnly: true, render: () => <AiTab /> },
+  { id: 'ai-gesprekken', label: 'AI-gesprekken', icon: 'ai', adminOnly: true, render: () => <AiCallsTab /> },
   { id: 'gezichten', label: 'Gezichten', icon: 'account', adminOnly: true, render: () => <FacesTab /> },
   { id: 'account', label: 'Mijn account', icon: 'account', adminOnly: false, render: ({ me }) => <AccountTab me={me} /> },
 ];

@@ -50,6 +50,11 @@ export function AiTab() {
           </Card>
         )}
         {ai?.lastError && <Notice level="warn">Laatste fout: {ai.lastError}</Notice>}
+        {ai?.enabled && (
+          <p className="ui-muted">
+            Wat de AI precies kreeg en antwoordde, staat per gesprek in <a className="ui-link" href="#ai-gesprekken">AI-gesprekken</a>.
+          </p>
+        )}
 
         {facts && (
           <Card title={`Feiten voor de AI (${facts.length})`} icon="ai">

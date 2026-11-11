@@ -1,4 +1,5 @@
 import Fastify, { type FastifyInstance } from 'fastify';
+import type { AiLog, AiPurpose } from './ai/log.ts';
 import { registerAuth, type AuthOptions } from './auth/routes.ts';
 import { registerHighlights, type HighlightRouteOptions } from './highlights/routes.ts';
 import { registerHousehold, type HouseholdRouteOptions } from './household/routes.ts';
@@ -18,6 +19,8 @@ export interface AppDeps {
   questions?: QuestionRouteOptions;
   /** The household register: who is who and whose vehicle is which (since 0.22.0). */
   household?: HouseholdRouteOptions;
+  /** Raw AI calls for Beheer → AI-gesprekken (since 0.23.0). */
+  aiLog?: AiLog;
   logger?: boolean;
   heartbeatMs?: number;
   /** Release version, reported by /api/health so dashboards can reload after a deployment. */
@@ -31,7 +34,7 @@ export interface AppDeps {
  * a health endpoint and, in mock mode only, scenario control for development.
  * No route returns Frigate URLs, camera source URLs or credentials.
  */
-export function buildApp({ hub, mock, auth, highlights, questions, household, logger = false, heartbeatMs = 15_000, version, detail }: AppDeps): FastifyInstance {
+export function buildApp({ hub, mock, auth, highlights, questions, household, aiLog, logger = false, heartbeatMs = 15_000, version, detail }: AppDeps): FastifyInstance {
   const app = Fastify({ logger });
   if (auth) registerAuth(app, auth);
   // Without login (development) the edge's video check must still pass.
@@ -39,6 +42,19 @@ export function buildApp({ hub, mock, auth, highlights, questions, household, lo
   if (highlights) registerHighlights(app, highlights);
   if (questions) registerQuestions(app, questions);
   if (household) registerHousehold(app, household);
+  if (aiLog) {
+    // Administrators only (every /api/admin/ route): prompts contain household facts and names.
+    const PURPOSES = new Set<AiPurpose>(['beschrijving', 'feit', 'huishouden']);
+    app.get<{ Querystring: { purpose?: string; before?: string } }>('/api/admin/ai/calls', async (request) => {
+      const purpose = PURPOSES.has(request.query.purpose as AiPurpose) ? (request.query.purpose as AiPurpose) : undefined;
+      return aiLog.list({ ...(purpose ? { purpose } : {}), ...(Number(request.query.before) > 0 ? { before: Number(request.query.before) } : {}) });
+    });
+    app.get<{ Params: { id: string } }>('/api/admin/ai/calls/:id/image.webp', async (request, reply) => {
+      const image = aiLog.image(Number(request.params.id));
+      if (!image) return reply.code(404).send({ error: 'Niet gevonden' });
+      return reply.header('content-type', 'image/webp').header('cache-control', 'private, max-age=86400').send(Buffer.from(image));
+    });
+  }
 
   app.get('/api/health', async () => {
     const state = hub.snapshot();

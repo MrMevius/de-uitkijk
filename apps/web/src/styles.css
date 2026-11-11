@@ -1239,6 +1239,81 @@ body,
   background: #000;
 }
 
+/* AI calls (Beheer → AI-gesprekken) */
+.ui-aicall {
+  padding: 0;
+}
+
+.ui-aicall__summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.9rem 1.15rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.ui-aicall__summary::-webkit-details-marker {
+  display: none;
+}
+
+.ui-aicall__meta {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.85rem;
+}
+
+.ui-aicall__line {
+  color: #c3cad6;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-aicall[open] .ui-aicall__line {
+  white-space: normal;
+}
+
+.ui-aicall__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0 1.15rem 1.15rem;
+  min-width: 0;
+}
+
+.ui-aicall__body h4 {
+  margin: 0.4rem 0 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.ui-aicall__body p {
+  margin: 0;
+}
+
+.ui-aicall__image {
+  width: 100%;
+  max-width: 40rem;
+  border-radius: var(--ui-radius-sm);
+  background: #000;
+}
+
+.ui-pre {
+  margin: 0;
+  padding: 0.75rem 0.9rem;
+  max-height: 28rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--ui-border-strong);
+  border-radius: var(--ui-radius-sm);
+}
+
 /* Face library: pick photos to remove */
 .ui-faces--pick {
   gap: 0.4rem;

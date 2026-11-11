@@ -201,8 +201,7 @@ export function codexImageCall({ codexHome, timeoutMs = 180_000, model, command 
 }
 
 /** Describes a highlight still. */
-export function codexDescriber(options: CodexOptions): Describer {
-  const call = codexImageCall(options);
+export function codexDescriber(options: CodexOptions, call: CodexImageCall = codexImageCall(options)): Describer {
   return async (jpeg, context) => parseVerdict(await call(jpeg, buildPrompt(context), SCHEMA));
 }
 

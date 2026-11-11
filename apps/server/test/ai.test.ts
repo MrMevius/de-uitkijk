@@ -4,7 +4,10 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parseCameraConfig } from '@uitkijk/shared';
 import { buildPrompt, codexDescriber, parseVerdict, type Describer } from '../src/ai/codex.ts';
+import { AiLog, loggedCall } from '../src/ai/log.ts';
 import { AiWorker } from '../src/ai/worker.ts';
+import { buildApp } from '../src/app.ts';
+import { StateHub } from '../src/hub.ts';
 import { HighlightStore, toSummary } from '../src/highlights/store.ts';
 
 const cameras = parseCameraConfig(
@@ -238,5 +241,45 @@ describe('household facts', () => {
       { size: 500, facts: ['Rode Tesla is van Jasper'], recognized: ['Mark Mevius'] },
       { size: 3, facts: ['Rode Tesla is van Jasper'], recognized: ['Mark Mevius'] },
     ]);
+  });
+});
+
+describe('AI call log (0.23.0)', () => {
+  it('logs every call with prompt, image and raw answer or error, without changing the call', async () => {
+    let clock = 1_000_000;
+    const log = new AiLog(':memory:', { now: () => clock, shrink: async (j) => j.slice(0, 2) });
+    cleanup.push(() => log.close());
+    const call = loggedCall(async (jpeg, prompt) => {
+      if (prompt === 'fout') throw new Error('codex exited 1: boom');
+      return '{"description":"Iemand bij de deur."}';
+    }, log, 'beschrijving', 'm');
+    expect(await call(new Uint8Array([0xff, 0xd8, 1]), 'Beschrijf', { type: 'object' })).toBe('{"description":"Iemand bij de deur."}');
+    await expect(call(null, 'fout', {}, 'medium')).rejects.toThrow('boom');
+    await new Promise((r) => setTimeout(r, 10)); // logging finishes after the call returns
+    const [failed, ok] = log.list();
+    expect(ok).toMatchObject({ purpose: 'beschrijving', model: 'm', effort: 'low', prompt: 'Beschrijf', schema: '{"type":"object"}', answer: '{"description":"Iemand bij de deur."}', error: null, hasImage: true });
+    expect(failed).toMatchObject({ prompt: 'fout', effort: 'medium', answer: null, error: 'codex exited 1: boom', hasImage: false });
+    expect(log.image(ok!.id)).toEqual(new Uint8Array([0xff, 0xd8]));
+    expect(log.list({ purpose: 'feit' })).toEqual([]);
+    expect(log.list({ before: failed!.id }).map((c) => c.id)).toEqual([ok!.id]);
+
+    // Kept for 14 days; the next call removes older ones.
+    clock += 15 * 86400;
+    await log.add({ at: clock, purpose: 'feit', model: null, effort: 'low', prompt: 'p', schema: '{}', answer: '{}', error: null, durationMs: 5, jpeg: null });
+    expect(log.list().map((c) => c.purpose)).toEqual(['feit']);
+  });
+
+  it('serves the log to administrators through the API', async () => {
+    const log = new AiLog(':memory:');
+    cleanup.push(() => log.close());
+    await log.add({ at: log.now(), purpose: 'huishouden', model: null, effort: 'medium', prompt: 'p', schema: '{}', answer: '{}', error: null, durationMs: 5, jpeg: new Uint8Array([1]) });
+    const app = buildApp({ hub: new StateHub('live', cameras, 15_000), aiLog: log });
+    cleanup.push(() => app.close());
+    const list = (await app.inject({ url: '/api/admin/ai/calls?purpose=huishouden' })).json<{ id: number }[]>();
+    expect(list).toHaveLength(1);
+    expect((await app.inject({ url: '/api/admin/ai/calls?purpose=beschrijving' })).json()).toEqual([]);
+    const image = await app.inject({ url: `/api/admin/ai/calls/${list[0]!.id}/image.webp` });
+    expect(image.headers['content-type']).toBe('image/webp');
+    expect((await app.inject({ url: '/api/admin/ai/calls/999/image.webp' })).statusCode).toBe(404);
   });
 });

@@ -5,6 +5,7 @@ import { CameraVideoProbe } from './camera-probe.ts';
 import { AuthStore } from './auth/store.ts';
 import { codexDescriber, codexImageCall } from './ai/codex.ts';
 import { codexFactWriter } from './ai/fact-writer.ts';
+import { AiLog, loggedCall, type AiPurpose } from './ai/log.ts';
 import { FactStore } from './ai/facts.ts';
 import { AiWorker, ffmpegToJpeg } from './ai/worker.ts';
 import { FaceLibrary } from './faces/library.ts';
@@ -64,9 +65,13 @@ const facts = highlightStore ? new FactStore(join(config.dataDir, 'uitkijk.db'))
 const questionStore = highlightStore ? new QuestionStore(join(config.dataDir, 'uitkijk.db')) : undefined;
 // AI descriptions (AI-4: only when the owner enabled them; AI-7: isolated, failures never affect the rest).
 const codexOptions = { codexHome: join(config.dataDir, 'codex'), model: config.aiModel };
+// Every AI call with prompt, image and raw answer, for Beheer → AI-gesprekken (since 0.23.0).
+const aiLog = highlightStore && config.ai === 'codex' ? new AiLog(join(config.dataDir, 'uitkijk.db'), { shrink: ffmpegThumbnail }) : undefined;
+const aiCall = (purpose: AiPurpose) =>
+  loggedCall(codexImageCall(codexOptions), aiLog, purpose, config.aiModel ?? null, (err) => app.log.warn(`ai log: ${err.message}`));
 const ai =
   highlightStore && config.ai === 'codex'
-    ? new AiWorker(highlightStore, codexDescriber(codexOptions), {
+    ? new AiWorker(highlightStore, codexDescriber(codexOptions, aiCall('beschrijving')), {
         cameras: config.cameras,
         model: config.aiModel,
         facts: () => facts?.list().map((f) => f.text) ?? [],
@@ -83,7 +88,7 @@ const household = highlightStore ? new HouseholdStore(join(config.dataDir, 'uitk
 household?.failInterruptedRuns(Date.now() / 1000);
 const bundler = household
   ? new Bundler(household, {
-      ...(ai ? { call: codexImageCall(codexOptions) } : {}),
+      ...(ai ? { call: aiCall('huishouden') } : {}),
       input: async () => {
         if (faces) await faces.refresh().catch(() => undefined);
         const answers: PersonAnswer[] = (questionStore?.list('all', 5000) ?? [])
@@ -162,6 +167,7 @@ const app = buildApp({
   ...(household && bundler
     ? { household: { store: household, bundler, ...(facts ? { facts } : {}), ...(highlightStore ? { highlights: highlightStore } : {}), ...(faces ? { faces } : {}) } }
     : {}),
+  ...(aiLog ? { aiLog } : {}),
   detail: () => ({
     cameras: cameraProbe?.snapshot() ?? [],
     highlights: importer ? { enabled: true, lastOkAt: importer.lastOkAt, lastError: importer.lastError } : { enabled: false },
@@ -212,7 +218,7 @@ faceWorker?.start();
 // Facts from answers about people (only with AI enabled; vehicle answers become facts directly).
 const factWorker =
   ai && questionStore && highlightStore && facts
-    ? new FactWorker(questionStore, highlightStore, facts, codexFactWriter(codexImageCall(codexOptions)), {
+    ? new FactWorker(questionStore, highlightStore, facts, codexFactWriter(aiCall('feit')), {
         cameras: config.cameras,
         still: highlightStill,
         toJpeg: ffmpegToJpeg,

@@ -61,7 +61,7 @@ describe('admin page', () => {
   it('shows all tabs to administrators, starting with the overview', async () => {
     stubApi('admin');
     render(<AdminPage />);
-    await waitFor(() => expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Overzicht', 'Vragen2', 'Gebruikers', 'Highlights', 'Huishouden', 'AI', 'Gezichten', 'Mijn account']));
+    await waitFor(() => expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Overzicht', 'Vragen2', 'Gebruikers', 'Highlights', 'Huishouden', 'AI', 'AI-gesprekken', 'Gezichten', 'Mijn account']));
     expect(await screen.findByText(/De Uitkijk 0\.9\.0/)).toBeTruthy();
     expect(screen.getByText(/geen beeld/)).toBeTruthy();
     expect(screen.getByText(/7 in 24 uur/)).toBeTruthy();
