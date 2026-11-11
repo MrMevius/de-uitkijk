@@ -3,6 +3,10 @@
 Op hoofdlijnen, nieuwste eerst. Wordt getoond op Beheer → Change log. Elke release krijgt hier een kopje
 `## <versie> — <datum>` met een paar bullets; een test controleert dat de bovenste versie gelijk is aan `VERSION`.
 
+## 0.28.1 — 2026-11-11
+
+- Na het beantwoorden of overslaan van een vraag blijft de kaart staan met je antwoord, zodat je de highlight nog 👍/👎 kunt geven; "Sluiten" haalt hem weg.
+
 ## 0.28.0 — 2026-11-11
 
 - Huishouden bundelt nu automatisch: uit, elke dag of elke week, op een dag en tijd die je zelf kiest (standaard zondag 05:00). De wekelijkse run stond al in de documentatie maar was nooit gebouwd.

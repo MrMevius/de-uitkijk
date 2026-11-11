@@ -64,6 +64,8 @@ function stubApi(role: 'admin' | 'viewer') {
           facts: [{ id: 7, text: 'Zwarte compacte hatchback is van Noëlle Snippe', createdBy: 'mark (vraag 24)', processed: true }],
           schedule: { frequency: 'weekly', weekday: 7, time: '05:00', next: Date.UTC(2026, 10, 15, 4) / 1000 },
         });
+      if (url === '/api/admin/questions/1/answer') return json({ answer: 'Tineke Mevius (bewoner)', fact: 'pending', face: 'pending', also: 1 });
+      if (url === '/api/admin/highlights/h1/feedback') return new Response(null, { status: 204 });
       if (url === '/api/admin/household/schedule') return json({ frequency: 'daily', weekday: 7, time: '06:30', next: null });
       if (url === '/api/admin/users') return json([{ id: 1, username: 'mark', role: 'admin', active: true }]);
       if (url.startsWith('/api/highlights')) return json({ items: [], total: 0 });
@@ -128,6 +130,11 @@ describe('admin page', () => {
     const body = (url: string) => JSON.parse(String(calls.find(([u]) => u === url)![1]!.body));
     expect(body('/api/admin/questions/1/answer')).toEqual({ category: 'bewoner', name: '', also: ['h3'] });
     expect(body('/api/admin/highlights/h1/feedback')).toEqual({ value: 1 });
+    // The card stays with the answer, so the highlight can still be rated (0.28.1); the rating given stays on.
+    expect(await screen.findByText('Beantwoord: Tineke Mevius (bewoner) (ook voor 1 andere highlight)')).toBeTruthy();
+    expect(screen.getAllByTitle('Goede highlight')[0]!.className).toContain('ui-btn--on');
+    fireEvent.click(screen.getByRole('button', { name: 'Sluiten' }));
+    expect(screen.queryByText(/Beantwoord:/)).toBeNull();
   });
 
   it('shows viewers only the highlights and their own account', async () => {

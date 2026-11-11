@@ -1334,6 +1334,15 @@ body,
   margin-top: -0.25rem;
 }
 
+/* Answered or skipped a moment ago: kept in place for rating, visibly done. */
+.ui-question--handled {
+  border-color: color-mix(in srgb, var(--ok) 45%, transparent);
+}
+
+.ui-question--handled h3 {
+  font-size: 1rem;
+}
+
 .ui-rating {
   display: inline-flex;
   gap: 0.35rem;

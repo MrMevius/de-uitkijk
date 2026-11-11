@@ -54,5 +54,5 @@ A person question lists the other highlights within 15 minutes (any camera) with
 
 ## Rating from the questions tab (since 0.27.0)
 
-Every question with a highlight has 👍/👎, like the archive: rating while answering costs one tap.
+Every question with a highlight has 👍/👎, like the archive: rating while answering costs one tap. Since 0.28.1 an answered or skipped card stays in place with the answer and the 👍/👎 buttons until *Sluiten* or until the tab is left; before, it disappeared at once and the highlight could no longer be rated there.
 

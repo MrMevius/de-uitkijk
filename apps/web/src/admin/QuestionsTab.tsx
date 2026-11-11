@@ -89,11 +89,17 @@ function SameVisit({ items, chosen, onToggle }: { items: NonNullable<Question['s
 }
 
 /** 👍/👎 on the highlight of a question: rating while answering costs one tap (since 0.27.0). */
+/** Ratings given in this tab, so the card after answering shows a rating given just before. */
+const ratings = new Map<string, -1 | 1 | null>();
+
 function Rating({ highlight }: { highlight: NonNullable<Question['highlight']> }) {
-  const [value, setValue] = useState<-1 | 1 | null>(highlight.feedback ?? null);
+  const [value, setValue] = useState<-1 | 1 | null>(ratings.has(highlight.id) ? ratings.get(highlight.id)! : (highlight.feedback ?? null));
   const rate = (v: -1 | 1) => {
     const next = value === v ? null : v;
-    void api('POST', `/api/admin/highlights/${encodeURIComponent(highlight.id)}/feedback`, { value: next }).then(() => setValue(next), () => {});
+    void api('POST', `/api/admin/highlights/${encodeURIComponent(highlight.id)}/feedback`, { value: next }).then(() => {
+      ratings.set(highlight.id, next);
+      setValue(next);
+    }, () => {});
   };
   return (
     <span className="ui-rating" role="group" aria-label="Goede highlight?">
@@ -136,7 +142,39 @@ function NameChips({ names, value, onPick }: { names: string[]; value: string; o
   );
 }
 
-function QuestionCard({ q, names, onDone }: { q: Question; names: string[]; onDone: () => void }) {
+/** What an administrator just did with a question; the card stays in place so the highlight can still be rated. */
+interface Handled {
+  q: Question;
+  text: string;
+  /** Position in the list when it was handled. */
+  index: number;
+}
+
+/** A question answered or skipped in this visit of the tab: the result, 👍/👎 and a close button (since 0.28.1). */
+function HandledCard({ handled, onClose }: { handled: Handled; onClose: () => void }) {
+  const { q, text } = handled;
+  return (
+    <section className={`ui-card ui-question ui-question--handled${q.highlight ? '' : ' ui-question--plain'}`}>
+      <Media highlight={q.highlight} />
+      <div className="ui-question__body">
+        <div className="ui-question__meta">
+          <Pill level="ok">{KIND_LABEL[q.kind]}</Pill>
+          <span className="ui-muted">{q.title}</span>
+        </div>
+        <h3>{text}</h3>
+        {q.highlight && q.kind !== 'highlight' && <p className="ui-muted">Was dit een goede highlight? Je oordeel stuurt de selectie bij.</p>}
+        <div className="ui-question__foot">
+          {q.highlight && q.kind !== 'highlight' && <Rating highlight={q.highlight} />}
+          <button className="ui-btn ui-btn--ghost" onClick={onClose}>
+            Sluiten
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function QuestionCard({ q, names, onDone }: { q: Question; names: string[]; onDone: (text: string) => void }) {
   const [name, setName] = useState(q.data.guess ?? '');
   const [owner, setOwner] = useState('');
   const [vehicle, setVehicle] = useState(q.data.vehicle ?? '');
@@ -152,8 +190,18 @@ function QuestionCard({ q, names, onDone }: { q: Question; names: string[]; onDo
   const send = async (path: 'answer' | 'dismiss', body?: object) => {
     setError(null);
     try {
-      await api('POST', `/api/admin/questions/${q.id}/${path}`, body);
-      onDone();
+      const res = await api<{ answer?: string | number; also?: number } | undefined>('POST', `/api/admin/questions/${q.id}/${path}`, body);
+      const answer = res?.answer;
+      const also = res?.also ? ` (ook voor ${res.also} andere ${res.also === 1 ? 'highlight' : 'highlights'})` : '';
+      onDone(
+        path === 'dismiss'
+          ? 'Overgeslagen'
+          : typeof answer === 'number'
+            ? answer === 1
+              ? 'Beantwoord: goede highlight'
+              : 'Beantwoord: geen goede highlight'
+            : `Beantwoord: ${answer ?? ''}${also}`,
+      );
     } catch (err) {
       setError((err as Error).message);
     }
@@ -251,6 +299,7 @@ function Outcome({ q }: { q: Question }) {
 /** Questions and suggestions from the system; answers improve highlights and the AI. */
 export function QuestionsTab({ onCountChange }: { onCountChange?: (open: number) => void }) {
   const [open, setOpen] = useState<Question[] | null>(null);
+  const [handled, setHandled] = useState<Handled[]>([]);
   const [history, setHistory] = useState<Question[] | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [names, setNames] = useState<string[]>([]);
@@ -271,6 +320,10 @@ export function QuestionsTab({ onCountChange }: { onCountChange?: (open: number)
   useEffect(() => {
     if (showHistory) void api<Question[]>('GET', '/api/admin/questions?status=all').then((qs) => setHistory(qs.filter((q) => q.status !== 'open')), () => {});
   }, [showHistory, open]);
+
+  // Handled questions stay where they were (until closed or the tab is left), between the open ones.
+  const shown: (Question | { handled: Handled })[] = (open ?? []).filter((q) => !handled.some((h) => h.q.id === q.id));
+  for (const h of [...handled].sort((a, b) => a.index - b.index)) shown.splice(Math.min(h.index, shown.length), 0, { handled: h });
 
   return (
     <>
@@ -294,13 +347,25 @@ export function QuestionsTab({ onCountChange }: { onCountChange?: (open: number)
         <p className="ui-muted">Laden…</p>
       ) : (
         <div className="ui-stack">
-          {open.length === 0 && (
+          {shown.length === 0 && (
             <div className="ui-card">
               <Empty>Geen open vragen. Nieuwe vragen verschijnen vanzelf, hooguit een paar tegelijk.</Empty>
             </div>
           )}
-          {open.map((q) => (
-            <QuestionCard key={q.id} q={q} names={names} onDone={() => void load()} />
+          {shown.map((q) => (
+            'kind' in q ? (
+              <QuestionCard
+                key={q.id}
+                q={q}
+                names={names}
+                onDone={(text) => {
+                  setHandled((cur) => [...cur, { q, text, index: shown.indexOf(q) }]);
+                  void load();
+                }}
+              />
+            ) : (
+              <HandledCard key={`handled-${q.handled.q.id}`} handled={q.handled} onClose={() => setHandled((cur) => cur.filter((h) => h !== q.handled))} />
+            )
           ))}
           <div>
             <button className="ui-btn ui-btn--ghost" onClick={() => setShowHistory((v) => !v)}>
