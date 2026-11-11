@@ -6,6 +6,9 @@ import { AuthStore } from '../src/auth/store.ts';
 import { acceptProposal, Bundler, parseBundle, personProposals, rejectProposal, supported, vehicleProposals, type PersonAnswer } from '../src/household/bundle.ts';
 import { BundleScheduler, parseSchedule, slots } from '../src/household/schedule.ts';
 import { HouseholdStore } from '../src/household/store.ts';
+import { HighlightStore } from '../src/highlights/store.ts';
+import { QuestionGenerator } from '../src/questions/generator.ts';
+import { QuestionStore } from '../src/questions/store.ts';
 import { StateHub } from '../src/hub.ts';
 
 const cleanup: (() => unknown)[] = [];
@@ -49,9 +52,17 @@ const AI_ANSWER = {
     { target: 0, merge: [], kind: 'auto', make: 'Opel', model: '', colour: '', plate: '', features: '', owner: 'Gideon Snippe', place: '', facts: [], reason: 'zonder feit' },
   ],
   questions: [
-    { text: 'Is de witte Ford van Gideon een Fiesta of een Focus, of heeft hij er twee?', facts: [8, 9] },
-    { text: 'Is Tini dezelfde als Tineke Mevius?', facts: [1] },
-    { text: 'Vraag zonder bron die niet mag', facts: [99] },
+    {
+      text: 'Is de witte Ford van Gideon een Fiesta of een Focus, of heeft hij er twee?',
+      facts: [8, 9],
+      options: [
+        { label: 'Een Fiesta', fact: 'Gideon Snippe heeft een witte Ford Fiesta.', retire: [8, 9] },
+        { label: 'Een Focus', fact: 'Gideon Snippe heeft een witte Ford Focus.', retire: [8, 9, 3] },
+        { label: "Twee auto's", fact: "Gideon Snippe heeft twee witte Fords: een Fiesta en een Focus.", retire: [] },
+      ],
+    },
+    { text: 'Is Tini dezelfde als Tineke Mevius?', facts: [1], options: [] },
+    { text: 'Vraag zonder bron die niet mag', facts: [99], options: [] },
   ],
 };
 
@@ -310,3 +321,87 @@ describe('bundling schedule (0.28.0)', () => {
     expect(scheduler.schedule().frequency).toBe('off');
   });
 });
+
+describe('questions from the household register (0.29.0)', () => {
+  async function withQuestions() {
+    const t = setup();
+    await t.bundler.runOnce('mark');
+    const highlights = new HighlightStore(':memory:');
+    const questions = new QuestionStore(':memory:');
+    const auth = new AuthStore(':memory:');
+    const hub = new StateHub('live', [], 15_000);
+    let changed = 0;
+    const app = buildApp({
+      hub,
+      auth: { store: auth, publicUrl: 'https://u.example' },
+      questions: { questions, highlights, facts: t.facts, register: t.store, onRegisterChanged: () => changed++, now: () => NOW },
+    });
+    cleanup.push(() => app.close(), () => hub.stop(), () => auth.close(), () => highlights.close(), () => questions.close());
+    const user = auth.createUser('mevius', 'admin');
+    auth.redeemLink(auth.createLink(user.id, 'activate'), await hashPassword('correct horse battery'));
+    const headers = { cookie: `uitkijk_session=${auth.createSession(user.id)}`, origin: 'https://u.example' };
+    const answer = (id: number, payload: object) => app.inject({ method: 'POST', url: `/api/admin/questions/${id}/answer`, headers, payload });
+    const generator = new QuestionGenerator(highlights, questions, { cameras: [], now: () => NOW, household: t.store, facts: t.facts });
+    const open = () => questions.list('open').filter((q) => q.kind === 'household');
+    return { ...t, questions, answer, generator, open, changed: () => changed };
+  }
+
+  it('keeps the answer options of a doubt, limited to its own facts', async () => {
+    const t = await withQuestions();
+    const [ford, tini] = t.store.proposals('pending').filter((p) => p.kind === 'question');
+    expect(JSON.parse(ford!.data.options!)).toEqual([
+      { label: 'Een Fiesta', fact: 'Gideon Snippe heeft een witte Ford Fiesta.', retire: [8, 9] },
+      { label: 'Een Focus', fact: 'Gideon Snippe heeft een witte Ford Focus.', retire: [8, 9] },
+      { label: "Twee auto's", fact: 'Gideon Snippe heeft twee witte Fords: een Fiesta en een Focus.', retire: [] },
+    ]);
+    expect(tini!.data.options).toBeUndefined();
+    expect(t.prompts[0]).toContain('options: 2 tot 4 antwoorden');
+  });
+
+  it('asks doubts first, at most three at a time, and an answer replaces the facts it makes wrong', async () => {
+    const t = await withQuestions();
+    for (const p of t.store.proposals('pending').filter((x) => x.kind === 'person')) acceptProposal(t.store, p.id, 'mark', NOW);
+    t.generator.runOnce();
+    const open = t.open();
+    expect(open.map((q) => q.title)).toEqual(['Is de witte Ford van Gideon een Fiesta of een Focus, of heeft hij er twee?', 'Is Tini dezelfde als Tineke Mevius?', 'Wie is Iemand?']);
+    const ford = open[0]!;
+    expect(ford.data).toMatchObject({ type: 'doubt', facts: [{ id: 8, text: 'Witte Ford Fiesta hatchback is van Gideon Snippe' }, { id: 9, text: 'Witte Ford Focus hatchback is van Gideon Snippe' }] });
+    expect((await t.answer(ford.id, {})).statusCode).toBe(400);
+    expect((await t.answer(ford.id, { option: 1 })).json()).toEqual({ answer: 'Een Focus: Gideon Snippe heeft een witte Ford Focus.', fact: 'Gideon Snippe heeft een witte Ford Focus.' });
+    const texts = t.facts.list().map((f) => f.text);
+    expect(texts).toContain('Gideon Snippe heeft een witte Ford Focus.');
+    expect(texts).not.toContain('Witte Ford Fiesta hatchback is van Gideon Snippe');
+    expect(texts).not.toContain('Witte Ford Focus hatchback is van Gideon Snippe');
+    expect(t.facts.list().find((f) => f.text.startsWith('Gideon'))!.createdBy).toBe(`mevius (vraag ${ford.id})`);
+    expect(t.store.proposals('pending').some((p) => p.summary.startsWith('Is de witte Ford'))).toBe(false);
+    expect(t.changed()).toBe(1);
+    // An own answer for the other doubt.
+    expect((await t.answer(open[1]!.id, { text: 'tini is de roepnaam van Tineke Mevius' })).json().fact).toBe('Tini is de roepnaam van Tineke Mevius');
+    // Answered doubts are not asked again; the next gap follows.
+    t.generator.runOnce();
+    expect(t.open().map((q) => q.title)).toEqual(['Wie is Iemand?', 'Wie is Mark Mevius?']);
+  });
+
+  it('fills in make, model and plate of a vague vehicle and the role of a person', async () => {
+    const t = await withQuestions();
+    for (const p of t.store.proposals('pending')) if (p.kind === 'question') t.store.decide(p.id, 'accepted', 'mark', NOW);
+    const noelle = t.store.addPerson({ name: 'Noëlle Snippe', role: 'buren' }, [], [], NOW);
+    const vague = t.store.addVehicle({ kind: 'auto', colour: 'zwart', model: 'hatchback', ownerId: noelle.id }, ['feit 7'], [], NOW);
+    const peugeot = t.store.addVehicle({ kind: 'auto', colour: 'grijs', make: 'Peugeot', model: '108', ownerId: noelle.id }, ['feit 16'], [], NOW);
+    const vera = t.store.addPerson({ name: 'Vera Snippe' }, [], [], NOW);
+    t.generator.runOnce();
+    const open = t.open();
+    expect(open.map((q) => q.key)).toEqual([`household:vehicle:${vague.id}:make`, `household:role:${vera.id}`, `household:vehicle:${peugeot.id}:plate`]);
+    expect((await t.answer(open[0]!.id, { plate: 'xyz' })).json().error).toMatch(/kenteken/);
+    const res = (await t.answer(open[0]!.id, { make: 'Volkswagen', model: 'up!', plate: 'g-929-vd' })).json();
+    expect(res.fact).toMatch(/^De .*hatchback van Noëlle Snippe is een Volkswagen up! met kenteken G-929-VD\.$/);
+    expect(t.store.vehicles().find((v) => v.id === vague.id)).toMatchObject({ make: 'Volkswagen', model: 'up!', plate: 'G-929-VD', locked: expect.arrayContaining(['make', 'model', 'plate']) });
+    expect((await t.answer(open[1]!.id, { role: 'buren' })).json()).toEqual({ answer: 'buren', fact: 'Vera Snippe is een buur.' });
+    expect(t.store.people().find((p) => p.id === vera.id)!.role).toBe('buren');
+    // A plate filled in by hand withdraws the open plate question.
+    t.store.updateVehicle(peugeot.id, { plate: 'TV-666-R' }, { lock: true, at: NOW });
+    t.generator.runOnce();
+    expect(t.questions.get(open[2]!.id)).toMatchObject({ status: 'dismissed', answeredBy: 'systeem' });
+  });
+});
+

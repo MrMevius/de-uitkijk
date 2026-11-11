@@ -5,10 +5,23 @@ import { Empty, Icon, Notice, PageHeader, Pill, type Level } from './ui.tsx';
 
 interface Question {
   id: number;
-  kind: 'person' | 'vehicle' | 'highlight' | 'noise' | 'system';
+  kind: 'person' | 'vehicle' | 'highlight' | 'noise' | 'system' | 'household';
   title: string;
   body: string;
-  data: { vehicle?: string; noun?: string; faces?: string[]; guess?: string };
+  data: {
+    vehicle?: string;
+    noun?: string;
+    faces?: string[];
+    guess?: string;
+    /** Household questions (since 0.29.0). */
+    type?: 'doubt' | 'vehicle' | 'role';
+    options?: { label: string; fact: string; retire: number[] }[];
+    facts?: { id: number; text: string }[];
+    fields?: ('make' | 'model' | 'plate')[];
+    make?: string;
+    model?: string;
+    plate?: string;
+  };
   status: 'open' | 'answered' | 'dismissed';
   answer: string | null;
   answeredBy: string | null;
@@ -29,6 +42,7 @@ const KIND_LABEL: Record<Question['kind'], string> = {
   highlight: 'Highlight',
   noise: 'Suggestie',
   system: 'Melding',
+  household: 'Huishouden',
 };
 
 const PERSON_BUTTONS = [
@@ -42,7 +56,93 @@ const PERSON_BUTTONS = [
   ['onbekend', 'Onbekend'],
 ] as const;
 
-const KIND_LEVEL: Record<Question['kind'], Level> = { person: 'info', vehicle: 'info', highlight: 'info', noise: 'warn', system: 'bad' };
+const KIND_LEVEL: Record<Question['kind'], Level> = { person: 'info', vehicle: 'info', highlight: 'info', noise: 'warn', system: 'bad', household: 'info' };
+
+const ROLE_BUTTONS = [
+  ['bewoner', 'Bewoner'],
+  ['familie', 'Familie'],
+  ['bezoeker', 'Vaste bezoeker'],
+  ['buren', 'Buren'],
+  ['vaste hulp', 'Vaste hulp'],
+  ['bezorger of dienstverlener', 'Bezorger / dienst'],
+] as const;
+
+/** Answer form of a household question: a doubt with one-click answers, a vehicle's details or a person's role (since 0.29.0). */
+function HouseholdAnswer({ q, send }: { q: Question; send: (body: object) => void }) {
+  const [text, setText] = useState('');
+  const [make, setMake] = useState(q.data.make ?? '');
+  const [model, setModel] = useState(q.data.model ?? '');
+  const [plate, setPlate] = useState(q.data.plate ?? '');
+  if (q.data.type === 'doubt') {
+    return (
+      <>
+        {(q.data.facts?.length ?? 0) > 0 && (
+          <ul className="ui-facts">
+            {q.data.facts!.map((f) => (
+              <li key={f.id}>
+                <span className="ui-muted">Feit {f.id}:</span> {f.text}
+              </li>
+            ))}
+          </ul>
+        )}
+        {(q.data.options?.length ?? 0) > 0 && (
+          <div className="ui-segment" role="group" aria-label="Wat klopt?">
+            {q.data.options!.map((o, i) => (
+              <button key={o.label} className="ui-btn" title={`${o.fact}${o.retire.length ? ` (vervangt feit ${o.retire.join(', ')})` : ''}`} onClick={() => send({ option: i })}>
+                {o.label}
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="ui-inline-form">
+          <input placeholder="Of schrijf op wat klopt, bijv. Gideon heeft een witte Ford Focus" maxLength={200} value={text} onChange={(e) => setText(e.target.value)} aria-label="Eigen antwoord" />
+          <button className="ui-btn" disabled={text.trim().length < 5} onClick={() => send({ text })}>
+            Opslaan
+          </button>
+        </div>
+      </>
+    );
+  }
+  if (q.data.type === 'role') {
+    return (
+      <div className="ui-segment" role="group" aria-label="Wie is het?">
+        {ROLE_BUTTONS.map(([role, label]) => (
+          <button key={role} className="ui-btn" onClick={() => send({ role })}>
+            {label}
+          </button>
+        ))}
+      </div>
+    );
+  }
+  const fields = q.data.fields ?? [];
+  return (
+    <>
+      <div className="ui-form-grid">
+        {fields.includes('make') && (
+          <label className="ui-field">
+            <span className="ui-field__label">Merk</span>
+            <input placeholder="bijv. Volkswagen" maxLength={40} value={make} onChange={(e) => setMake(e.target.value)} />
+          </label>
+        )}
+        {fields.includes('model') && (
+          <label className="ui-field">
+            <span className="ui-field__label">Model</span>
+            <input placeholder="bijv. up!" maxLength={40} value={model} onChange={(e) => setModel(e.target.value)} />
+          </label>
+        )}
+        <label className="ui-field">
+          <span className="ui-field__label">Kenteken{fields.includes('make') ? ' (als je het weet)' : ''}</span>
+          <input placeholder="bijv. G-929-VD" maxLength={12} value={plate} onChange={(e) => setPlate(e.target.value.toUpperCase())} />
+        </label>
+      </div>
+      <div className="ui-actions">
+        <button className="ui-btn ui-btn--primary" onClick={() => send(fields.includes('make') ? { make, model, plate } : { plate })}>
+          Opslaan
+        </button>
+      </div>
+    </>
+  );
+}
 
 function Media({ highlight }: { highlight: Question['highlight'] }) {
   const [play, setPlay] = useState(false);
@@ -280,6 +380,8 @@ function QuestionCard({ q, names, onDone }: { q: Question; names: string[]; onDo
           </>
         )}
 
+        {q.kind === 'household' && <HouseholdAnswer q={q} send={(body) => void send('answer', body)} />}
+
         {q.kind === 'highlight' && (
           <div className="ui-actions">
             <button className="ui-btn" onClick={() => void send('answer', { value: 1 })}>
@@ -294,7 +396,7 @@ function QuestionCard({ q, names, onDone }: { q: Question; names: string[]; onDo
         <div className="ui-question__foot">
           {q.highlight && q.kind !== 'highlight' && <Rating highlight={q.highlight} />}
           <button className="ui-btn ui-btn--ghost" onClick={() => void send('dismiss')}>
-            {q.kind === 'noise' || q.kind === 'system' ? 'Gezien' : 'Overslaan'}
+            {q.kind === 'noise' || q.kind === 'system' ? 'Gezien' : q.kind === 'household' ? 'Weet ik niet' : 'Overslaan'}
           </button>
         </div>
         {error && <Notice>{error}</Notice>}

@@ -1343,6 +1343,26 @@ body,
   font-size: 1rem;
 }
 
+/* The facts a household doubt is about. */
+.ui-facts {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+}
+
+.ui-inline-form {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.ui-inline-form input {
+  flex: 1;
+  min-width: 0;
+}
+
 .ui-rating {
   display: inline-flex;
   gap: 0.35rem;

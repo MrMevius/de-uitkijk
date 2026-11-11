@@ -23,7 +23,22 @@ One run:
 3. **Server checks.** Every item must cite existing facts. Make, model, colour, plate, features, place and owner must appear in those facts or already in the register (Dutch adjective forms compare equal: "rode"/"rood"); anything else is dropped, not guessed. A plate must appear in full. Fields an administrator set are never changed. The summary shown to the administrator is written by the server, not by the AI.
 4. **Proposals.** The run replaces undecided proposals of the previous run. Rejected proposals and questions marked *Gezien* are not suggested again.
 
-Accepting a proposal applies it: a new vehicle's owner is matched to a person by name, other name or unique first name, or created without a role (for example "Tini", which an administrator can then merge into "Tineke Mevius"). Merged vehicles keep the fields only they knew. A proposal that no longer fits the register (a vehicle was deleted meanwhile) becomes stale. Questions change nothing; they ask the administrator to decide and correct the register by hand (from 0.23.0 they become questions on the *Vragen* tab).
+## Questions from the register (since 0.29.0)
+
+The register asks what it is unsure about or misses, on the *Vragen* tab (kind *Huishouden*, at most three open at a time, the next one right after an answer). Goal: facts that are as complete and correct as possible.
+
+| Question | When | Answer | Effect |
+| --- | --- | --- | --- |
+| Doubt ("Heeft Gideon een Fiesta of een Focus?") | A pending question proposal of the bundling | One of 2–4 options the AI wrote (each with the fact that then holds and the facts it replaces), or an own sentence | The fact is added (by the administrator, "vraag N"); the replaced facts are deleted (only facts the question cites; logged in the history); the proposal counts as seen |
+| Make and model ("Welk merk en model is de zwarte hatchback van Noëlle Snippe?") | A vehicle (not a bicycle) without make or model | Make, model, optionally plate | Fields set and locked in the register; fact "De … van … is een Volkswagen up! met kenteken …" |
+| Plate ("Wat is het kenteken van de grijze Peugeot 108 van Noëlle Snippe?") | Car, van, motorbike or scooter with make and model, no plate | Plate | Plate set and locked; fact "… heeft kenteken …". Frigate reads plates, so the vehicle is recognised for certain |
+| Role ("Wie is Vera Snippe?") | A person without role | Bewoner, familie, vaste bezoeker, buren, vaste hulp, bezorger / dienst | Role set and locked; fact "Vera Snippe is een buur." |
+
+Order: doubts, make and model, roles, plates. *Weet ik niet* skips a question for good (its key is used once). A question whose subject changed meanwhile (filled in by hand, vehicle deleted, doubt gone after a new bundling) is withdrawn. Two minutes after the last answer the register is bundled again, so the new facts become proposals and new doubts questions.
+
+The AI writes the options in the bundling call (schema field `options`: `label`, `fact`, `retire`); `retire` is limited to the facts the question cites. The first start of 0.29.0 bundles once more when pending doubts have no options yet.
+
+Accepting a proposal applies it: a new vehicle's owner is matched to a person by name, other name or unique first name, or created without a role (for example "Tini", which an administrator can then merge into "Tineke Mevius"). Merged vehicles keep the fields only they knew. A proposal that no longer fits the register (a vehicle was deleted meanwhile) becomes stale. Questions change nothing by themselves; since 0.29.0 they are answerable on the *Vragen* tab (see above), *Gezien* on this tab only dismisses them.
 
 ## Administrators' corrections
 

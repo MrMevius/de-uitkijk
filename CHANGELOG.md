@@ -3,6 +3,12 @@
 Op hoofdlijnen, nieuwste eerst. Wordt getoond op Beheer → Change log. Elke release krijgt hier een kopje
 `## <versie> — <datum>` met een paar bullets; een test controleert dat de bovenste versie gelijk is aan `VERSION`.
 
+## 0.29.0 — 2026-11-11
+
+- Het huishouden stelt zelf vragen op Vragen: bij twijfel ("Fiesta of Focus?") met antwoordknoppen, en over wat ontbreekt: merk en model van vage voertuigen, kentekens en wie iemand is.
+- Elk antwoord gaat meteen in het register en wordt een feit voor de AI; feiten die niet meer kloppen vervallen. Daarna bundelt het huishouden vanzelf opnieuw.
+- "Weet ik niet" slaat een vraag voorgoed over; er staan hooguit drie huishoudvragen tegelijk open.
+
 ## 0.28.2 — 2026-11-11
 
 - De highlights onder "Zelfde bezoek" zijn af te spelen: klik op het plaatje en de clip speelt groot onder de lijst.

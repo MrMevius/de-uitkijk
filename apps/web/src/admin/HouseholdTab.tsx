@@ -199,9 +199,14 @@ export function HouseholdTab() {
                   </div>
                   <div className="ui-row-actions">
                     {p.kind === 'question' ? (
-                      <button className="ui-btn ui-btn--small" onClick={() => void run(() => api('POST', `/api/admin/household/proposals/${p.id}/accept`))}>
-                        Gezien
-                      </button>
+                      <>
+                        <a className="ui-btn ui-btn--small ui-btn--primary" href="#vragen" title="Deze twijfel staat als vraag met antwoordknoppen op Vragen (hooguit drie tegelijk)">
+                          Beantwoorden
+                        </a>
+                        <button className="ui-btn ui-btn--small" onClick={() => void run(() => api('POST', `/api/admin/household/proposals/${p.id}/accept`))}>
+                          Gezien
+                        </button>
+                      </>
                     ) : (
                       <>
                         <button className="ui-btn ui-btn--small ui-btn--primary" onClick={() => void run(() => api('POST', `/api/admin/household/proposals/${p.id}/accept`))}>

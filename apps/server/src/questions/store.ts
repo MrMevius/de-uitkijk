@@ -1,6 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
 
-export type QuestionKind = 'person' | 'vehicle' | 'highlight' | 'noise' | 'system';
+export type QuestionKind = 'person' | 'vehicle' | 'highlight' | 'noise' | 'system' | 'household';
 export type QuestionStatus = 'open' | 'answered' | 'dismissed';
 
 export interface Question {

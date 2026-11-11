@@ -47,6 +47,17 @@ function stubApi(role: 'admin' | 'viewer') {
               { id: 'h4', camera: 'achter_1', startTime: Date.now() / 1000 - 60, description: 'Iemand bij de schuur.' },
             ],
           },
+          {
+            id: 3, kind: 'household', title: 'Heeft Gideon een Fiesta of een Focus?', body: 'Het huishouden twijfelt.', status: 'open', answer: null, answeredBy: null, createdAt: Date.now() / 1000, answeredAt: null, highlight: null,
+            data: {
+              type: 'doubt',
+              facts: [{ id: 8, text: 'Witte Ford Fiesta hatchback is van Gideon Snippe' }, { id: 9, text: 'Witte Ford Focus hatchback is van Gideon Snippe' }],
+              options: [
+                { label: 'Een Fiesta', fact: 'Gideon Snippe heeft een witte Ford Fiesta.', retire: [8, 9] },
+                { label: 'Een Focus', fact: 'Gideon Snippe heeft een witte Ford Focus.', retire: [8, 9] },
+              ],
+            },
+          },
           { id: 2, kind: 'vehicle', title: 'Van wie is deze auto?', body: 'De AI ziet: zwarte Volkswagen up!.', data: { vehicle: 'zwarte Volkswagen up!' }, status: 'open', answer: null, answeredBy: null, createdAt: Date.now() / 1000, answeredAt: null, highlight: { id: 'h2', hasThumbnail: true } },
         ]);
       if (url === '/api/admin/household')
@@ -64,6 +75,7 @@ function stubApi(role: 'admin' | 'viewer') {
           facts: [{ id: 7, text: 'Zwarte compacte hatchback is van Noëlle Snippe', createdBy: 'mark (vraag 24)', processed: true }],
           schedule: { frequency: 'weekly', weekday: 7, time: '05:00', next: Date.UTC(2026, 10, 15, 4) / 1000 },
         });
+      if (url === '/api/admin/questions/3/answer') return json({ answer: 'Een Focus: Gideon Snippe heeft een witte Ford Focus.', fact: 'Gideon Snippe heeft een witte Ford Focus.' });
       if (url === '/api/admin/questions/1/answer') return json({ answer: 'Tineke Mevius (bewoner)', fact: 'pending', face: 'pending', also: 1 });
       if (url === '/api/admin/highlights/h1/feedback') return new Response(null, { status: 204 });
       if (url === '/api/admin/household/schedule') return json({ frequency: 'daily', weekday: 7, time: '06:30', next: null });
@@ -140,6 +152,19 @@ describe('admin page', () => {
     expect(screen.getAllByTitle('Goede highlight')[0]!.className).toContain('ui-btn--on');
     fireEvent.click(screen.getByRole('button', { name: 'Sluiten' }));
     expect(screen.queryByText(/Beantwoord:/)).toBeNull();
+  });
+
+  it('answers a doubt of the household register with one click (0.29.0)', async () => {
+    stubApi('admin');
+    location.hash = '#vragen';
+    render(<AdminPage />);
+    expect(await screen.findByText('Heeft Gideon een Fiesta of een Focus?')).toBeTruthy();
+    expect(screen.getByText('Witte Ford Focus hatchback is van Gideon Snippe')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Weet ik niet' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Een Focus' }));
+    expect(await screen.findByText('Beantwoord: Een Focus: Gideon Snippe heeft een witte Ford Focus.')).toBeTruthy();
+    const calls = (fetch as unknown as { mock: { calls: [string, RequestInit?][] } }).mock.calls;
+    expect(JSON.parse(String(calls.find(([u]) => u === '/api/admin/questions/3/answer')![1]!.body))).toEqual({ option: 1 });
   });
 
   it('shows viewers only the highlights and their own account', async () => {

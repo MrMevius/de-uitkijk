@@ -5,6 +5,9 @@ import type { FaceLibrary } from '../faces/library.ts';
 import { hourInAmsterdam } from '../highlights/importer.ts';
 import { periodOf } from '../highlights/selection.ts';
 import type { HighlightStore, StoredCandidate } from '../highlights/store.ts';
+import type { FactStore } from '../ai/facts.ts';
+import type { HouseholdStore } from '../household/store.ts';
+import { householdQuestionApplies, householdQuestions } from './household.ts';
 import type { QuestionStore } from './store.ts';
 import { askableVehicle, knownVehicle, normalizeVehicle, vehicleNoun } from './vehicles.ts';
 
@@ -18,13 +21,16 @@ export interface GeneratorOptions {
   factsChangedAt?: () => number | null;
   /** Texts about vehicles the owner already told about (facts such as "Grijze Peugeot 108, kenteken TV-666-R is van Noëlle"). */
   knownVehicles?: () => string[];
+  /** Household register and facts: doubts and gaps become questions (since 0.29.0). */
+  household?: Pick<HouseholdStore, 'people' | 'vehicles' | 'proposals'>;
+  facts?: Pick<FactStore, 'list'>;
   intervalMs?: number;
   /** Epoch seconds. */
   now?: () => number;
 }
 
 /** Open questions per kind, so the list stays short and answerable. */
-export const OPEN_LIMITS = { person: 3, vehicle: 3, highlight: 2, noise: 2 } as const;
+export const OPEN_LIMITS = { person: 3, vehicle: 3, highlight: 2, noise: 2, household: 3 } as const;
 const NOISE_THRESHOLD = 5;
 /**
  * Smallest person (box height as a fraction of the frame) worth a "Wie is dit?" question. Low on purpose: the owner
@@ -63,7 +69,7 @@ const sentence = (text: string) => `${text.trim().replace(/[.!?…]+$/, '')}.`;
 export class QuestionGenerator {
   private readonly highlights: HighlightStore;
   private readonly questions: QuestionStore;
-  private readonly opts: Required<GeneratorOptions>;
+  private readonly opts: Required<Omit<GeneratorOptions, 'household' | 'facts'>> & Pick<GeneratorOptions, 'household' | 'facts'>;
   private readonly names: Map<string, string>;
   private readonly cameraFailedSince = new Map<string, number>();
   private timer: ReturnType<typeof setTimeout> | undefined;
@@ -201,6 +207,18 @@ export class QuestionGenerator {
         body: `De AI ziet: ${sentence(vehicle)} ${this.name(c.camera)}, ${timeText(c.startTime)}.${platesText(c.plates, vehicle)} Klopt de omschrijving niet precies, pas hem dan aan.`,
         data: { vehicle, noun },
       });
+    }
+
+    // The household register: doubts of the bundling and gaps (make and model, plate, role). Answers fill it directly.
+    const household = this.opts.household;
+    if (household) {
+      for (const q of this.questions.list('open', 1000)) {
+        if (q.kind === 'household' && !householdQuestionApplies(q, household)) this.questions.withdraw(q.id, now);
+      }
+      for (const q of householdQuestions(household, this.opts.facts)) {
+        if (room('household') <= 0) break;
+        add({ kind: 'household', ...q, data: q.data as unknown as Record<string, unknown> });
+      }
     }
 
     const threshold = this.highlights.threshold();

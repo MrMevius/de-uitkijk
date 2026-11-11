@@ -119,8 +119,25 @@ export const BUNDLE_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['text', 'facts'],
-        properties: { text: { type: 'string', maxLength: 200 }, facts: { type: 'array', items: { type: 'integer' }, maxItems: 10 } },
+        required: ['text', 'facts', 'options'],
+        properties: {
+          text: { type: 'string', maxLength: 200 },
+          facts: { type: 'array', items: { type: 'integer' }, maxItems: 10 },
+          options: {
+            type: 'array',
+            maxItems: 4,
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['label', 'fact', 'retire'],
+              properties: {
+                label: { type: 'string', maxLength: 60 },
+                fact: { type: 'string', maxLength: 200 },
+                retire: { type: 'array', items: { type: 'integer' }, maxItems: 10 },
+              },
+            },
+          },
+        },
       },
     },
   },
@@ -150,7 +167,8 @@ export function buildBundlePrompt(people: string[], vehicles: Vehicle[], ownerNa
     '- vehicles: één item per voertuig dat nieuw is of anders moet. target is het nummer van het voertuig in het register, of 0 voor een nieuw voertuig. merge: nummers van andere registervoertuigen die hetzelfde voertuig zijn (die gaan erin op), anders leeg. facts: de nummers van alle feiten waarop het item steunt (verplicht). Voertuigen die al goed in het register staan en waar geen nieuw feit over is: weglaten.',
     '- Velden: kind (soort), make (merk), model, colour (kleur, één woord of samenstelling zoals donkerblauw), plate (kenteken, alleen als het volledig in een feit staat), features (vaste kenmerken zoals een kinderzitje of logo), owner (naam van de eigenaar precies zoals in het feit of bij de bekende personen), place (vaste plek, bijvoorbeeld carport). Onbekend: lege tekst. Gebruik alleen wat in de feiten of het register staat; verzin niets en vul niets aan uit eigen kennis.',
     '- Twee feiten over hetzelfde voertuig (zelfde eigenaar en een omschrijving die bij elkaar past, of hetzelfde kenteken) worden één item. Een vagere omschrijving ("zwarte compacte hatchback") en een preciezere ("donkere Volkswagen up!") van dezelfde eigenaar zijn waarschijnlijk hetzelfde voertuig: voeg ze samen en zet in reason dat het waarschijnlijk is.',
-    '- questions: tegenstrijdigheden of twijfels die een bewoner moet beslissen, als korte Nederlandse vraag, met de nummers van de feiten. Bijvoorbeeld twee verschillende modellen voor dezelfde eigenaar en kleur ("Is de witte Ford van Gideon een Fiesta of een Focus, of heeft hij er twee?"), of een eigenaar die misschien dezelfde is als een bekende persoon ("Is Tini dezelfde als Tineke Mevius?"). Geen vragen over dingen die al duidelijk zijn.',
+    '- questions: tegenstrijdigheden of twijfels die een bewoner moet beslissen, als korte Nederlandse vraag, met de nummers van de feiten. Bijvoorbeeld twee verschillende modellen voor dezelfde eigenaar en kleur ("Is de witte Ford van Gideon een Fiesta of een Focus, of heeft hij er twee?"), of een eigenaar die misschien dezelfde is als een bekende persoon ("Is Tini dezelfde als Tineke Mevius?"). Geen vragen over dingen die al duidelijk zijn. Liever een vraag te veel dan een gok: het doel is een volledig en juist register.',
+    '- options: 2 tot 4 antwoorden die de bewoner met één klik kan kiezen. label: kort antwoord ("Een Focus", "Twee auto\'s", "Dezelfde auto"). fact: het feit dat dan geldt, als volledige Nederlandse zin met de eigenaar ("Gideon Snippe heeft een witte Ford Focus."). retire: nummers van de feiten uit deze vraag die met dit antwoord onjuist of overbodig worden (vervangen door het nieuwe feit), anders leeg.',
     '- reason: één korte Nederlandse zin waarom.',
     'Beschrijf nooit uiterlijk, kleding of gedrag van personen.',
   );
@@ -196,7 +214,14 @@ export function supported(value: string, source: string): boolean {
 
 const ints = (v: unknown): number[] => (Array.isArray(v) ? v.filter((n): n is number => Number.isInteger(n)) : []);
 
-export function parseBundle(text: string): { vehicles: RawVehicle[]; questions: { text: string; facts: number[] }[] } {
+/** A one-click answer to a doubt: the fact that then holds and the facts it replaces (since 0.29.0). */
+export interface DoubtOption {
+  label: string;
+  fact: string;
+  retire: number[];
+}
+
+export function parseBundle(text: string): { vehicles: RawVehicle[]; questions: { text: string; facts: number[]; options: DoubtOption[] }[] } {
   const j = JSON.parse(text.trim()) as { vehicles?: unknown; questions?: unknown };
   if (!Array.isArray(j.vehicles) || !Array.isArray(j.questions)) throw new Error('unexpected AI answer');
   const vehicles = (j.vehicles as Record<string, unknown>[]).map((v) => ({
@@ -213,7 +238,16 @@ export function parseBundle(text: string): { vehicles: RawVehicle[]; questions: 
     facts: ints(v.facts),
     reason: cleanText(v.reason, 160),
   }));
-  const questions = (j.questions as Record<string, unknown>[]).map((q) => ({ text: cleanText(q.text, 200), facts: ints(q.facts) })).filter((q) => q.text.length >= 8);
+  const questions = (j.questions as Record<string, unknown>[])
+    .map((q) => ({
+      text: cleanText(q.text, 200),
+      facts: ints(q.facts),
+      options: (Array.isArray(q.options) ? (q.options as Record<string, unknown>[]) : [])
+        .map((o) => ({ label: cleanText(o.label, 60), fact: cleanText(o.fact, 200), retire: ints(o.retire) }))
+        .filter((o) => o.label.length >= 2 && o.fact.length >= 8)
+        .slice(0, 4),
+    }))
+    .filter((q) => q.text.length >= 8);
   return { vehicles, questions };
 }
 
@@ -272,7 +306,18 @@ export function vehicleProposals(
   for (const q of raw.questions) {
     const cited = q.facts.filter((id) => factById.has(id));
     if (!cited.length) continue;
-    out.push({ kind: 'question', action: 'question', targetId: null, mergeIds: [], data: {}, sources: cited.map((id) => `feit ${id}`), summary: q.text, reason: '' });
+    // Only the question's own facts can be retired by an answer.
+    const options = q.options.map((o) => ({ ...o, retire: o.retire.filter((id) => cited.includes(id)) }));
+    out.push({
+      kind: 'question',
+      action: 'question',
+      targetId: null,
+      mergeIds: [],
+      data: options.length >= 2 ? { options: JSON.stringify(options) } : {},
+      sources: cited.map((id) => `feit ${id}`),
+      summary: q.text,
+      reason: '',
+    });
   }
   return out;
 }

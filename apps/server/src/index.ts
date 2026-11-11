@@ -109,6 +109,22 @@ const bundler = household
   : undefined;
 // Bundling at the time an administrator chose (weekly on Sunday 05:00 by default; since 0.28.0).
 const bundleScheduler = household && bundler ? new BundleScheduler(household, bundler) : undefined;
+// After answers to household questions the register is bundled again, once the administrator paused for two
+// minutes, so new facts become proposals and new doubts become questions (since 0.29.0).
+let rebundle: ReturnType<typeof setTimeout> | undefined;
+const registerChanged = () => {
+  // The next household question right away instead of within ten minutes.
+  setTimeout(() => questionGenerator?.runOnce(), 0);
+  clearTimeout(rebundle);
+  rebundle = setTimeout(() => {
+    if (bundler && !bundler.busy) bundler.start('systeem');
+  }, 120_000);
+};
+// Doubts from before 0.29.0 have no answer options yet: bundle once more so they get them.
+if (household && bundler?.aiEnabled && !household.getMeta('doubt_options')) {
+  if (household.proposals('pending').some((p) => p.kind === 'question' && !p.data.options)) setTimeout(() => bundler.start('systeem'), 30_000);
+  household.setMeta('doubt_options', '1');
+}
 // Answers given before facts (0.11) and face learning (0.13) existed go through the same steps once.
 if (questionStore && highlightStore) {
   for (const q of questionStore.legacyPersonAnswers()) {
@@ -170,7 +186,7 @@ const app = buildApp({
           autoFacts: Boolean(ai),
           ...(facts ? { facts } : {}),
           ...(faces ? { faces, onFaceQueued: () => void faceWorker?.kick() } : {}),
-          ...(household ? { household } : {}),
+          ...(household ? { household, register: household, onRegisterChanged: registerChanged } : {}),
         },
       }
     : {}),
@@ -223,7 +239,8 @@ const questionGenerator =
         ...(cameraProbe ? { cameraStatus: () => cameraProbe.snapshot() } : {}),
         ...(ai ? { aiStatus: () => ai.status() } : {}),
         ...(faces ? { faces } : {}),
-        ...(facts ? { factsChangedAt: () => facts.lastChange(), knownVehicles: () => facts.list().map((f) => f.text) } : {}),
+        ...(facts ? { facts, factsChangedAt: () => facts.lastChange(), knownVehicles: () => facts.list().map((f) => f.text) } : {}),
+        ...(household ? { household } : {}),
       })
     : undefined;
 questionGenerator?.start();
@@ -304,6 +321,7 @@ const shutdown = async () => {
   ai?.stop();
   backup?.stop();
   bundleScheduler?.stop();
+  clearTimeout(rebundle);
   hub.stop();
   clearInterval(purge);
   await app.close();

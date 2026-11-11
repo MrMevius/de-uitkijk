@@ -4,6 +4,7 @@ import { ATTEMPT_FILE, matchFaceName, type FaceLibrary } from '../faces/library.
 import type { HighlightStore, StoredCandidate } from '../highlights/store.ts';
 import { findPerson, type HouseholdStore } from '../household/store.ts';
 import { MIN_PERSON_SIZE } from './generator.ts';
+import { answerHousehold } from './household.ts';
 import type { QuestionStore } from './store.ts';
 import { normalizeVehicle, vehicleNoun } from './vehicles.ts';
 
@@ -17,6 +18,10 @@ export interface QuestionRouteOptions {
   faces?: FaceLibrary;
   /** Household register: its people get a button, and their aliases ("Tini") resolve to the full name (since 0.24.2). */
   household?: Pick<HouseholdStore, 'people'>;
+  /** The household register itself: answers to its questions change it (since 0.29.0). */
+  register?: HouseholdStore;
+  /** Called after an answer changed the register or the facts, so the bundling can run again. */
+  onRegisterChanged?: () => void;
   /** Called after an answer queued face learning, to process it right away. */
   onFaceQueued?: () => void;
   /** Epoch seconds. */
@@ -122,7 +127,7 @@ const clean = (v: unknown, max: number) =>
 
 /** Questions for administrators (`/api/admin/`, admin role). Answers feed back into highlights and facts. */
 export function registerQuestions(app: FastifyInstance, options: QuestionRouteOptions): void {
-  const { questions, highlights, facts, autoFacts = false, faces, household, onFaceQueued, now = () => Date.now() / 1000 } = options;
+  const { questions, highlights, facts, autoFacts = false, faces, household, register, onRegisterChanged, onFaceQueued, now = () => Date.now() / 1000 } = options;
   // Names for the answer form: Frigate's face library first, then people named in earlier answers whose face Frigate
   // could not learn (neighbours seen from the side, vehicle owners), so they get a one-click button too (since 0.22.5).
   // A nickname from the household register counts as that person ("Tini" → "Tineke Mevius"), not as someone new.
@@ -252,6 +257,16 @@ export function registerQuestions(app: FastifyInstance, options: QuestionRouteOp
       questions.resolve(q.id, 'answered', text, by, now());
       questions.setFact(q.id, stored ? 'done' : 'none', stored?.text ?? null);
       return { answer: text, fact: stored ? 'done' : 'none' };
+    }
+
+    if (q.kind === 'household') {
+      if (!register) return reply.code(400).send({ error: 'Het huishoudregister is niet beschikbaar' });
+      const result = answerHousehold(q, body, { register, ...(facts ? { facts } : {}), questions, by, now: now() });
+      if ('error' in result) return reply.code(400).send({ error: result.error });
+      questions.resolve(q.id, 'answered', result.answer, by, now());
+      questions.setFact(q.id, result.fact ? 'done' : 'none', result.fact);
+      onRegisterChanged?.();
+      return result;
     }
 
     if (q.kind === 'highlight') {
