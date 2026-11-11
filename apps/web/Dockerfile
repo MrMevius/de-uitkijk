@@ -1,7 +1,7 @@
 # Web: static Vite build served by the nginx edge, which also restricts access to go2rtc.
 FROM node:24-alpine AS build
 WORKDIR /app
-COPY package.json package-lock.json tsconfig.base.json VERSION ./
+COPY package.json package-lock.json tsconfig.base.json VERSION CHANGELOG.md ./
 COPY packages/shared/package.json packages/shared/
 COPY apps/server/package.json apps/server/
 COPY apps/web/package.json apps/web/

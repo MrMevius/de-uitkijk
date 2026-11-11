@@ -1239,6 +1239,16 @@ body,
   background: #000;
 }
 
+/* Changelog (Beheer → Wijzigingen) */
+.ui-changelog {
+  margin: 0;
+  padding-left: 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  color: #c3cad6;
+}
+
 /* AI log (Beheer → AI-log) */
 .ui-aicall {
   padding: 0;

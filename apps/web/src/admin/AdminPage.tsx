@@ -4,6 +4,7 @@ import { ArchiveView } from '../Archive.tsx';
 import { AccountTab } from './AccountTab.tsx';
 import { AiCallsTab } from './AiCallsTab.tsx';
 import { AiTab } from './AiTab.tsx';
+import { ChangelogTab } from './ChangelogTab.tsx';
 import { FacesTab } from './FacesTab.tsx';
 import { HouseholdTab } from './HouseholdTab.tsx';
 import { OverviewTab } from './OverviewTab.tsx';
@@ -39,6 +40,7 @@ const TABS: Tab[] = [
   { id: 'ai', label: 'AI', icon: 'ai', adminOnly: true, render: () => <AiTab /> },
   { id: 'ai-log', label: 'AI-log', icon: 'ai', adminOnly: true, render: () => <AiCallsTab /> },
   { id: 'gezichten', label: 'Gezichten', icon: 'account', adminOnly: true, render: () => <FacesTab /> },
+  { id: 'wijzigingen', label: 'Wijzigingen', icon: 'history', adminOnly: true, render: () => <ChangelogTab /> },
   { id: 'account', label: 'Mijn account', icon: 'account', adminOnly: false, render: ({ me }) => <AccountTab me={me} /> },
 ];
 
