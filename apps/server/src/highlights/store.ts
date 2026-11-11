@@ -25,6 +25,11 @@ export interface CandidateRecord {
   subLabels: string[];
   /** Number plates Frigate's LPR read on the group's vehicles (since 0.20.0). */
   plates?: string[];
+  /**
+   * Height of the largest person box on the representative camera as a fraction of the frame (since 0.27.0):
+   * 0 = no person on that camera, null = not measured (older highlights).
+   */
+  personSize?: number | null;
   score: number;
   reasons: string[];
   description: string;
@@ -69,6 +74,7 @@ interface Row {
   ai_redo: number;
   ai_vehicles: string | null;
   plates: string | null;
+  person_size: number | null;
 }
 
 export interface StoredCandidate extends CandidateRecord {
@@ -106,7 +112,7 @@ export interface StoredCandidate extends CandidateRecord {
 }
 
 const COLUMNS =
-  'id, start_time, end_time, cameras, camera, frigate_camera, rep_event, clip_start, clip_end, event_start, event_end, labels, sub_labels, score, reasons, description, selected, feedback, deleted, thumbnail IS NOT NULL AS has_thumbnail, ai_description, ai_real, ai_status, ai_attempts, ai_updated, base_score, feedback_adj, frame_time, ai_vehicle, ai_vehicle_known, annotation, detections, annotation_known, known_factor, ai_person_marker, ai_redo, ai_vehicles, plates';
+  'id, start_time, end_time, cameras, camera, frigate_camera, rep_event, clip_start, clip_end, event_start, event_end, labels, sub_labels, score, reasons, description, selected, feedback, deleted, thumbnail IS NOT NULL AS has_thumbnail, ai_description, ai_real, ai_status, ai_attempts, ai_updated, base_score, feedback_adj, frame_time, ai_vehicle, ai_vehicle_known, annotation, detections, annotation_known, known_factor, ai_person_marker, ai_redo, ai_vehicles, plates, person_size';
 
 const fromRow = (r: Row): StoredCandidate => ({
   id: r.id,
@@ -147,6 +153,7 @@ const fromRow = (r: Row): StoredCandidate => ({
   aiPersonMarker: r.ai_person_marker === null ? null : r.ai_person_marker === 1,
   aiRedo: r.ai_redo === 1,
   plates: r.plates ? (JSON.parse(r.plates) as string[]) : [],
+  personSize: r.person_size,
 });
 
 export const toSummary = (c: StoredCandidate): HighlightSummary => ({
@@ -172,11 +179,22 @@ export const toSummary = (c: StoredCandidate): HighlightSummary => ({
   hasThumbnail: c.hasThumbnail,
 });
 
+/** Everything a search word can match; plates also without dashes ("G929VD" and "G-929-VD" both match). */
+const SEARCH_TEXT = `(COALESCE(ai_description, '') || ' ' || description || ' ' || COALESCE(annotation, '') || ' ' || sub_labels || ' ' ||
+  COALESCE(ai_vehicle, '') || ' ' || COALESCE(ai_vehicles, '') || ' ' || COALESCE(plates, ''))`;
+
 export interface ArchiveQuery {
   from?: number;
   to?: number;
   camera?: string;
   minScore?: number;
+  /**
+   * Search words; each must occur in the description, the answer, a name Frigate recognised, a vehicle or a plate.
+   * A word with alternatives (a nickname and the full name) matches any of them.
+   */
+  words?: string[][];
+  /** Only highlights without 👍/👎. */
+  unrated?: boolean;
   limit: number;
   offset: number;
 }
@@ -250,6 +268,8 @@ export class HighlightStore {
       ['ai_vehicles', 'TEXT'],
       // Added in 0.20.0 (number plates from Frigate's LPR).
       ['plates', 'TEXT'],
+      // Added in 0.27.0 (no questions about tiny people far away).
+      ['person_size', 'REAL'],
     ] as const) {
       if (!columns.has(name)) this.db.exec(`ALTER TABLE candidates ADD COLUMN ${name} ${type}`);
     }
@@ -299,14 +319,14 @@ export class HighlightStore {
       this.db
         .prepare(
           `INSERT INTO candidates (id, start_time, end_time, cameras, camera, frigate_camera, rep_event, clip_start, clip_end,
-             event_start, event_end, labels, sub_labels, score, reasons, description, base_score, frame_time, detections, plates)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             event_start, event_end, labels, sub_labels, score, reasons, description, base_score, frame_time, detections, plates, person_size)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           c.id, c.startTime, c.endTime, JSON.stringify(c.cameras), c.camera, c.frigateCamera, c.repEvent, c.clipStart,
           c.clipEnd, c.eventStart, c.eventEnd, JSON.stringify(c.labels), JSON.stringify(c.subLabels), c.score,
           JSON.stringify(c.reasons), c.description, c.score, c.frameTime ?? null, c.detections ? JSON.stringify(c.detections) : null,
-          c.plates?.length ? JSON.stringify(c.plates) : null,
+          c.plates?.length ? JSON.stringify(c.plates) : null, c.personSize ?? null,
         );
       const mark = this.db.prepare('INSERT OR IGNORE INTO processed_reviews (review_id, candidate_id) VALUES (?, ?)');
       for (const id of reviewIds) mark.run(id, c.id);
@@ -434,6 +454,19 @@ export class HighlightStore {
     );
   }
 
+  setPersonSize(id: string, size: number): void {
+    this.db.prepare('UPDATE candidates SET person_size = ? WHERE id = ?').run(size, id);
+  }
+
+  /** Recent highlights with a person whose size was never measured (imported before 0.27.0). */
+  personSizeMissing(since: number): StoredCandidate[] {
+    return (
+      this.db
+        .prepare(`SELECT ${COLUMNS} FROM candidates WHERE deleted = 0 AND person_size IS NULL AND labels LIKE '%person%' AND start_time >= ?`)
+        .all(since) as unknown as Row[]
+    ).map(fromRow);
+  }
+
   /** Describe again with the latest answer and facts; the current description stays until the new one is there. */
   requestRedescribe(id: string): void {
     this.db.prepare('UPDATE candidates SET ai_redo = 1, ai_status = NULL, ai_attempts = 0 WHERE id = ? AND deleted = 0').run(id);
@@ -466,6 +499,12 @@ export class HighlightStore {
     if (q.to !== undefined) where.push('start_time < ?'), args.push(q.to);
     if (q.camera) where.push('(camera = ? OR cameras LIKE ?)'), args.push(q.camera, `%"${q.camera}"%`);
     if (q.minScore !== undefined) where.push('score >= ?'), args.push(q.minScore);
+    if (q.unrated) where.push('feedback IS NULL');
+    for (const alternatives of q.words ?? []) {
+      const one = `(${SEARCH_TEXT} LIKE ? ESCAPE '\\')`;
+      where.push(`(${alternatives.map(() => one).join(' OR ')})`);
+      for (const a of alternatives) args.push(`%${a.replace(/[\\%_]/g, (m) => `\\${m}`)}%`);
+    }
     const clause = where.join(' AND ');
     const total = Number(
       (this.db.prepare(`SELECT COUNT(*) AS n FROM candidates WHERE ${clause}`).get(...args) as { n: number }).n,

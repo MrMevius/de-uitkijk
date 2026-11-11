@@ -37,3 +37,22 @@ Names typed in an answer about a person or a vehicle owner are matched against F
 The AI lists every vehicle clearly in view (`vehicles`, at most four: cars, vans, motorbikes, scooters, bicycles, also parked ones), each with whether it matches a fact. Every unknown one becomes a "Van wie is deze …?" question, one per distinct description, at most 3 open; a highlight never has two open questions, so a vehicle question can follow once the person question on the same highlight is answered. At the first start of 0.18.0 the selected highlights of the last two days are described once more to fill in their vehicles.
 
 **Judged against older facts (since 0.22.1).** The AI decides whether a vehicle matches a fact when it describes the highlight, with the facts of that moment. A highlight described before the newest fact is therefore described again before its vehicle question is asked; if the vehicle is still unknown, the question follows in a later run (10 minutes), and a highlight waiting for a new description gets no vehicle question. Before, answering "Witte Hyundai bestelbus is van Roel" freed a place in the queue that was filled eight minutes later with "Van wie is deze auto?" about the same van with a trailer of ladders, described two hours before the answer. This costs at most one AI call per question slot; without AI the question is asked straight away.
+
+## Fewer, better questions (since 0.27.0)
+
+Up to 2026-11-11, 17 of 43 vehicle questions and 6 of 54 person questions were skipped. What changed:
+
+- **Vehicles out of view.** "deels/grotendeels verborgen", "achter de …" and similar descriptions are not asked: there is nothing to recognise the vehicle by next time.
+- **Cars without make or plate.** "donkere sedan", "grijze hatchback" look like many others and are not asked. A plate in the description or a real plate from Frigate's LPR (with a digit: Frigate once read "SCHUUR" from the shed) makes them askable, and so do vans, campers, trailers and vehicles with lettering. Trade-off: some of these were answered before (6 times); those answers gave weak facts.
+- **Already told about.** A vehicle is not asked when its plate is one character from a plate in a fact (the AI read G-029-VD for G-929-VD) or its make and model equal those of a fact ("zwarte Volkswagen up!" after "Donkere Volkswagen up! is van Noëlle"). Colour is ignored: the AI calls the same car black, dark or dark grey depending on the light. A make alone is not enough.
+- **Tiny people.** The importer stores the height of the largest person box on the clip's camera (`person_size`, a fraction of the frame; 0 = no person on that camera). Below 4% no person question is asked. The limit is low on purpose: the owner named neighbours at 5% of the frame height. The street passers-by at Voordeur that were skipped (10–13%) are handled by the tighter Voordeur zone in Frigate (2026-11-11). Clearly visible people (≥ 30%) are asked first, then by relevance. At the first start of 0.27.0 the highlights of the last week are measured once from Frigate's detections; without them the size stays unknown and the highlight is treated as before.
+- Open questions that the new rules would not ask are withdrawn ("systeem").
+
+## Same visit (since 0.27.0)
+
+A person question lists the other highlights within 15 minutes (any camera) with a person nobody named, that Frigate did not recognise, that are not noise and not too small, at most six, closest first. They are ticked; the answer applies to every ticked one: it gets its own answered question (`person:<id>`, so its face is learned too), its label and a new description. Only the first answer becomes a fact, so the same fact is not written six times. Highlights with an earlier answer are never changed.
+
+## Rating from the questions tab (since 0.27.0)
+
+Every question with a highlight has 👍/👎, like the archive: rating while answering costs one tap.
+

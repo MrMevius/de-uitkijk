@@ -177,6 +177,17 @@ export class QuestionStore {
     return this.db.prepare("SELECT 1 FROM questions WHERE highlight_id = ? AND status = 'open'").get(highlightId) !== undefined;
   }
 
+  /** The open question of this kind about a highlight, if any. */
+  openFor(highlightId: string, kind: QuestionKind): Question | undefined {
+    const row = this.db.prepare("SELECT * FROM questions WHERE highlight_id = ? AND kind = ? AND status = 'open'").get(highlightId, kind) as Row | undefined;
+    return row && fromRow(row);
+  }
+
+  getByKey(key: string): Question | undefined {
+    const row = this.db.prepare('SELECT * FROM questions WHERE key = ?').get(key) as Row | undefined;
+    return row && fromRow(row);
+  }
+
   /** Closes an open question that no longer applies (the system's own decision, shown as "systeem"). */
   withdraw(id: number, at: number): void {
     this.db.prepare("UPDATE questions SET status = 'dismissed', answered_by = 'systeem', answered_at = ? WHERE id = ? AND status = 'open'").run(at, id);

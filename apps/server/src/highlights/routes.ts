@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { FactStore } from '../ai/facts.ts';
+import type { HouseholdStore } from '../household/store.ts';
 import { REPLAY_MINUTES, SELECTION, selectHighlights, THRESHOLD_RANGE } from './selection.ts';
 import { sendFileWithRanges, type ClipCache } from './clips.ts';
 import { toSummary, type HighlightStore } from './store.ts';
@@ -14,6 +15,27 @@ export interface HighlightRouteOptions {
   aiStatus?: () => unknown;
   /** Household facts for the AI (administrators only). */
   facts?: FactStore;
+  /** Household register: a nickname in a search ("Tini") also finds the full name. */
+  household?: Pick<HouseholdStore, 'people'>;
+}
+
+/**
+ * Search text to words for the archive (since 0.27.0). Each word may also match its plate form without dashes
+ * and, for a nickname from the household register, the person's full name.
+ */
+export function searchWords(text: string, people: { name: string; aliases: string[] }[] = []): string[][] {
+  return text
+    .toLowerCase()
+    .split(/\s+/)
+    .map((w) => w.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}!]+$/gu, ''))
+    .filter((w) => w.length >= 2)
+    .slice(0, 8)
+    .map((w) => {
+      const alternatives = new Set([w]);
+      if (w.includes('-')) alternatives.add(w.replaceAll('-', ''));
+      for (const p of people) if (p.aliases.some((a) => a.toLowerCase() === w)) alternatives.add(p.name.toLowerCase());
+      return [...alternatives];
+    });
 }
 
 const num = (v: unknown) => (typeof v === 'string' && v !== '' && Number.isFinite(Number(v)) ? Number(v) : undefined);
@@ -22,7 +44,7 @@ const num = (v: unknown) => (typeof v === 'string' && v !== '' && Number.isFinit
  * Highlight API. Viewing needs a session (auth hook); feedback and deletion need the admin role
  * (`/api/admin/`). Video is fetched from Frigate on demand; nothing is copied permanently.
  */
-export function registerHighlights(app: FastifyInstance, { store, clips, frigateUrl, now = () => Date.now() / 1000, aiStatus, facts }: HighlightRouteOptions): void {
+export function registerHighlights(app: FastifyInstance, { store, clips, frigateUrl, now = () => Date.now() / 1000, aiStatus, facts, household }: HighlightRouteOptions): void {
   const frigate = frigateUrl.replace(/\/$/, '');
 
   app.get('/api/highlights/rotation', async () =>
@@ -39,6 +61,8 @@ export function registerHighlights(app: FastifyInstance, { store, clips, frigate
       ...(num(q.to) !== undefined ? { to: num(q.to)! } : {}),
       ...(q.camera ? { camera: q.camera } : {}),
       ...(num(q.minScore) !== undefined ? { minScore: num(q.minScore)! } : {}),
+      ...(q.q ? { words: searchWords(q.q.slice(0, 200), household?.people() ?? []) } : {}),
+      ...(q.unrated === '1' ? { unrated: true } : {}),
       limit: Math.min(100, Math.max(1, num(q.limit) ?? 50)),
       offset: Math.max(0, num(q.offset) ?? 0),
     });

@@ -12,7 +12,7 @@ import { HighlightStore, type CandidateRecord } from '../src/highlights/store.ts
 import { StateHub } from '../src/hub.ts';
 import { OPEN_LIMITS, QuestionGenerator } from '../src/questions/generator.ts';
 import { answeredName, applyPersonAnswer, parsePersonAnswer, vehicleIsSubject } from '../src/questions/routes.ts';
-import { askableVehicle } from '../src/questions/vehicles.ts';
+import { askableVehicle, knownVehicle, makeModel, platesClose } from '../src/questions/vehicles.ts';
 import type { Person } from '../src/household/store.ts';
 import { QuestionStore } from '../src/questions/store.ts';
 
@@ -165,6 +165,60 @@ describe('question generator', () => {
   });
 });
 
+describe('fewer and better questions (0.27.0)', () => {
+  it('skips cars without make or plate and mostly hidden vehicles, keeps vans and bicycles', () => {
+    for (const d of ['donkere sedan', 'grijze hatchback', 'donkere auto onder de carport, deels verborgen', 'donkere auto achter de bestelbus', 'grijze hatchback, kenteken niet leesbaar']) {
+      expect(askableVehicle(d), d).toBe(false);
+    }
+    for (const d of ['witte bestelbus met aanhanger vol ladders', 'grijze Peugeot 108', 'donkere hatchback, kenteken G-929-VD', 'rode transportfiets met fietstassen']) {
+      expect(askableVehicle(d), d).toBe(true);
+    }
+    // A plate Frigate read makes a car without make recognisable.
+    expect(askableVehicle('grijze hatchback', ['TV666R'])).toBe(true);
+  });
+
+  it('recognises a vehicle the owner already told about by make and model or a nearly equal plate', () => {
+    const known = ['Donkere Volkswagen up! is van Noëlle Snippe', 'Zwarte Tesla model 3 hatchback, kenteken G-929-VD is van Mark Mevius'];
+    expect(makeModel('witte Mercedes-Benz Sprinter-bestelbus')).toBe('mercedes sprinter');
+    expect(platesClose('G029VD', 'G929VD')).toBe(true);
+    expect(platesClose('G929VD', 'TV666R')).toBe(false);
+    expect(knownVehicle('zwarte Volkswagen up!', [], known)).toBe(true);
+    expect(knownVehicle('donkergrijze hatchback, kenteken G-029-VD', [], known)).toBe(true);
+    expect(knownVehicle('grijze hatchback', ['G929VD'], known)).toBe(true);
+    expect(knownVehicle('witte Ford Fiesta', [], known)).toBe(false);
+    // Only a make is not enough: there are many Volkswagens.
+    expect(knownVehicle('zwarte Volkswagen', [], known)).toBe(false);
+  });
+
+  it('asks no vehicle question about a known vehicle and withdraws an open one after the answer arrives', () => {
+    const t = setup();
+    t.add({ labels: ['car'], ai: { real: true, vehicle: 'zwarte Volkswagen up!' } });
+    let known: string[] = [];
+    const g = t.generator({ knownVehicles: () => known });
+    g.runOnce();
+    const [q] = t.questions.list('open').filter((x) => x.kind === 'vehicle');
+    expect(q).toBeDefined();
+    known = ['Donkere Volkswagen up! is van Noëlle Snippe'];
+    g.runOnce();
+    expect(t.questions.get(q!.id)).toMatchObject({ status: 'dismissed', answeredBy: 'systeem' });
+  });
+
+  it('asks no person question about a speck in the distance or without a person on the camera, biggest first', () => {
+    const t = setup();
+    const tiny = t.add({ ai: { real: true }, personSize: 0.02, score: 9 });
+    const none = t.add({ ai: { real: true }, personSize: 0, score: 9 });
+    const small = t.add({ ai: { real: true }, personSize: 0.08, score: 5 });
+    const big = t.add({ ai: { real: true }, personSize: 0.6, score: 2 });
+    const legacy = t.add({ ai: { real: true }, score: 1 });
+    t.generator({ faces: t.faceStub({}, false) }).runOnce();
+    const asked = t.questions.list('open').filter((q) => q.kind === 'person').map((q) => q.highlightId);
+    expect(asked).not.toContain(tiny);
+    expect(asked).not.toContain(none);
+    // Unknown size (imported before 0.27.0) is asked as before; the clearly visible ones first.
+    expect(new Set(asked)).toEqual(new Set([big, legacy, small]));
+  });
+});
+
 describe('answering questions', () => {
   async function api(faces?: FaceLibrary, household?: { people: () => Person[] }) {
     const t = setup();
@@ -179,6 +233,28 @@ describe('answering questions', () => {
     const answer = (id: number, payload: object) => app.inject({ method: 'POST', url: `/api/admin/questions/${id}/answer`, headers, payload });
     return { ...t, facts, app, headers, answer };
   }
+
+  it('applies one answer to the other highlights of the same visit that were ticked (0.27.0)', async () => {
+    const t = await api();
+    const first = t.add({ ai: { real: true, marker: true }, startTime: NOW - 600, score: 5 });
+    const second = t.add({ ai: { real: true }, startTime: NOW - 300, camera: 'oprit', cameras: ['oprit'] });
+    const third = t.add({ ai: { real: true }, startTime: NOW - 200 });
+    const otherDay = t.add({ ai: { real: true }, startTime: NOW - 86400 });
+    const named = t.add({ ai: { real: true }, startTime: NOW - 100 });
+    t.highlights.setAnnotation(named, 'Roel Snippe (buren)', true);
+    t.questions.add({ kind: 'person', key: `person:${first}`, highlightId: first, title: 'Wie is dit?', body: '' }, NOW);
+    const q = t.questions.getByKey(`person:${first}`)!;
+    const list = (await t.app.inject({ url: '/api/admin/questions', headers: t.headers })).json() as { id: number; sameVisit?: { id: string }[] }[];
+    expect(list.find((x) => x.id === q.id)!.sameVisit!.map((h) => h.id)).toEqual([second, third]);
+    // The administrator unticked the third; an id from another day is ignored.
+    const res = await t.answer(q.id, { category: 'bewoner', name: 'Tineke', also: [second, otherDay] });
+    expect(res.json()).toMatchObject({ answer: 'Tineke (bewoner)', also: 1 });
+    expect(t.highlights.get(second)).toMatchObject({ annotation: 'Tineke (bewoner)', annotationKnown: true, aiRedo: true });
+    expect(t.highlights.get(third)!.annotation).toBeNull();
+    expect(t.highlights.get(otherDay)!.annotation).toBeNull();
+    // Its own answered question (face learning), but no second fact.
+    expect(t.questions.getByKey(`person:${second}`)).toMatchObject({ status: 'answered', answer: 'Tineke (bewoner)', factStatus: 'none' });
+  });
 
   it('treats a nickname from the household register as that person (0.24.2)', async () => {
     const tineke = { id: 1, name: 'Tineke Mevius', role: 'bewoner', relation: '', aliases: ['Tini'], sources: [], locked: [], createdAt: 0, updatedAt: 0 } as unknown as Person;
@@ -222,7 +298,7 @@ describe('answering questions', () => {
     const vehicle = qs.find((q) => q.kind === 'vehicle')!;
 
     expect((await t.answer(person.id, { category: 'iets' })).statusCode).toBe(400);
-    expect((await t.answer(person.id, { category: 'bezorger', name: 'PostNL\n<b>' })).json()).toEqual({ answer: 'PostNL (bezorger of dienstverlener)', fact: 'pending', face: 'none' });
+    expect((await t.answer(person.id, { category: 'bezorger', name: 'PostNL\n<b>' })).json()).toEqual({ answer: 'PostNL (bezorger of dienstverlener)', fact: 'pending', face: 'none', also: 0 });
     expect(t.questions.get(person.id)!.factStatus).toBe('pending');
     // A courier is annotated and described again, but does not count as known and teaches no face.
     expect(t.highlights.get(p)).toMatchObject({ annotation: 'PostNL (bezorger of dienstverlener)', annotationKnown: false, aiRedo: true });

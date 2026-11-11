@@ -9,8 +9,9 @@ import { buildApp } from '../src/app.ts';
 import { AuthStore } from '../src/auth/store.ts';
 import { hashPassword } from '../src/auth/passwords.ts';
 import { ClipCache } from '../src/highlights/clips.ts';
-import { describe as describeGroup, clipStartFor, HighlightImporter, hourInAmsterdam, personMoment, platesOf } from '../src/highlights/importer.ts';
+import { describe as describeGroup, clipStartFor, HighlightImporter, hourInAmsterdam, personMoment, personSize, platesOf } from '../src/highlights/importer.ts';
 import { buildBaseline, groupItems, scoreGroup, selectHighlights, type ReviewItem } from '../src/highlights/selection.ts';
+import { searchWords } from '../src/highlights/routes.ts';
 import { HighlightStore, toSummary } from '../src/highlights/store.ts';
 import { StateHub } from '../src/hub.ts';
 
@@ -80,6 +81,9 @@ describe('selection', () => {
     const car = { id: 'pwgoma', label: 'car', camera: cam, data: { top_score: 0.824, box: [0.064, 0.3, 0.266, 0.269], path_data: [[[0.545, 0.589], 1794255994.16]] as [[number, number], number][] } };
     expect(personMoment([car, person], cam)).toBe(1794256019.9);
     expect(personMoment([car, person], 'Vriezenveen_voordeur')).toBeUndefined();
+    // Size of the person on the camera of the clip (0.27.0): the largest box height, 0 without a person there.
+    expect(personSize([car, person], cam)).toBe(0.451);
+    expect(personSize([car, person], 'Vriezenveen_voordeur')).toBe(0);
     expect(personMoment([car], cam)).toBeUndefined();
   });
 
@@ -299,6 +303,25 @@ describe('highlight API', () => {
     const archive = (await t.app.inject({ url: '/api/highlights?minScore=3.5', headers: { cookie } })).json();
     expect(archive).toMatchObject({ total: 2 });
     expect((await t.app.inject({ url: '/api/highlights/h1/thumb.webp', headers: { cookie } })).statusCode).toBe(200);
+  });
+
+  it('searches the archive by words, nicknames and plates, and lists highlights without a rating (0.27.0)', async () => {
+    const t = await setupApi();
+    const { cookie } = await t.login('kijker', 'viewer');
+    t.store.setAiResult('h1', 'Een vrouw met een pakket loopt naar de deur.', true, at(10) + 60, 'grijze Peugeot 108, kenteken TV-666-R');
+    t.store.setAnnotation('h2', 'Tineke Mevius (bewoner)', true);
+    t.store.setFeedback('h2', 1);
+    const ids = async (query: string) =>
+      ((await t.app.inject({ url: `/api/highlights?${query}`, headers: { cookie } })).json() as { items: HighlightSummary[] }).items.map((h) => h.id);
+    expect(await ids('q=PAKKET')).toEqual(['h1']);
+    expect(await ids('q=pakket%20vrouw')).toEqual(['h1']);
+    expect(await ids('q=pakket%20tineke')).toEqual([]);
+    expect(await ids('q=TV666R')).toEqual([]);
+    expect(await ids('q=TV-666-R')).toEqual(['h1']);
+    expect(await ids('q=tineke')).toEqual(['h2']);
+    expect(await ids('q=50%25')).toEqual([]);
+    expect(await ids('unrated=1')).toEqual(['h1', 'old']);
+    expect(searchWords('Tini  G-929-VD', [{ name: 'Tineke Mevius', aliases: ['Tini'] }])).toEqual([['tini', 'tineke mevius'], ['g-929-vd', 'g929vd']]);
   });
 
   it('serves clips with byte ranges through the cache and offers downloads', async () => {

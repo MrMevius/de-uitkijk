@@ -1,5 +1,6 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import type { AiLog, AiPurpose } from './ai/log.ts';
+import { deviceOf, type DisplayRegistry } from './displays.ts';
 import { registerAuth, type AuthOptions } from './auth/routes.ts';
 import { registerHighlights, type HighlightRouteOptions } from './highlights/routes.ts';
 import { registerHousehold, type HouseholdRouteOptions } from './household/routes.ts';
@@ -21,6 +22,8 @@ export interface AppDeps {
   household?: HouseholdRouteOptions;
   /** Raw AI calls for Beheer → AI-log (since 0.23.0). */
   aiLog?: AiLog;
+  /** Dashboards report version and picture state for Beheer → Overzicht (since 0.27.0). */
+  displays?: DisplayRegistry;
   logger?: boolean;
   heartbeatMs?: number;
   /** Release version, reported by /api/health so dashboards can reload after a deployment. */
@@ -34,7 +37,7 @@ export interface AppDeps {
  * a health endpoint and, in mock mode only, scenario control for development.
  * No route returns Frigate URLs, camera source URLs or credentials.
  */
-export function buildApp({ hub, mock, auth, highlights, questions, household, aiLog, logger = false, heartbeatMs = 15_000, version, detail }: AppDeps): FastifyInstance {
+export function buildApp({ hub, mock, auth, highlights, questions, household, aiLog, displays, logger = false, heartbeatMs = 15_000, version, detail }: AppDeps): FastifyInstance {
   const app = Fastify({ logger });
   if (auth) registerAuth(app, auth);
   // Without login (development) the edge's video check must still pass.
@@ -85,6 +88,31 @@ export function buildApp({ hub, mock, auth, highlights, questions, household, ai
         ...detail(),
       };
     });
+  }
+
+  if (displays) {
+    // Every logged-in dashboard; the id is random and kept in the browser.
+    app.post<{ Body: Record<string, unknown> }>('/api/displays/report', async (request, reply) => {
+      const b = request.body ?? {};
+      const text = (v: unknown, max: number) => (typeof v === 'string' ? v.replace(/[^\w .:+-]/g, '').slice(0, max) : '');
+      const count = (v: unknown) => (typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= 64 ? v : 0);
+      const id = text(b.id, 64);
+      if (id.length < 8) return reply.code(400).send({ error: 'id ontbreekt' });
+      displays.report({
+        id,
+        profile: text(b.profile, 32) || 'standaard',
+        username: request.user?.username ?? '',
+        version: text(b.version, 32),
+        device: deviceOf(String(request.headers['user-agent'] ?? '')),
+        camerasLive: count(b.camerasLive),
+        camerasTotal: count(b.camerasTotal),
+      });
+      return reply.code(204).send();
+    });
+    app.get('/api/admin/displays', async () => displays.list());
+    app.delete<{ Params: { id: string } }>('/api/admin/displays/:id', async (request, reply) =>
+      displays.remove(request.params.id) ? reply.code(204).send() : reply.code(404).send({ error: 'Niet gevonden' }),
+    );
   }
 
   app.get('/api/state', async () => hub.snapshot());

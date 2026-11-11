@@ -6,6 +6,7 @@ import { AdminPage } from './admin/AdminPage.tsx';
 import { ArchivePage } from './Archive.tsx';
 import { Dashboard } from './Dashboard.tsx';
 import { DevPanel } from './DevPanel.tsx';
+import { useDisplayReport } from './display-report.ts';
 import { useSelfHealing } from './self-healing.ts';
 import { useDashboardState } from './use-dashboard-state.ts';
 import './styles.css';
@@ -25,6 +26,7 @@ function DashboardPage() {
   const { state, connected } = useDashboardState();
   useSelfHealing(Boolean(state?.focus.length));
   const profile = displayProfile(new URLSearchParams(location.search).get('profile'));
+  useDisplayReport(profile.id);
   return <Dashboard state={state} connected={connected} profile={profile} />;
 }
 

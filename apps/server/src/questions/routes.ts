@@ -1,8 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import type { FactStore } from '../ai/facts.ts';
 import { ATTEMPT_FILE, matchFaceName, type FaceLibrary } from '../faces/library.ts';
-import type { HighlightStore } from '../highlights/store.ts';
+import type { HighlightStore, StoredCandidate } from '../highlights/store.ts';
 import { findPerson, type HouseholdStore } from '../household/store.ts';
+import { MIN_PERSON_SIZE } from './generator.ts';
 import type { QuestionStore } from './store.ts';
 import { normalizeVehicle, vehicleNoun } from './vehicles.ts';
 
@@ -97,6 +98,25 @@ export function vehicleIsSubject(h: { aiVehicle: string | null; annotation: stri
 /** Labels written by vehicle answers ("auto van Mark", "onbekende fiets"). */
 export const VEHICLE_ANNOTATION = /^(auto|fiets|scooter|motor) van |^onbekende (auto|fiets|scooter|motor)$/;
 
+/** One visit: other highlights this close in time may show the same person (since 0.27.0). */
+export const VISIT_S = 15 * 60;
+
+/**
+ * Other highlights of the same visit that an answer about a person can also apply to: within a quarter of an hour,
+ * any camera, with a person nobody named and Frigate did not recognise, not noise, not too small. Closest first.
+ */
+export function sameVisit(h: StoredCandidate, { highlights, questions }: Pick<QuestionRouteOptions, 'highlights' | 'questions'>): StoredCandidate[] {
+  return highlights
+    .candidatesSince(h.startTime - VISIT_S)
+    .filter((c) => c.id !== h.id && c.startTime <= h.startTime + VISIT_S && c.hasThumbnail && c.labels.some((l) => l.startsWith('person')))
+    .filter((c) => c.subLabels.length === 0 && !c.annotation && c.aiRealEvent !== false)
+    .filter((c) => c.personSize === null || c.personSize === undefined || c.personSize >= MIN_PERSON_SIZE)
+    // Never over an earlier answer; an open question about it is answered along.
+    .filter((c) => !questions.hasForHighlight(c.id, 'person') || questions.openFor(c.id, 'person'))
+    .sort((a, b) => Math.abs(a.startTime - h.startTime) - Math.abs(b.startTime - h.startTime))
+    .slice(0, 6);
+}
+
 const clean = (v: unknown, max: number) =>
   typeof v === 'string' ? v.replace(/<[^>]*>/g, ' ').replace(/[\r\n\t<>]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max) : '';
 
@@ -127,7 +147,15 @@ export function registerQuestions(app: FastifyInstance, options: QuestionRouteOp
     const status = request.query.status === 'all' ? 'all' : 'open';
     return questions.list(status, status === 'all' ? 200 : 100).map((q) => {
       const h = q.highlightId ? highlights.get(q.highlightId) : undefined;
-      return { ...q, highlight: h && !h.deleted ? { id: h.id, hasThumbnail: h.hasThumbnail, camera: h.camera, startTime: h.startTime } : null };
+      const visible = h && !h.deleted ? h : undefined;
+      return {
+        ...q,
+        highlight: visible ? { id: visible.id, hasThumbnail: visible.hasThumbnail, camera: visible.camera, startTime: visible.startTime, feedback: visible.feedback } : null,
+        // Same visit, so one answer can name the person on all of them.
+        ...(visible && q.kind === 'person' && q.status === 'open'
+          ? { sameVisit: sameVisit(visible, options).map((c) => ({ id: c.id, camera: c.camera, startTime: c.startTime, description: c.aiDescription ?? c.description })) }
+          : {}),
+      };
     });
   });
 
@@ -182,8 +210,22 @@ export function registerQuestions(app: FastifyInstance, options: QuestionRouteOp
       const label = name ? `${name} (${PERSON_CATEGORIES[category]})` : PERSON_CATEGORIES[category];
       questions.resolve(q.id, 'answered', label, by, now());
       const result = applyPersonAnswer(q, label, options);
+      // The same answer for other highlights of the visit the administrator ticked. Each gets an answered question
+      // of its own, so its face is learned too; only the first answer becomes a fact (the same fact once).
+      const also = Array.isArray(body.also) ? body.also.filter((id): id is string => typeof id === 'string') : [];
+      const allowed = new Set(h ? sameVisit(h, options).map((c) => c.id) : []);
+      let applied = 0;
+      for (const id of also.filter((id) => allowed.has(id))) {
+        const other = questions.openFor(id, 'person') ?? (questions.add({ kind: 'person', key: `person:${id}`, highlightId: id, title: 'Wie is dit?', body: `Zelfde bezoek als vraag ${q.id}.` }, now()) ? questions.getByKey(`person:${id}`) : undefined);
+        if (!other) continue;
+        questions.resolve(other.id, 'answered', label, by, now());
+        const extra = applyPersonAnswer(other, label, { ...options, autoFacts: false });
+        if (options.autoFacts) highlights.requestRedescribe(id);
+        if (extra.face === 'pending') result.face = 'pending';
+        applied++;
+      }
       if (result.face === 'pending') onFaceQueued?.();
-      return { answer: label, ...result };
+      return { answer: label, ...result, also: applied };
     }
 
     if (q.kind === 'vehicle') {

@@ -58,7 +58,7 @@ Consolidated specification for De Uitkijk. Each requirement has a phase:
 | TV-7 | Dutch date and 24-hour clock in Europe/Amsterdam. | P1 |
 | TV-8 | No interactive controls and no audio playback on the TV dashboard. | P1 |
 | TV-9 | Individually configurable display profiles: shop TV (55", Full HD, 2–5 m) and bedroom TV (32", Full HD, 0.5–2 m). | P1 (profiles), Later (per-device configuration) |
-| TV-10 | Continuous kiosk operation without manual interaction; TVs are switched on/off manually; wired Ethernet. | Later |
+| TV-10 | Continuous kiosk operation without manual interaction; TVs are switched on/off manually; wired Ethernet. | Later (since 0.27.0 each dashboard reports version and cameras with a picture every minute; Beheer → Overzicht → Schermen) |
 
 ## 5. Dynamic focus
 
@@ -145,7 +145,7 @@ Consolidated specification for De Uitkijk. Each requirement has a phase:
 | --- | --- | --- |
 | OPS-1 | Two TV clients initially; up to five concurrent viewers overall. | Later |
 | OPS-2 | Zabbix health checks; critical alerts only after 30 minutes. | Later (`/api/health` exists) |
-| OPS-3 | Consistent application backups to Unraid with 30 daily, 12 weekly and 12 monthly retention points. Existing PBS remains available. | Later |
+| OPS-3 | Consistent application backups to Unraid with 30 daily, 12 weekly and 12 monthly retention points. Existing PBS remains available. | P1 since 0.27.0: nightly copies with this retention in the data volume, off the host through the VM's PBS backup (not a separate copy to Unraid) |
 | OPS-4 | Initial backend failure does not interrupt established video; independent stream reconnection for up to four hours. | P1 (established streams), Later (reconnect authorisation) |
 
 ## 12. Later-phase deliverables

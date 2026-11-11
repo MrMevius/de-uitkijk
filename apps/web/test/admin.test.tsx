@@ -2,6 +2,7 @@ import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AdminPage } from '../src/admin/AdminPage.tsx';
 import { FacesTab } from '../src/admin/FacesTab.tsx';
+import { ArchiveView } from '../src/Archive.tsx';
 import { fireEvent } from '@testing-library/react';
 
 afterEach(() => {
@@ -27,12 +28,25 @@ function stubApi(role: 'admin' | 'viewer') {
           highlights: { enabled: true, lastOkAt: Date.now() / 1000 - 30, lastError: null },
           ai: { enabled: true, model: 'gpt-6-luna', callsToday: 3, dailyCap: 60, pending: 0, lastSuccessAt: null, lastError: null },
           users: { total: 2, admins: 1, inactive: 0 },
+          backup: { lastAt: Date.now() / 1000 - 3600, lastFile: 'uitkijk-2026-11-12.db.gz', lastBytes: 5_200_000, count: 3, lastError: null },
         });
+      if (url === '/api/admin/displays')
+        return json([
+          { id: 'a1', profile: 'shop', username: 'winkel', version: '0.8.0', device: 'Windows · Chrome', firstSeen: 0, lastSeen: Date.now() / 1000 - 30, camerasLive: 4, camerasTotal: 4 },
+          { id: 'b2', profile: 'bedroom', username: 'slaapkamer', version: '0.9.0', device: 'Linux · Chrome', firstSeen: 0, lastSeen: Date.now() / 1000 - 7200, camerasLive: 4, camerasTotal: 4 },
+        ]);
       if (url === '/api/admin/highlights/stats') return json({ last24h: 7, last7d: 40, rotation: 7 });
       if (url === '/api/admin/questions/count') return json({ open: 2 });
       if (url === '/api/admin/questions')
         return json([
-          { id: 1, kind: 'person', title: 'Wie is dit?', body: 'Persoon bij Voordeur.', data: {}, status: 'open', answer: null, answeredBy: null, createdAt: Date.now() / 1000, answeredAt: null, highlight: { id: 'h1', hasThumbnail: true } },
+          {
+            id: 1, kind: 'person', title: 'Wie is dit?', body: 'Persoon bij Voordeur.', data: {}, status: 'open', answer: null, answeredBy: null, createdAt: Date.now() / 1000, answeredAt: null,
+            highlight: { id: 'h1', hasThumbnail: true, feedback: null },
+            sameVisit: [
+              { id: 'h3', camera: 'oprit', startTime: Date.now() / 1000 - 120, description: 'Iemand loopt over de oprit.' },
+              { id: 'h4', camera: 'achter_1', startTime: Date.now() / 1000 - 60, description: 'Iemand bij de schuur.' },
+            ],
+          },
           { id: 2, kind: 'vehicle', title: 'Van wie is deze auto?', body: 'De AI ziet: zwarte Volkswagen up!.', data: { vehicle: 'zwarte Volkswagen up!' }, status: 'open', answer: null, answeredBy: null, createdAt: Date.now() / 1000, answeredAt: null, highlight: { id: 'h2', hasThumbnail: true } },
         ]);
       if (url === '/api/admin/household')
@@ -68,6 +82,12 @@ describe('admin page', () => {
     expect([...foot.querySelectorAll('a')].map((a) => a.textContent)).toEqual(['Change log', 'Naar dashboard', expect.stringContaining('mark')]);
     expect(screen.getByText(/geen beeld/)).toBeTruthy();
     expect(screen.getByText(/7 in 24 uur/)).toBeTruthy();
+    // Nightly database copy and the screens that show the dashboard (0.27.0).
+    expect(screen.getByText('Back-up database')).toBeTruthy();
+    expect(screen.getByText(/3 bewaard/)).toBeTruthy();
+    expect(await screen.findByText('Winkel-tv · Windows · Chrome')).toBeTruthy();
+    expect(screen.getByText(/oude versie/)).toBeTruthy();
+    expect(screen.getByText(/laatst gezien 2 uur geleden/)).toBeTruthy();
   });
 
   it('follows the URL fragment to switch tabs', async () => {
@@ -91,6 +111,21 @@ describe('admin page', () => {
     expect(screen.getByRole('button', { name: 'Voorbijganger' })).toBeTruthy();
     expect((screen.getByDisplayValue('zwarte Volkswagen up!') as HTMLInputElement).value).toBe('zwarte Volkswagen up!');
     expect(screen.getByRole('button', { name: 'Opslaan als feit voor de AI' })).toBeTruthy();
+  });
+
+  it('answers a person for the ticked highlights of the same visit and rates the highlight (0.27.0)', async () => {
+    stubApi('admin');
+    location.hash = '#vragen';
+    render(<AdminPage />);
+    expect(await screen.findByText(/Zelfde bezoek/)).toBeTruthy();
+    fireEvent.click(screen.getByText('Iemand bij de schuur.'));
+    fireEvent.click(screen.getAllByTitle('Goede highlight')[0]!);
+    fireEvent.click(screen.getByRole('button', { name: 'Bewoner' }));
+    const calls = (fetch as unknown as { mock: { calls: [string, RequestInit?][] } }).mock.calls;
+    await waitFor(() => expect(calls.some(([url]) => url === '/api/admin/questions/1/answer')).toBe(true));
+    const body = (url: string) => JSON.parse(String(calls.find(([u]) => u === url)![1]!.body));
+    expect(body('/api/admin/questions/1/answer')).toEqual({ category: 'bewoner', name: '', also: ['h3'] });
+    expect(body('/api/admin/highlights/h1/feedback')).toEqual({ value: 1 });
   });
 
   it('shows viewers only the highlights and their own account', async () => {
@@ -135,5 +170,24 @@ describe('face library tab', () => {
     expect(screen.getByText('vriendin van Jasper')).toBeTruthy();
     expect(screen.getByText('van Noëlle Snippe')).toBeTruthy();
     expect(screen.getByText(/2 voorstellen/)).toBeTruthy();
+  });
+});
+
+describe('archive search (0.27.0)', () => {
+  it('searches after typing stops, with a period and only unrated highlights', async () => {
+    stubApi('admin');
+    render(<ArchiveView embedded />);
+    const calls = (fetch as unknown as { mock: { calls: [string][] } }).mock.calls;
+    const lastSearch = () => new URLSearchParams(calls.map(([u]) => u).filter((u) => u.startsWith('/api/highlights?')).at(-1)!.split('?')[1]);
+    await screen.findByText('Nog niet beoordeeld');
+    fireEvent.change(screen.getByLabelText('Zoeken'), { target: { value: ' tineke pakket ' } });
+    fireEvent.change(screen.getByLabelText('Vanaf datum'), { target: { value: '2026-11-10' } });
+    fireEvent.click(screen.getByText('Nog niet beoordeeld'));
+    await waitFor(() => expect(lastSearch().get('q')).toBe('tineke pakket'), { timeout: 2000 });
+    const q = lastSearch();
+    expect(q.get('unrated')).toBe('1');
+    // One date: that whole day (Amsterdam), from midnight to midnight.
+    expect(Number(q.get('to')) - Number(q.get('from'))).toBe(86400);
+    expect(await screen.findByText('Niets gevonden voor "tineke pakket".')).toBeTruthy();
   });
 });

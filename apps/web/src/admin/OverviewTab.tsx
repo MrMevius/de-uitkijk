@@ -12,6 +12,73 @@ interface Status {
   highlights: { enabled: boolean; lastOkAt?: number | null; lastError?: string | null };
   ai: { enabled: boolean; model?: string; callsToday?: number; dailyCap?: number; lastSuccessAt?: number | null; lastError?: string | null; pending?: number };
   users: { total: number; admins: number; inactive: number };
+  backup?: { lastAt: number | null; lastFile: string | null; lastBytes: number | null; count: number; lastError: string | null };
+}
+
+interface Display {
+  id: string;
+  profile: string;
+  username: string;
+  version: string;
+  device: string;
+  firstSeen: number;
+  lastSeen: number;
+  camerasLive: number;
+  camerasTotal: number;
+}
+
+/** A dashboard reports every minute; after three minutes without a report it counts as off. */
+const DISPLAY_ONLINE_S = 180;
+
+const PROFILE_NAME: Record<string, string> = { shop: 'Winkel-tv', bedroom: 'Slaapkamer-tv', default: 'Standaardscherm' };
+
+/** Every screen that showed the dashboard in the last 30 days: on or off, version, cameras with a picture (since 0.27.0). */
+function Displays({ version }: { version: string | undefined }) {
+  const [displays, setDisplays] = useState<Display[] | null>(null);
+  const load = () => api<Display[]>('GET', '/api/admin/displays').then(setDisplays, () => setDisplays(null));
+  useEffect(() => {
+    void load();
+    const timer = setInterval(load, 30_000);
+    return () => clearInterval(timer);
+  }, []);
+  const forget = (d: Display) => {
+    if (confirm('Dit scherm uit de lijst halen? Het komt terug zodra het het dashboard weer toont.')) void api('DELETE', `/api/admin/displays/${encodeURIComponent(d.id)}`).then(load, () => {});
+  };
+  return (
+    <Card title="Schermen" icon="monitor" className="ui-span-2">
+      {!displays ? (
+        <p className="ui-muted">Laden…</p>
+      ) : displays.length === 0 ? (
+        <p className="ui-muted">Nog geen schermen gemeld. Een dashboard meldt zich binnen een minuut na het openen.</p>
+      ) : (
+        <ul className="ui-services">
+          {displays.map((d) => {
+            const online = Date.now() / 1000 - d.lastSeen < DISPLAY_ONLINE_S;
+            const outdated = online && version !== undefined && d.version !== version;
+            const blind = online && d.camerasTotal > 0 && d.camerasLive < d.camerasTotal;
+            return (
+              <li key={d.id} className="ui-service">
+                <div>
+                  <span className="ui-service__name">
+                    {PROFILE_NAME[d.profile] ?? d.profile} · {d.device}
+                  </span>
+                  <span className="ui-service__detail">
+                    {d.username || 'onbekend account'} · versie {d.version || '?'}
+                    {online ? ` · ${d.camerasLive} / ${d.camerasTotal} camera's met beeld` : ` · laatst gezien ${ago(d.lastSeen)}`}
+                    {outdated && <span className="ui-error"> · oude versie, herlaadt na het volgende alert</span>}{' '}
+                    <button className="ui-linkbtn" onClick={() => forget(d)}>
+                      vergeten
+                    </button>
+                  </span>
+                </div>
+                <Pill level={!online ? 'off' : blind || outdated ? 'warn' : 'ok'}>{!online ? 'Uit' : blind ? 'Beeld mist' : 'Aan'}</Pill>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </Card>
+  );
 }
 
 interface Stats {
@@ -133,6 +200,9 @@ const ago = (epochS: number | null | undefined) => {
   return `${Math.round(s / 86400)} dagen geleden`;
 };
 
+/** A copy older than a day and a half means the nightly copy failed. */
+const backupLevel = (b: Status['backup']): Level => (!b ? 'off' : b.lastError ? 'bad' : b.lastAt && Date.now() / 1000 - b.lastAt < 36 * 3600 ? 'ok' : 'warn');
+
 const cameraLevel = (video: 'ok' | 'failed' | 'unknown'): Level => (video === 'ok' ? 'ok' : video === 'failed' ? 'bad' : 'off');
 
 /** One service in the status list. */
@@ -194,7 +264,8 @@ export function OverviewTab() {
     (status.alerts.status === 'ok' || status.alerts.status === 'mock' ? 0 : 1) +
     failed.length +
     (status.highlights.enabled && hlAge > 900 ? 1 : 0) +
-    (status.ai.enabled && status.ai.lastError ? 1 : 0);
+    (status.ai.enabled && status.ai.lastError ? 1 : 0) +
+    (backupLevel(status.backup) === 'ok' || backupLevel(status.backup) === 'off' ? 0 : 1);
   const okCameras = status.cameras.filter((c) => c.video === 'ok').length;
 
   return (
@@ -271,6 +342,20 @@ export function OverviewTab() {
                 ) : undefined
               }
             />
+            {status.backup && (
+              <Service
+                name="Back-up database"
+                level={backupLevel(status.backup)}
+                status={backupLevel(status.backup) === 'ok' ? 'Actueel' : status.backup.lastError ? 'Fout' : 'Te oud'}
+                detail={
+                  <>
+                    Laatste kopie {ago(status.backup.lastAt)}
+                    {status.backup.lastBytes ? ` (${(status.backup.lastBytes / 1e6).toFixed(1)} MB)` : ''} · {status.backup.count} bewaard
+                    {status.backup.lastError && <span className="ui-error"> · {status.backup.lastError}</span>}
+                  </>
+                }
+              />
+            )}
           </ul>
         </Card>
 
@@ -291,6 +376,8 @@ export function OverviewTab() {
             </ul>
           )}
         </Card>
+
+        <Displays version={status.version} />
 
         {status.highlights.enabled && <HighlightSettings />}
 

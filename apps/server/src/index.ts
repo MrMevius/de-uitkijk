@@ -11,6 +11,8 @@ import { AiWorker, ffmpegToJpeg } from './ai/worker.ts';
 import { FaceLibrary } from './faces/library.ts';
 import { Bundler, type PersonAnswer } from './household/bundle.ts';
 import { HouseholdStore } from './household/store.ts';
+import { DisplayRegistry } from './displays.ts';
+import { DbBackup } from './backup.ts';
 import { FaceWorker } from './faces/worker.ts';
 import { RecordingFaces } from './faces/recording.ts';
 import { ClipCache, ffmpegThumbnail } from './highlights/clips.ts';
@@ -85,6 +87,10 @@ const faces = highlightStore && config.frigate ? new FaceLibrary({ frigateUrl: c
 let faceWorker: FaceWorker | undefined;
 // Household register (since 0.22.0): bundles facts and answers into who is who and whose vehicle is which.
 const household = highlightStore ? new HouseholdStore(join(config.dataDir, 'uitkijk.db')) : undefined;
+// Which dashboards are on and what they show (since 0.27.0); needs a login to know whose screen it is.
+const displays = store ? new DisplayRegistry(join(config.dataDir, 'uitkijk.db')) : undefined;
+// Daily copy of the database (since 0.27.0): what the system learned is in it, not only accounts.
+const backup = store ? new DbBackup(join(config.dataDir, 'uitkijk.db'), join(config.dataDir, 'backups'), { log: (msg) => app.log.warn(msg) }) : undefined;
 household?.failInterruptedRuns(Date.now() / 1000);
 const bundler = household
   ? new Bundler(household, {
@@ -169,14 +175,18 @@ const app = buildApp({
     ? { household: { store: household, bundler, ...(facts ? { facts } : {}), ...(highlightStore ? { highlights: highlightStore } : {}), ...(faces ? { faces } : {}) } }
     : {}),
   ...(aiLog ? { aiLog } : {}),
+  ...(displays ? { displays } : {}),
   detail: () => ({
+    ...(backup ? { backup: backup.status() } : {}),
     cameras: cameraProbe?.snapshot() ?? [],
     highlights: importer ? { enabled: true, lastOkAt: importer.lastOkAt, lastError: importer.lastError } : { enabled: false },
     ai: ai ? ai.status() : { enabled: false },
   }),
   ...(config.devApi && mock ? { mock } : {}),
   ...(store ? { auth: { store, publicUrl: config.publicUrl } } : {}),
-  ...(highlightStore && clips && config.frigate ? { highlights: { store: highlightStore, clips, frigateUrl: config.frigate.url, ...(ai ? { aiStatus: () => ai.status() } : {}), ...(facts ? { facts } : {}) } } : {}),
+  ...(highlightStore && clips && config.frigate
+    ? { highlights: { store: highlightStore, clips, frigateUrl: config.frigate.url, ...(ai ? { aiStatus: () => ai.status() } : {}), ...(facts ? { facts } : {}), ...(household ? { household } : {}) } }
+    : {}),
   logger: true,
 });
 importer =
@@ -193,6 +203,16 @@ importer =
       })
     : undefined;
 importer?.start();
+// Since 0.27.0 tiny people far away get no "Wie is dit?" question; highlights of the last week are measured once.
+if (importer && highlightStore && !highlightStore.getMeta('person_size_backfill')) {
+  importer.backfillPersonSizes(Date.now() / 1000 - 7 * 86400).then(
+    (n) => {
+      highlightStore.setMeta('person_size_backfill', '1');
+      app.log.info(`highlights: measured person size of ${n} older highlights`);
+    },
+    (err: Error) => app.log.warn(`highlights: person size backfill: ${err.message}`),
+  );
+}
 const questionGenerator =
   questionStore && highlightStore
     ? new QuestionGenerator(highlightStore, questionStore, {
@@ -200,7 +220,7 @@ const questionGenerator =
         ...(cameraProbe ? { cameraStatus: () => cameraProbe.snapshot() } : {}),
         ...(ai ? { aiStatus: () => ai.status() } : {}),
         ...(faces ? { faces } : {}),
-        ...(facts ? { factsChangedAt: () => facts.lastChange() } : {}),
+        ...(facts ? { factsChangedAt: () => facts.lastChange(), knownVehicles: () => facts.list().map((f) => f.text) } : {}),
       })
     : undefined;
 questionGenerator?.start();
@@ -229,6 +249,7 @@ const factWorker =
 factWorker?.start();
 cameraProbe?.start();
 ai?.start();
+backup?.start();
 
 mock?.start(config.mockScenario);
 const frigate = config.frigate
@@ -277,6 +298,7 @@ const shutdown = async () => {
   faceWorker?.stop();
   cameraProbe?.stop();
   ai?.stop();
+  backup?.stop();
   hub.stop();
   clearInterval(purge);
   await app.close();
@@ -284,6 +306,7 @@ const shutdown = async () => {
   highlightStore?.close();
   facts?.close();
   household?.close();
+  displays?.close();
   questionStore?.close();
   process.exit(0);
 };

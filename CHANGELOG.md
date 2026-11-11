@@ -3,6 +3,16 @@
 Op hoofdlijnen, nieuwste eerst. Wordt getoond op Beheer → Change log. Elke release krijgt hier een kopje
 `## <versie> — <datum>` met een paar bullets; een test controleert dat de bovenste versie gelijk is aan `VERSION`.
 
+## 0.27.0 — 2026-11-11
+
+- Elke nacht een back-up van de database met alles wat het systeem geleerd heeft (30 dagen, 12 weken, 12 maanden); zichtbaar op Beheer → Overzicht.
+- Nieuw blok Schermen op Beheer → Overzicht: welke tv's aan staan, welke versie ze draaien en of alle camera's beeld geven.
+- Minder voertuigvragen: niet meer over auto's zonder merk of kenteken, grotendeels verborgen voertuigen en voertuigen die je al hebt benoemd (ook bij een net verkeerd gelezen kenteken).
+- Geen "Wie is dit?" meer over piepkleine figuurtjes in de verte; de best zichtbare personen worden eerst gevraagd.
+- Eén antwoord voor het hele bezoek: andere highlights van dezelfde persoon binnen een kwartier staan aangevinkt bij de vraag.
+- 👍/👎 nu ook bij de vragen, en in het archief een filter "Nog niet beoordeeld".
+- Zoeken in het archief op wie of wat (naam, bijnaam, pakket, merk, kenteken), met een periode van–tot.
+
 ## 0.26.0 — 2026-11-11
 
 - Vloeiendere overgang naar focus: de camera met een alert schuift soepel naar voren met een gloed en een ring die op het kader inzoomt, de andere camera's volgen één voor één en worden gedimd.

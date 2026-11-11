@@ -18,7 +18,9 @@ interface Question {
   fact: string | null;
   faceStatus: 'pending' | 'done' | 'none' | 'failed' | null;
   faceResult: string | null;
-  highlight: { id: string; hasThumbnail: boolean } | null;
+  highlight: { id: string; hasThumbnail: boolean; feedback?: -1 | 1 | null } | null;
+  /** Other highlights of the same visit that the answer about a person can also apply to (since 0.27.0). */
+  sameVisit?: { id: string; camera: string; startTime: number; description: string }[];
 }
 
 const KIND_LABEL: Record<Question['kind'], string> = {
@@ -62,6 +64,49 @@ function Media({ highlight }: { highlight: Question['highlight'] }) {
   );
 }
 
+/** Highlights of the same visit, ticked by default: one answer names the person on all of them. */
+function SameVisit({ items, chosen, onToggle }: { items: NonNullable<Question['sameVisit']>; chosen: Set<string>; onToggle: (id: string) => void }) {
+  if (!items.length) return null;
+  return (
+    <div className="ui-visit">
+      <span className="ui-field__label">Zelfde bezoek: geldt het antwoord ook voor deze highlights?</span>
+      <ul>
+        {items.map((h) => (
+          <li key={h.id}>
+            <label className={chosen.has(h.id) ? 'ui-visit__item ui-visit__item--on' : 'ui-visit__item'}>
+              <input type="checkbox" checked={chosen.has(h.id)} onChange={() => onToggle(h.id)} />
+              <img src={`/api/highlights/${encodeURIComponent(h.id)}/thumb.webp`} alt="" loading="lazy" />
+              <span>
+                <strong>{highlightTime(h.startTime)}</strong>
+                <span className="ui-muted">{h.description}</span>
+              </span>
+            </label>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** 👍/👎 on the highlight of a question: rating while answering costs one tap (since 0.27.0). */
+function Rating({ highlight }: { highlight: NonNullable<Question['highlight']> }) {
+  const [value, setValue] = useState<-1 | 1 | null>(highlight.feedback ?? null);
+  const rate = (v: -1 | 1) => {
+    const next = value === v ? null : v;
+    void api('POST', `/api/admin/highlights/${encodeURIComponent(highlight.id)}/feedback`, { value: next }).then(() => setValue(next), () => {});
+  };
+  return (
+    <span className="ui-rating" role="group" aria-label="Goede highlight?">
+      <button className={value === 1 ? 'ui-btn ui-btn--small ui-btn--on' : 'ui-btn ui-btn--small'} onClick={() => rate(1)} title="Goede highlight">
+        👍
+      </button>
+      <button className={value === -1 ? 'ui-btn ui-btn--small ui-btn--on' : 'ui-btn ui-btn--small'} onClick={() => rate(-1)} title="Geen goede highlight">
+        👎
+      </button>
+    </span>
+  );
+}
+
 /** Face crops Frigate kept but could not recognise; a name plus Bewoner/Bezoeker stores them in Frigate. */
 function Faces({ files }: { files: string[] }) {
   if (!files.length) return null;
@@ -96,6 +141,13 @@ function QuestionCard({ q, names, onDone }: { q: Question; names: string[]; onDo
   const [owner, setOwner] = useState('');
   const [vehicle, setVehicle] = useState(q.data.vehicle ?? '');
   const [error, setError] = useState<string | null>(null);
+  const [also, setAlso] = useState(() => new Set((q.sameVisit ?? []).map((h) => h.id)));
+  const toggle = (id: string) =>
+    setAlso((cur) => {
+      const next = new Set(cur);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
 
   const send = async (path: 'answer' | 'dismiss', body?: object) => {
     setError(null);
@@ -121,6 +173,7 @@ function QuestionCard({ q, names, onDone }: { q: Question; names: string[]; onDo
         {q.kind === 'person' && (
           <>
             <Faces files={q.data.faces ?? []} />
+            <SameVisit items={q.sameVisit ?? []} chosen={also} onToggle={toggle} />
             <label className="ui-field">
               <span className="ui-field__label">Naam (optioneel)</span>
               <input placeholder="bijv. Oma of PostNL" maxLength={60} list="known-faces" value={name} onChange={(e) => setName(e.target.value)} />
@@ -131,7 +184,7 @@ function QuestionCard({ q, names, onDone }: { q: Question; names: string[]; onDo
             )}
             <div className="ui-segment" role="group" aria-label="Wie is het?">
               {PERSON_BUTTONS.map(([category, label]) => (
-                <button key={category} className="ui-btn" onClick={() => void send('answer', { category, name })}>
+                <button key={category} className="ui-btn" onClick={() => void send('answer', { category, name, also: [...also] })}>
                   {label}
                 </button>
               ))}
@@ -175,6 +228,7 @@ function QuestionCard({ q, names, onDone }: { q: Question; names: string[]; onDo
         )}
 
         <div className="ui-question__foot">
+          {q.highlight && q.kind !== 'highlight' && <Rating highlight={q.highlight} />}
           <button className="ui-btn ui-btn--ghost" onClick={() => void send('dismiss')}>
             {q.kind === 'noise' || q.kind === 'system' ? 'Gezien' : 'Overslaan'}
           </button>

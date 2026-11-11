@@ -84,6 +84,15 @@ export function clipStartFor(events: FrigateEvent[], camera: string, repEvent: s
   return frameTime > start + 25 ? frameTime - 15 : start;
 }
 
+/**
+ * Height of the largest person box on this camera as a fraction of the frame (Frigate's boxes are relative), 0 when
+ * no person was detected there. A person far away (a few percent of the picture) cannot be recognised on the still.
+ */
+export function personSize(events: FrigateEvent[], camera: string): number {
+  const heights = events.filter((e) => e.label === 'person' && e.camera === camera).map((e) => e.data?.box?.[3] ?? 0);
+  return Math.round(Math.max(0, ...heights) * 1000) / 1000;
+}
+
 /** Plates Frigate's LPR read on these detections, upper case without spaces or dashes, deduplicated. */
 export function platesOf(events: FrigateEvent[]): string[] {
   const plates = events.map((e) => (e.data?.recognized_license_plate ?? '').toUpperCase().replace(/[^A-Z0-9]/g, ''));
@@ -276,11 +285,29 @@ export class HighlightImporter {
       labels: [...new Set(items.flatMap((i) => i.objects))],
       subLabels: [...new Set(items.flatMap((i) => i.subLabels))],
       plates: platesOf(events),
+      personSize: personSize(events, rep.camera),
       score: scored.score,
       reasons: scored.reasons,
       description: describe(items, (f) => this.byFrigate.get(f)?.name ?? f),
     };
     this.store.insert(record, items.map((i) => i.id));
+  }
+
+  /**
+   * Measures the person size of recent highlights imported before 0.27.0 (Frigate keeps the detections), once.
+   * A detection Frigate no longer has leaves the size unknown, so the highlight is treated as before.
+   */
+  async backfillPersonSizes(since: number): Promise<number> {
+    let measured = 0;
+    for (const c of this.store.personSizeMissing(since)) {
+      const events = (
+        await Promise.all(c.detections.map((id) => this.get<FrigateEvent>(`/api/events/${encodeURIComponent(id)}`).catch(() => undefined)))
+      ).filter((e): e is FrigateEvent => e !== undefined);
+      if (!events.length) continue;
+      this.store.setPersonSize(c.id, personSize(events, c.frigateCamera));
+      measured++;
+    }
+    return measured;
   }
 
   /** Frigate's snapshot of the best detection, else of another one, else a frame from the recording. Retried next cycle. */

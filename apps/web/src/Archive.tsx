@@ -29,9 +29,18 @@ export function ArchivePage() {
 export function ArchiveView({ embedded = false }: { embedded?: boolean }) {
   const [cameras, setCameras] = useState<Camera[]>([]);
   const [role, setRole] = useState<'admin' | 'viewer' | null>(null);
-  const [date, setDate] = useState('');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
   const [camera, setCamera] = useState('');
   const [high, setHigh] = useState(false);
+  const [unrated, setUnrated] = useState(false);
+  const [text, setText] = useState('');
+  // Searched a moment after typing stops, not on every key.
+  const [search, setSearch] = useState('');
+  useEffect(() => {
+    const timer = setTimeout(() => setSearch(text.trim()), 350);
+    return () => clearTimeout(timer);
+  }, [text]);
   const [items, setItems] = useState<HighlightSummary[]>([]);
   const [total, setTotal] = useState(0);
   const [open, setOpen] = useState<string | null>(null);
@@ -48,19 +57,19 @@ export function ArchiveView({ embedded = false }: { embedded?: boolean }) {
   const query = useCallback(
     (offset: number) => {
       const p = new URLSearchParams({ limit: String(PAGE), offset: String(offset) });
-      if (date) {
-        const [from, to] = dayRange(date);
-        p.set('from', String(from));
-        p.set('to', String(to));
-      }
+      // A period of whole days; one date alone is that day (from) or everything until that day (to).
+      if (from) p.set('from', String(dayRange(from)[0]));
+      if (to || from) p.set('to', String(dayRange(to || from)[1]));
       if (camera) p.set('camera', camera);
       if (high) p.set('minScore', String(HIGH_RELEVANCE));
+      if (unrated) p.set('unrated', '1');
+      if (search) p.set('q', search);
       return fetch(`/api/highlights?${p}`).then(async (r) => {
         if (!r.ok) throw new Error(`Fout ${r.status}`);
         return (await r.json()) as { items: HighlightSummary[]; total: number };
       });
     },
-    [date, camera, high],
+    [from, to, camera, high, unrated, search],
   );
 
   useEffect(() => {
@@ -89,6 +98,7 @@ export function ArchiveView({ embedded = false }: { embedded?: boolean }) {
     const next = h.feedback === value ? null : value;
     send('POST', `/api/admin/highlights/${encodeURIComponent(h.id)}/feedback`, { value: next }).then(
       () => setItems((cur) => cur.map((i) => (i.id === h.id ? { ...i, feedback: next } : i))),
+      // Under "Nog niet beoordeeld" the item stays until the next search, so a mis-tap can be undone.
       (err: Error) => setError(err.message),
     );
   };
@@ -121,7 +131,20 @@ export function ArchiveView({ embedded = false }: { embedded?: boolean }) {
         />
       )}
       <div className="ui-toolbar">
-        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} aria-label="Datum" />
+        <input
+          type="search"
+          className="ui-toolbar__search"
+          placeholder="Zoek op wie of wat, bijv. Tineke, pakket, Peugeot of G-929-VD"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          aria-label="Zoeken"
+        />
+        <label className="ui-toolbar__date">
+          van <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} aria-label="Vanaf datum" />
+        </label>
+        <label className="ui-toolbar__date">
+          tot en met <input type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} aria-label="Tot en met datum" />
+        </label>
         <select value={camera} onChange={(e) => setCamera(e.target.value)} aria-label="Camera">
           <option value="">Alle camera's</option>
           {cameras.map((c) => (
@@ -133,12 +156,17 @@ export function ArchiveView({ embedded = false }: { embedded?: boolean }) {
         <label className="ui-check">
           <input type="checkbox" checked={high} onChange={(e) => setHigh(e.target.checked)} /> Alleen hoge relevantie
         </label>
+        {role === 'admin' && (
+          <label className="ui-check" title="Highlights zonder 👍 of 👎: elk oordeel leert de selectie wat je wilt zien">
+            <input type="checkbox" checked={unrated} onChange={(e) => setUnrated(e.target.checked)} /> Nog niet beoordeeld
+          </label>
+        )}
         <span className="ui-toolbar__count">{total === 0 ? '' : `${total} highlight${total === 1 ? '' : 's'}`}</span>
       </div>
       {error && <Notice>{error}</Notice>}
       {total === 0 && items.length === 0 && (
         <div className="ui-card">
-          <Empty>Geen highlights gevonden.</Empty>
+          <Empty>{search ? `Niets gevonden voor "${search}".` : 'Geen highlights gevonden.'}</Empty>
         </div>
       )}
       <ul className="archive__list">

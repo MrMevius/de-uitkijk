@@ -38,8 +38,9 @@ browser ──► /api/highlights/:id/clip.mp4 ──► clip cache (bounded, te
 - **Size (since 0.15.0).** The highlights sit in a column on the right (landscape) or a row at the bottom (portrait). The column holds five 16:9 tiles over the full height, at most a quarter of the screen width; at 1920×1080 a highlight tile is 366×206 px and the column takes 374 px, so the camera tiles stay about as large as with the single highlight of 0.12–0.14. A phone row holds as many tiles as fit at 150 px or more (two on a 390 px wide phone). Tile size does not change when fewer highlights are available; those are centred. Without highlights, or during an alert, the cameras use the full screen.
 - **Storage (HL-9).** Metadata and one clean Frigate snapshot (WebP, about 20 KB) per candidate are stored in SQLite indefinitely. Video stays in Frigate, which keeps alert recordings for 100 days; older clips are no longer playable, but the archive entry and thumbnail remain. Since 0.20.3: when Frigate no longer has the snapshot of the best detection (it drops short tracked objects, such as parked cars flickering in and out of detection), the snapshot of another detection of the group is used, else a 640-px WebP made from the 4K recording frame. The importer reads the group's detections one by one (`/api/events/<id>`): Frigate's event list has no id filter, and an `ids` parameter is silently ignored (before 0.20.3 the importer got the latest events of all cameras and only found the right ones because they were recent). The clip cache (default 512 MB, `UITKIJK_CLIP_CACHE_MB`) only exists so browsers get byte ranges and a Safari-compatible file: ffmpeg rewraps without re-encoding (`-c copy -tag:v hvc1 -movflags +faststart`). It is evicted least-recently-used.
 - **Archive (HL-10/11).**
-  - Filters for date, camera and high relevance (score ≥ 3).
-  - Administrators can mark a highlight good or bad (see *Learning from feedback*).
+  - Filters for a period (from and to, whole days in Europe/Amsterdam), camera and high relevance (score ≥ 3).
+  - Search (since 0.27.0): every word must occur in the description (AI or rules), the administrator's answer, a name Frigate recognised, a vehicle the AI saw or a plate. A plate matches with or without dashes; a nickname from the household register also finds the full name ("Tini" → "Tineke Mevius"). Plain `LIKE`, case-insensitive for ASCII letters.
+  - Administrators can mark a highlight good or bad (see *Learning from feedback*), also from the questions tab (since 0.27.0), and can list only highlights without a rating ("Nog niet beoordeeld").
   - Administrators can delete a highlight. Deletion keeps a tombstone, so it is never imported again.
 - **Start and catch-up (HL-12).** The first start records an activation time, and nothing earlier is imported. A cursor plus the processed review ids catch up after an outage without duplicates.
 - **Downloads (HL-13).** "Clip downloaden" (the highlight) and "Hele gebeurtenis" (the whole group from 5 s before to 5 s after, at most 10 minutes), both with the original audio.
@@ -56,7 +57,7 @@ browser ──► /api/highlights/:id/clip.mp4 ──► clip cache (bounded, te
 | Route | Access |
 | --- | --- |
 | `GET /api/highlights/rotation` | logged in |
-| `GET /api/highlights?from&to&camera&minScore&limit&offset` | logged in |
+| `GET /api/highlights?from&to&camera&minScore&q&unrated&limit&offset` | logged in |
 | `GET /api/highlights/:id/thumb.webp`, `/clip.mp4`, `/event.mp4` (`?download=1`) | logged in |
 | `POST /api/admin/highlights/:id/feedback` `{value: 1 \| -1 \| null}`, `DELETE /api/admin/highlights/:id` | admin |
 

@@ -765,6 +765,20 @@ body,
   text-decoration: underline;
 }
 
+/* A small action inside a line of text. */
+.ui-linkbtn {
+  font: inherit;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #8db3ff;
+  cursor: pointer;
+}
+
+.ui-linkbtn:hover {
+  text-decoration: underline;
+}
+
 .ui-icon {
   flex: none;
 }
@@ -1315,7 +1329,71 @@ body,
 .ui-question__foot {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
+  gap: 0.5rem;
   margin-top: -0.25rem;
+}
+
+.ui-rating {
+  display: inline-flex;
+  gap: 0.35rem;
+  margin-right: auto;
+}
+
+/* Other highlights of the same visit under a person question. */
+.ui-visit {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.ui-visit ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: 0.5rem;
+}
+
+.ui-visit__item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.4rem;
+  border: 1px solid #2a313b;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  opacity: 0.6;
+  transition: opacity 120ms, border-color 120ms;
+}
+
+.ui-visit__item--on {
+  opacity: 1;
+  border-color: #8db3ff;
+}
+
+.ui-visit__item img {
+  width: 5.5rem;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 5px;
+  flex: none;
+}
+
+.ui-visit__item > span {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.ui-visit__item .ui-muted {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
 .ui-question .ui-actions {
@@ -1483,6 +1561,18 @@ body,
   background: var(--ui-surface);
   border: 1px solid var(--ui-border);
   border-radius: var(--ui-radius);
+}
+
+.ui-toolbar__search {
+  flex: 1 1 100%;
+}
+
+.ui-toolbar__date {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--ui-muted);
+  font-size: 0.9rem;
 }
 
 .ui-toolbar__count {

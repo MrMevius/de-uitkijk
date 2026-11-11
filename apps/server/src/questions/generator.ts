@@ -6,7 +6,7 @@ import { hourInAmsterdam } from '../highlights/importer.ts';
 import { periodOf } from '../highlights/selection.ts';
 import type { HighlightStore, StoredCandidate } from '../highlights/store.ts';
 import type { QuestionStore } from './store.ts';
-import { askableVehicle, normalizeVehicle, vehicleNoun } from './vehicles.ts';
+import { askableVehicle, knownVehicle, normalizeVehicle, vehicleNoun } from './vehicles.ts';
 
 export interface GeneratorOptions {
   cameras: Camera[];
@@ -16,6 +16,8 @@ export interface GeneratorOptions {
   faces?: Pick<FaceLibrary, 'ready' | 'attemptsFor' | 'refresh'>;
   /** Epoch seconds of the newest fact: an AI verdict "unknown vehicle" from before it may be outdated. */
   factsChangedAt?: () => number | null;
+  /** Texts about vehicles the owner already told about (facts such as "Grijze Peugeot 108, kenteken TV-666-R is van Noëlle"). */
+  knownVehicles?: () => string[];
   intervalMs?: number;
   /** Epoch seconds. */
   now?: () => number;
@@ -24,6 +26,15 @@ export interface GeneratorOptions {
 /** Open questions per kind, so the list stays short and answerable. */
 export const OPEN_LIMITS = { person: 3, vehicle: 3, highlight: 2, noise: 2 } as const;
 const NOISE_THRESHOLD = 5;
+/**
+ * Smallest person (box height as a fraction of the frame) worth a "Wie is dit?" question. Low on purpose: the owner
+ * named neighbours at 5% of the frame height from their van or walk (2026-11-11).
+ */
+export const MIN_PERSON_SIZE = 0.04;
+/** Above this a person is big enough; among them the highest score is asked first. */
+const CLEAR_PERSON_SIZE = 0.3;
+/** Frigate reads text on a shed as a plate ("SCHUUR"); Dutch plates always have a digit. */
+const realPlates = (plates: string[]) => plates.filter((p) => /\d/.test(p));
 const CAMERA_DOWN_S = 3600;
 
 const dayKey = (epochS: number) => new Date(epochS * 1000).toLocaleDateString('sv-SE', { timeZone: 'Europe/Amsterdam' });
@@ -66,6 +77,7 @@ export class QuestionGenerator {
       aiStatus: () => undefined,
       faces: { ready: false, attemptsFor: () => [], refresh: async () => {} },
       factsChangedAt: () => null,
+      knownVehicles: () => [],
       intervalMs: 10 * 60_000,
       now: () => Date.now() / 1000,
       ...options,
@@ -109,9 +121,16 @@ export class QuestionGenerator {
     const faces = this.opts.faces;
     const freeHighlight = (c: StoredCandidate) => !this.questions.hasForHighlight(c.id);
 
-    // Open vehicle questions about something the AI could not tell apart are withdrawn.
+    // Open questions the rules would no longer ask are withdrawn: a vehicle the AI could not tell apart or the owner
+    // already told about, a person too small to recognise.
     for (const q of this.questions.list('open', 1000)) {
-      if (q.kind === 'vehicle' && !askableVehicle(String(q.data.vehicle ?? ''))) this.questions.withdraw(q.id, now);
+      const h = q.highlightId ? this.highlights.get(q.highlightId) : undefined;
+      if (q.kind === 'vehicle') {
+        const vehicle = String(q.data.vehicle ?? '');
+        const plates = realPlates(h?.plates ?? []);
+        if (!askableVehicle(vehicle, plates) || knownVehicle(vehicle, plates, this.opts.knownVehicles())) this.questions.withdraw(q.id, now);
+      }
+      if (q.kind === 'person' && typeof h?.personSize === 'number' && h.personSize < MIN_PERSON_SIZE) this.questions.withdraw(q.id, now);
     }
 
     // Unknown people: real events with a person whom Frigate did not recognise and nobody named yet. Best first.
@@ -120,8 +139,11 @@ export class QuestionGenerator {
       .filter((c) => c.selected && c.hasThumbnail && c.startTime > now - 7 * 86400 && c.labels.some((l) => l.startsWith('person')))
       // Also after a 👍/👎 question about the same highlight, but never two open questions at once.
       .filter((c) => c.subLabels.length === 0 && c.aiRealEvent === true && !c.annotation)
+      // Not about a speck in the distance or a highlight whose camera saw no person at all (unknown size: asked as before).
+      .filter((c) => c.personSize === null || c.personSize === undefined || c.personSize >= MIN_PERSON_SIZE)
       .filter((c) => !this.questions.hasForHighlight(c.id, 'person') && !this.questions.hasOpenForHighlight(c.id))
-      .sort((a, b) => b.score - a.score);
+      // Best visible first, then the most relevant.
+      .sort((a, b) => visibility(b) - visibility(a) || b.score - a.score);
     for (const c of people.slice(0, Math.max(0, room('person')))) {
       const attempts = faces.ready ? faces.attemptsFor(c.detections) : [];
       const guess = attempts.find((a) => a.guess && a.score >= 0.5);
@@ -142,6 +164,7 @@ export class QuestionGenerator {
 
     // Cars, bicycles, scooters and motorbikes the AI saw (also parked ones) but could not match to a fact, to build
     // up who owns which vehicle. One question per distinct vehicle; a highlight never has two open questions.
+    const knownTexts = this.opts.knownVehicles();
     const seenVehicles = new Set<string>();
     const busy = new Set<string>();
     const vehicles: { c: StoredCandidate; vehicle: string; key: string }[] = [];
@@ -151,7 +174,10 @@ export class QuestionGenerator {
       const seen = [...(c.aiVehicle && !c.aiVehicleKnown ? [c.aiVehicle] : []), ...c.aiVehicles.filter((v) => !v.known).map((v) => v.description)];
       for (const vehicle of seen) {
         const key = normalizeVehicle(vehicle);
-        if (busy.has(c.id) || !askableVehicle(vehicle) || seenVehicles.has(key) || this.questions.has(`vehicle:${key}`)) continue;
+        const plates = realPlates(c.plates);
+        if (busy.has(c.id) || !askableVehicle(vehicle, plates) || seenVehicles.has(key) || this.questions.has(`vehicle:${key}`)) continue;
+        // Already told about under another description: the AI may not have matched it (colour, misread plate).
+        if (knownVehicle(vehicle, plates, knownTexts)) continue;
         seenVehicles.add(key);
         busy.add(c.id);
         vehicles.push({ c, vehicle, key });
@@ -250,6 +276,9 @@ export class QuestionGenerator {
     return added;
   }
 }
+
+/** Person size capped at "clearly visible", so big people are sorted by score among themselves. */
+const visibility = (c: StoredCandidate) => Math.min(c.personSize ?? CLEAR_PERSON_SIZE, CLEAR_PERSON_SIZE);
 
 /** Plates Frigate read that the AI's description does not mention yet (both without dashes or spaces). */
 function platesText(plates: string[], vehicle: string): string {
