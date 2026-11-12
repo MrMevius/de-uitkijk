@@ -80,6 +80,19 @@ function stubApi(role: 'admin' | 'viewer') {
       if (url === '/api/admin/highlights/h1/feedback') return new Response(null, { status: 204 });
       if (url === '/api/admin/household/schedule') return json({ frequency: 'daily', weekday: 7, time: '06:30', next: null });
       if (url === '/api/admin/users') return json([{ id: 1, username: 'mark', role: 'admin', active: true }]);
+      if (url === '/api/admin/ai') return json({ enabled: true, model: 'gpt-6-luna', callsToday: 3, dailyCap: 60, pending: 0, lastSuccessAt: null, lastError: null });
+      if (url === '/api/admin/facts') return json([]);
+      if (url === '/api/admin/learning') {
+        const period = (start: string, self: number) => ({
+          start,
+          highlights: 10,
+          persons: { total: 8, self, answered: 4, unknown: 4 - self },
+          vehicles: { total: 10, known: 6 },
+          questions: { asked: 5, answered: 4 },
+        });
+        const quiet = (start: string) => ({ start, highlights: 0, persons: { total: 0, self: 0, answered: 0, unknown: 0 }, vehicles: { total: 0, known: 0 }, questions: { asked: 0, answered: 0 } });
+        return json({ days: [period('2026-11-12', 2), period('2026-11-11', 1), quiet('2026-11-10')], weeks: [period('2026-11-09', 3)] });
+      }
       if (url.startsWith('/api/highlights')) return json({ items: [], total: 0 });
       if (url === '/api/state') return json({ cameras: [] });
       return new Response('{}', { status: 404 });
@@ -116,6 +129,23 @@ describe('admin page', () => {
     });
     expect(await screen.findByText('Gebruiker toevoegen')).toBeTruthy();
     await waitFor(() => expect(screen.getByRole('tab', { name: /^Gebruikers/ }).getAttribute('aria-selected')).toBe('true'));
+  });
+
+  it('shows what the system recognises without an answer, per day or per week (0.30.0)', async () => {
+    stubApi('admin');
+    location.hash = '#ai';
+    render(<AdminPage />);
+    expect(await screen.findByText('Leert het systeem?')).toBeTruthy();
+    // Last seven days: 3 of 16 people named without an answer, 12 of 20 vehicles, 10 questions for 20 highlights.
+    expect(screen.getByText('19%')).toBeTruthy();
+    expect(screen.getByText('3 van 16, laatste 7 dagen')).toBeTruthy();
+    expect(screen.getByText('60%')).toBeTruthy();
+    expect(screen.getByText('0.5')).toBeTruthy();
+    // Days without anything are left out of the table.
+    expect(screen.getAllByRole('row')).toHaveLength(3);
+    fireEvent.click(screen.getByRole('button', { name: 'Per week' }));
+    expect(screen.getByText(/week van 9 nov/)).toBeTruthy();
+    expect(screen.getByText('3 / 4 / 1 (38%)')).toBeTruthy();
   });
 
   it('shows open questions with answer controls; a vehicle answer is prefilled from the AI', async () => {

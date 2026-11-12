@@ -5,6 +5,7 @@ import type { HighlightStore, StoredCandidate } from '../highlights/store.ts';
 import { findPerson, type HouseholdStore } from '../household/store.ts';
 import { MIN_PERSON_SIZE } from './generator.ts';
 import { answerHousehold } from './household.ts';
+import { learningStats } from './learning.ts';
 import type { QuestionStore } from './store.ts';
 import { normalizeVehicle, vehicleNoun } from './vehicles.ts';
 
@@ -200,6 +201,12 @@ export function registerQuestions(app: FastifyInstance, options: QuestionRouteOp
   });
 
   app.get('/api/admin/questions/count', async () => ({ open: questions.list('open', 1000).length }));
+
+  // Learning meter (since 0.30.0): how much is recognised without an answer, per day and per week.
+  app.get('/api/admin/learning', async () => {
+    const t = now();
+    return learningStats(highlights.candidatesSince(t - 57 * 86400), questions.list('all', 100_000), household?.people() ?? [], t);
+  });
 
   app.post<{ Params: { id: string }; Body: Record<string, unknown> }>('/api/admin/questions/:id/answer', async (request, reply) => {
     const q = questions.get(Number(request.params.id));

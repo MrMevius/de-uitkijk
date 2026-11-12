@@ -434,6 +434,13 @@ export class HighlightStore {
       );
   }
 
+  /** Corrects the known flags of the vehicles the AI saw, without describing the highlight again. */
+  setAiVehicles(id: string, vehicleKnown: boolean, vehicles: { description: string; known: boolean }[]): void {
+    this.db
+      .prepare('UPDATE candidates SET ai_vehicle_known = ?, ai_vehicles = ? WHERE id = ?')
+      .run(vehicleKnown ? 1 : 0, vehicles.length ? JSON.stringify(vehicles) : null, id);
+  }
+
   /**
    * An administrator's answer about who or what is in the highlight (from the questions tab). `known` marks
    * a named resident, visitor or vehicle owner, so the highlight counts low like a recognised face.

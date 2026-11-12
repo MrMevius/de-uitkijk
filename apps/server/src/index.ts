@@ -7,10 +7,11 @@ import { codexDescriber, codexImageCall } from './ai/codex.ts';
 import { codexFactWriter } from './ai/fact-writer.ts';
 import { AiLog, loggedCall, type AiPurpose } from './ai/log.ts';
 import { FactStore } from './ai/facts.ts';
+import { knownPlates, looseObjectFact, plateMatches, promptKnowledge, vehicleKnown, type Register } from './ai/knowledge.ts';
 import { AiWorker, ffmpegToJpeg } from './ai/worker.ts';
 import { FaceLibrary } from './faces/library.ts';
 import { Bundler, type PersonAnswer } from './household/bundle.ts';
-import { HouseholdStore } from './household/store.ts';
+import { HouseholdStore, vehicleLabel } from './household/store.ts';
 import { BundleScheduler } from './household/schedule.ts';
 import { DisplayRegistry } from './displays.ts';
 import { DbBackup } from './backup.ts';
@@ -66,6 +67,9 @@ const highlightStill = async (c: StoredCandidate): Promise<Uint8Array | undefine
 };
 const facts = highlightStore ? new FactStore(join(config.dataDir, 'uitkijk.db')) : undefined;
 const questionStore = highlightStore ? new QuestionStore(join(config.dataDir, 'uitkijk.db')) : undefined;
+// Household register (since 0.22.0): bundles facts and answers into who is who and whose vehicle is which.
+const household = highlightStore ? new HouseholdStore(join(config.dataDir, 'uitkijk.db')) : undefined;
+const register = (): Register => ({ people: household?.people() ?? [], vehicles: household?.vehicles() ?? [] });
 // AI descriptions (AI-4: only when the owner enabled them; AI-7: isolated, failures never affect the rest).
 const codexOptions = { codexHome: join(config.dataDir, 'codex'), model: config.aiModel };
 // Every AI call with prompt, image and raw answer, for Beheer → AI-log (since 0.23.0).
@@ -77,7 +81,9 @@ const ai =
     ? new AiWorker(highlightStore, codexDescriber(codexOptions, aiCall('beschrijving')), {
         cameras: config.cameras,
         model: config.aiModel,
-        facts: () => facts?.list().map((f) => f.text) ?? [],
+        // The register plus facts it does not hold yet, instead of every raw fact (since 0.30.0).
+        facts: () => promptKnowledge(register(), facts?.list() ?? []),
+        register,
         still: highlightStill,
         // `app` exists by the time the worker logs (it starts after the app is built).
         log: (msg) => app.log.warn(msg),
@@ -86,8 +92,6 @@ const ai =
 // Frigate's face library: answers about people who come back teach Frigate their faces (operator decision 2026-11-09).
 const faces = highlightStore && config.frigate ? new FaceLibrary({ frigateUrl: config.frigate.url, ...(frigateHttp ? { fetch: frigateHttp } : {}) }) : undefined;
 let faceWorker: FaceWorker | undefined;
-// Household register (since 0.22.0): bundles facts and answers into who is who and whose vehicle is which.
-const household = highlightStore ? new HouseholdStore(join(config.dataDir, 'uitkijk.db')) : undefined;
 // Which dashboards are on and what they show (since 0.27.0); needs a login to know whose screen it is.
 const displays = store ? new DisplayRegistry(join(config.dataDir, 'uitkijk.db')) : undefined;
 // Daily copy of the database (since 0.27.0): what the system learned is in it, not only accounts.
@@ -165,6 +169,29 @@ if (highlightStore && ai && !highlightStore.getMeta('person_noise_recheck')) {
   }
   highlightStore.setMeta('person_noise_recheck', '1');
 }
+// Since 0.30.0 the server decides vehicle matches it can be sure of (plates) and vague cars are never known. The
+// vehicles of the last two weeks are checked once with those rules, without new AI calls.
+if (highlightStore && !highlightStore.getMeta('vehicle_known_recheck')) {
+  const r = register();
+  const knowledge = { knownPlates: knownPlates(r, facts?.list().map((f) => f.text) ?? []), vehicles: r.vehicles };
+  for (const c of highlightStore.candidatesSince(Date.now() / 1000 - 14 * 86400)) {
+    if (c.aiStatus !== 'done' || (!c.aiVehicle && !c.aiVehicles.length)) continue;
+    const ctx = { ...knowledge, matches: plateMatches(c.plates, r) };
+    const main = c.aiVehicle ? vehicleKnown(c.aiVehicle, c.aiVehicleKnown, ctx) : c.aiVehicleKnown;
+    const list = c.aiVehicles.map((v) => ({ ...v, known: vehicleKnown(v.description, v.known, ctx) }));
+    if (main !== c.aiVehicleKnown || list.some((v, i) => v.known !== c.aiVehicles[i]!.known)) highlightStore.setAiVehicles(c.id, main, list);
+  }
+  highlightStore.setMeta('vehicle_known_recheck', '1');
+}
+// Since 0.30.0 the fact writer leaves out things people carry; such AI facts written before are removed once.
+if (highlightStore && facts && !highlightStore.getMeta('loose_object_facts')) {
+  for (const f of facts.list()) {
+    if (!f.createdBy.startsWith('AI') || !looseObjectFact(f.text)) continue;
+    facts.remove(f.id);
+    household?.log(`Feit ${f.id} verwijderd (los voorwerp, geen vast kenmerk): ${f.text}`, 'systeem', Date.now() / 1000);
+  }
+  highlightStore.setMeta('loose_object_facts', '1');
+}
 // Per-camera picture check for monitoring (live mode only; mock streams are synthetic).
 const cameraProbe = config.mode === 'live' && config.go2rtcUrl ? new CameraVideoProbe(config.cameras, config.go2rtcUrl) : undefined;
 let importer: HighlightImporter | undefined;
@@ -239,7 +266,14 @@ const questionGenerator =
         ...(cameraProbe ? { cameraStatus: () => cameraProbe.snapshot() } : {}),
         ...(ai ? { aiStatus: () => ai.status() } : {}),
         ...(faces ? { faces } : {}),
-        ...(facts ? { facts, factsChangedAt: () => facts.lastChange(), knownVehicles: () => facts.list().map((f) => f.text) } : {}),
+        ...(facts
+          ? {
+              facts,
+              // The prompt holds the register too, so a change there also makes older descriptions out of date.
+              factsChangedAt: () => Math.max(facts.lastChange() ?? 0, household?.lastChange() ?? 0) || null,
+              knownVehicles: () => [...facts.list().map((f) => f.text), ...register().vehicles.map(vehicleLabel)],
+            }
+          : {}),
         ...(household ? { household } : {}),
       })
     : undefined;

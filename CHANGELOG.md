@@ -3,6 +3,15 @@
 Op hoofdlijnen, nieuwste eerst. Wordt getoond op Beheer → Change log. Elke release krijgt hier een kopje
 `## <versie> — <datum>` met een paar bullets; een test controleert dat de bovenste versie gelijk is aan `VERSION`.
 
+## 0.30.0 — 2026-11-12
+
+- De AI krijgt nu het opgeschoonde register (wie is wie, welk voertuig van wie), plus nieuwe feiten die er nog niet in staan, in plaats van alle losse feiten met dubbelingen en momentopnames.
+- Leest Frigate een kenteken uit het register, dan weet het systeem zeker welk voertuig en welke eigenaar het is, wat de AI ook zegt.
+- Een auto zonder merk of kenteken ("zwarte compacte hatchback") telt nooit meer als bekend; de voertuigen van de afgelopen twee weken zijn eenmalig zo nagekeken.
+- Herkent Frigate een gezicht, dan noemt de beschrijving die naam, ook als de AI hem vergat.
+- Geen feiten meer over losse voorwerpen zoals een koffer of tas; het feit over de ANNEKE-koffer is verwijderd.
+- Nieuw op Beheer → AI: "Leert het systeem?", per dag of week hoeveel personen en voertuigen herkend worden zonder jouw antwoord, en hoeveel vragen er nog nodig zijn.
+
 ## 0.29.1 — 2026-11-11
 
 - Een twijfelvraag die al openstond, krijgt alsnog de antwoordknoppen zodra de nieuwe bundeling klaar is.

@@ -24,7 +24,7 @@ const BRAND = new RegExp(`(?<![\\p{L}])(${BRANDS.join('|')})(?![\\p{L}])\\s*([\\
 /** Dutch plates: three groups with dashes ("G-929-VD", "96-NBF-1"). */
 const PLATE = /\b[A-Z0-9]{1,3}-[A-Z0-9]{2,3}-[A-Z0-9]{1,3}\b/gi;
 /** Vehicles that are recognisable without a make: a van with ladders is not "a dark car". */
-const DISTINCT_BODY = /bestel|busje|bus\b|vrachtwagen|camper|caravan|aanhanger|tractor|trekker|pick-?up|taxi|politie|ambulance|logo|opschrift|reclame|belettering/i;
+export const DISTINCT_BODY = /bestel|busje|bus\b|vrachtwagen|camper|caravan|aanhanger|tractor|trekker|pick-?up|taxi|politie|ambulance|logo|opschrift|reclame|belettering/i;
 
 /** Make and model ("volkswagen up"), lower case, or null when the AI named no make. */
 export function makeModel(description: string): string | null {

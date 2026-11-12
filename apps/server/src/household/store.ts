@@ -326,6 +326,14 @@ export class HouseholdStore {
     return this.vehicle(id);
   }
 
+  /** Epoch seconds of the newest change to a person or vehicle; null when the register is empty. */
+  lastChange(): number | null {
+    const row = this.db
+      .prepare('SELECT MAX(at) AS at FROM (SELECT MAX(updated_at) AS at FROM household_people UNION ALL SELECT MAX(updated_at) FROM household_vehicles)')
+      .get() as { at: number | null };
+    return row.at;
+  }
+
   removeVehicle(id: number): boolean {
     return this.db.prepare('DELETE FROM household_vehicles WHERE id = ?').run(id).changes > 0;
   }

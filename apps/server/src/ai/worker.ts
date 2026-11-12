@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import type { Camera } from '@uitkijk/shared';
 import type { HighlightStore, StoredCandidate } from '../highlights/store.ts';
 import type { Describer } from './codex.ts';
+import { checkVerdict, knownPlates, plateCertainties, plateMatches, type Register } from './knowledge.ts';
 
 export interface AiWorkerOptions {
   cameras: Camera[];
@@ -16,6 +17,8 @@ export interface AiWorkerOptions {
   model?: string;
   /** Household facts for the prompt. */
   facts?: () => string[];
+  /** The household register: plates Frigate read are matched against it and the answer is checked (since 0.30.0). */
+  register?: () => Register;
   /** A better still for the AI (full-resolution recording frame); falls back to the stored thumbnail. */
   still?: (c: StoredCandidate) => Promise<Uint8Array | undefined>;
   /** Converts the stored WebP thumbnail to JPEG; override in tests. */
@@ -82,6 +85,7 @@ export class AiWorker {
       log: () => {},
       model: 'standaard',
       facts: () => [],
+      register: () => ({ people: [], vehicles: [] }),
       still: async () => undefined,
       toJpeg: ffmpegToJpeg,
       ...options,
@@ -131,14 +135,27 @@ export class AiWorker {
     this.callsToday++;
     try {
       const still = await this.opts.still(next).catch(() => undefined);
-      const verdict = await this.describe(still ?? (await this.opts.toJpeg(webp)), {
+      const register = this.opts.register();
+      const facts = this.opts.facts();
+      const matches = plateMatches(next.plates, register);
+      const objects = next.labels.map((l) => l.replace(/-verified$/, ''));
+      const answer = await this.describe(still ?? (await this.opts.toJpeg(webp)), {
         cameraName: this.names.get(next.camera) ?? next.camera,
         time: timeFormat.format(next.startTime * 1000),
-        objects: next.labels.map((l) => l.replace(/-verified$/, '')),
+        objects,
         recognized: next.subLabels,
-        facts: this.opts.facts(),
+        facts,
         ...(next.annotation ? { annotation: next.annotation } : {}),
         ...(next.plates.length ? { plates: next.plates } : {}),
+        ...(matches.length ? { certain: plateCertainties(matches, register) } : {}),
+      });
+      // An administrator's answer outranks face recognition: no name is put in for it then.
+      const verdict = checkVerdict(answer, {
+        recognized: next.annotation ? [] : next.subLabels,
+        objects,
+        matches,
+        knownPlates: knownPlates(register, facts),
+        vehicles: register.vehicles,
       });
       this.store.setAiResult(
         next.id,

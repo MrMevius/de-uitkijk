@@ -46,8 +46,8 @@ People and vehicles can be added, changed, merged (people) and deleted on the ta
 
 ## Use
 
-In 0.22.0 the register is only shown and maintained; descriptions still use the raw facts. From 0.24.0 the AI gets the register instead of the raw facts and highlights get links to the people and vehicles they show.
+In 0.22.0 the register was only shown and maintained; descriptions still used the raw facts. The plan to give the AI the register in 0.24.0 was not built then (0.24.0 became the change log page). Since 0.30.0 the description prompt holds the register plus the raw facts it does not hold yet, and the server matches plates Frigate read against the register's plates ([ai.md](ai.md#what-the-server-decides-since-0300)). A change to the register counts like a new fact: highlights described before it are described again before a vehicle question is asked about them. Links from highlights to the people and vehicles they show are not built yet.
 
 ## Privacy
 
-The bundling sends the raw facts, names and roles to OpenAI through Codex once per run, under the same confinement as the descriptions ([ai.md](ai.md#confinement)). Relations are not sent in 0.22.0; from 0.24.0 they are part of the description prompt. The register never holds appearance, clothing or behaviour of people.
+The bundling sends the raw facts, names and roles to OpenAI through Codex once per run, under the same confinement as the descriptions ([ai.md](ai.md#confinement)). Relations are not sent to the bundling; since 0.30.0 they are part of every description prompt, with the rest of the register. The register never holds appearance, clothing or behaviour of people.

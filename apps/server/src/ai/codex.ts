@@ -33,6 +33,8 @@ export interface AiContext {
   annotation?: string;
   /** Number plates Frigate's LPR read in this event, e.g. ["XX123Y"]. */
   plates?: string[];
+  /** Register vehicles the server knows are in view, from a plate Frigate read (since 0.30.0). */
+  certain?: string[];
 }
 
 /** Runs one description; implementations must never throw for "no answer", only for real errors. */
@@ -66,11 +68,22 @@ export function buildPrompt(context: AiContext): string {
     'Je bekijkt één stilstaand beeld van een beveiligingscamera bij een woonhuis.',
     `Camera: ${context.cameraName}. Tijd: ${context.time}. Frigate detecteerde: ${context.objects.join(', ') || 'beweging'}.`,
   ];
-  if (context.recognized?.length) lines.push(`Frigate's gezichtsherkenning herkende: ${context.recognized.join(', ')}.`);
+  if (context.recognized?.length) {
+    const first = context.recognized.map((n) => n.trim().split(/\s+/)[0]).join(', ');
+    lines.push(
+      `Frigate's gezichtsherkenning herkende: ${context.recognized.join(', ')}.`,
+      `Noem die persoon bij de voornaam (${first}) in plaats van "een persoon". Alleen als er meer mensen in beeld zijn en niet duidelijk is wie wie is, beschrijf je neutraal.`,
+    );
+  }
   if (context.plates?.length) {
     lines.push(
       `Frigate's kentekenherkenning las: ${context.plates.join(', ')} (zonder streepjes). Neem het kenteken op in de omschrijving van het voertuig waar het bij hoort, met streepjes als die duidelijk zijn, en vergelijk het met de kentekens in de bekende feiten.`,
     );
+  }
+  if (context.certain?.length) {
+    lines.push('Zeker (kenteken gelezen en gevonden in het register):');
+    for (const c of context.certain) lines.push(`- ${c}`);
+    lines.push('Noem bij dat voertuig de eigenaar en zet known op true.');
   }
   if (context.annotation) {
     lines.push(
