@@ -45,7 +45,7 @@ An analysis of 2026-11-12 found that answers made the system better at vehicles 
 
 - **Plates.** A plate Frigate read in the event (four characters or more with a digit, one misread character allowed) that belongs to a register vehicle goes into the prompt as a certainty ("Het kenteken Z-632-FL is gelezen: de lichtblauw Volkswagen E-UP van Tineke Mevius is in beeld."), and the vehicle of that make and model counts as known whatever the AI says. A plate in the AI's own vehicle description that is in the register or a fact makes that vehicle known, unless the register vehicle with that plate has another make or model (on 2026-11-11 the AI put Mark's Tesla plate on a Volkswagen up!). A plate while every register vehicle of that make and model has another plate makes it unknown: another car of the same type.
 - **Vague cars.** A car without make, plate or distinct body (van, lettering, trailer), or one the AI calls unrecognisable, is never known. Before, "Zwarte compacte hatchback is van Noëlle" matched any black hatchback (9 times in three days), which lowered the score (× 0.4) and suppressed questions.
-- **Face recognition.** The prompt asks for the recognised first name instead of "een persoon". When the AI still leaves it out, Frigate reported one person, recognised one name and the description starts with "Een persoon", the server puts the first name in. With an administrator's answer the answer wins. On 2026-11-10/11 four of six descriptions with a recognised face said "Een persoon …".
+- **Face recognition.** The prompt asks for the recognised first name instead of "een persoon". When the AI still leaves it out, Frigate reported one person, recognised one name and the description starts with "Een persoon", the server puts the first name in. Since 0.34.0 "one person" is counted from Frigate's tracked objects (most people on one camera of the event, `person_count`); before, the labels said "person" once however many people there were, so a name could be put on one of three people. With an administrator's answer the answer wins. On 2026-11-10/11 four of six descriptions with a recognised face said "Een persoon …".
 - **Once at the first start of 0.30.0** the vehicle judgements of the last two weeks are checked with these rules, without AI calls (27 changes on the copy of 2026-11-12, nearly all vague hatchbacks). The importer then recalculates the scores of the last two days.
 
 ## Learning meter (since 0.30.0)
@@ -71,7 +71,7 @@ Codex is an agent with a shell tool that cannot be disabled. Each run is therefo
 - **Configuration:** `--ignore-user-config`, `--ignore-rules`, `--ephemeral`, and browser/computer-use/apps/plugins off.
 - **Environment:** only `PATH`, `HOME`, `CODEX_HOME` and `LANG`.
 - **Output:** a strict output schema.
-- **Prompt:** forbids commands and tells the model to ignore text in the image.
+- **Prompt:** forbids commands and tells the model to ignore text in the image. Since 0.34.0 it also says that the camera's own overlay (the brand name ANNKE, date and time) is no plate: the AI wrote "rode Tesla Model 3, kenteken ANNKE".
 
 Residual risk: the process runs as the backend's user and could in theory read files the backend can read (for example the SQLite database with password hashes) if a manipulated image talked the model into it. The only way out is the 120-character description, which is shown to logged-in users. This is accepted as very low.
 

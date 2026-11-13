@@ -131,7 +131,7 @@ export class QuestionGenerator {
       const h = q.highlightId ? this.highlights.get(q.highlightId) : undefined;
       if (q.kind === 'vehicle') {
         const vehicle = String(q.data.vehicle ?? '');
-        const plates = realPlates(h?.plates ?? []);
+        const plates = h ? platesFor(h) : [];
         if (!askableVehicle(vehicle, plates) || knownVehicle(vehicle, plates, this.opts.knownVehicles()) || (h && !inArchive(h))) this.questions.withdraw(q.id, now);
       }
       if (q.kind === 'person' && typeof h?.personSize === 'number' && h.personSize < MIN_PERSON_SIZE) this.questions.withdraw(q.id, now);
@@ -180,7 +180,7 @@ export class QuestionGenerator {
       const seen = [...(c.aiVehicle && !c.aiVehicleKnown ? [c.aiVehicle] : []), ...c.aiVehicles.filter((v) => !v.known).map((v) => v.description)];
       for (const vehicle of seen) {
         const key = normalizeVehicle(vehicle);
-        const plates = realPlates(c.plates);
+        const plates = platesFor(c);
         if (busy.has(c.id) || !askableVehicle(vehicle, plates) || seenVehicles.has(key) || this.questions.has(`vehicle:${key}`)) continue;
         // Already told about under another description: the AI may not have matched it (colour, misread plate).
         if (knownVehicle(vehicle, plates, knownTexts)) continue;
@@ -204,7 +204,7 @@ export class QuestionGenerator {
         key: `vehicle:${key}`,
         highlightId: c.id,
         title: `Van wie is deze ${noun}?`,
-        body: `De AI ziet: ${sentence(vehicle)} ${this.name(c.camera)}, ${timeText(c.startTime)}.${platesText(realPlates(c.plates), vehicle)} Klopt de omschrijving niet precies, pas hem dan aan.`,
+        body: `De AI ziet: ${sentence(vehicle)} ${this.name(c.camera)}, ${timeText(c.startTime)}.${platesText(platesFor(c), vehicle)} Klopt de omschrijving niet precies, pas hem dan aan.`,
         data: { vehicle, noun },
       });
     }
@@ -304,6 +304,15 @@ export class QuestionGenerator {
 
 /** A highlight, or an event an administrator answered about: both are in the archive. */
 const inArchive = (c: Pick<StoredCandidate, 'selected' | 'annotation'>) => c.selected || Boolean(c.annotation);
+
+/**
+ * Plates Frigate read in the event, when they can only belong to one vehicle: Frigate does not say which vehicle a
+ * plate was on, so with two vehicles in view a plate of the one could make the other askable or known (since 0.34.0).
+ */
+export function platesFor(c: Pick<StoredCandidate, 'plates' | 'aiVehicle' | 'aiVehicles'>): string[] {
+  // The AI lists the main vehicle in `vehicles` too, often in other words: count the list.
+  return Math.max(c.aiVehicles.length, c.aiVehicle ? 1 : 0) <= 1 ? realPlates(c.plates) : [];
+}
 
 /** Person size capped at "clearly visible", so big people are sorted by score among themselves. */
 const visibility = (c: StoredCandidate) => Math.min(c.personSize ?? CLEAR_PERSON_SIZE, CLEAR_PERSON_SIZE);

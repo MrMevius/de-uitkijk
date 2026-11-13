@@ -8,6 +8,7 @@ import { checkVerdict, knownPlates, looseObjectFact, plateCertainties, plateMatc
 import { AiWorker } from '../src/ai/worker.ts';
 import { HighlightStore } from '../src/highlights/store.ts';
 import { HouseholdStore } from '../src/household/store.ts';
+import { platesFor } from '../src/questions/generator.ts';
 import { learningStats } from '../src/questions/learning.ts';
 import { QuestionStore } from '../src/questions/store.ts';
 
@@ -131,14 +132,14 @@ describe('household knowledge for the AI (0.30.0)', () => {
   it('puts the recognised first name in when the AI left it out, only when that is unambiguous', () => {
     const base = { matches: [], knownPlates: [], vehicles: [] };
     const verdict = { description: 'Een persoon loopt naar de camera met een doos.', realEvent: true };
-    expect(checkVerdict(verdict, { ...base, recognized: ['Jasper Mevius'], objects: ['person', 'car'] }).description).toBe('Jasper loopt naar de camera met een doos.');
-    // Two people: who is who is not clear.
-    expect(checkVerdict(verdict, { ...base, recognized: ['Roel Snippe'], objects: ['person', 'person'] }).description).toBe(verdict.description);
+    expect(checkVerdict(verdict, { ...base, recognized: ['Jasper Mevius'], persons: 1 }).description).toBe('Jasper loopt naar de camera met een doos.');
+    // Two people (counted from Frigate's tracked objects since 0.34.0): who is who is not clear.
+    expect(checkVerdict(verdict, { ...base, recognized: ['Roel Snippe'], persons: 2 }).description).toBe(verdict.description);
     // Already named, or not starting with "Een persoon".
     const named = { description: 'Tineke loopt over de oprit.', realEvent: true };
-    expect(checkVerdict(named, { ...base, recognized: ['Tineke Mevius'], objects: ['person'] }).description).toBe(named.description);
+    expect(checkVerdict(named, { ...base, recognized: ['Tineke Mevius'], persons: 1 }).description).toBe(named.description);
     const other = { description: 'Frigate detecteerde een persoon; die is niet te zien.', realEvent: true };
-    expect(checkVerdict(other, { ...base, recognized: ['Jasper Mevius'], objects: ['person'] }).description).toBe(other.description);
+    expect(checkVerdict(other, { ...base, recognized: ['Jasper Mevius'], persons: 1 }).description).toBe(other.description);
     // The prompt asks for the name.
     expect(buildPrompt({ cameraName: 'x', time: 't', objects: ['person'], recognized: ['Roel Snippe'] })).toContain('Noem die persoon bij de voornaam (Roel)');
   });
@@ -242,5 +243,18 @@ describe('learning meter (0.30.0)', () => {
     });
     expect(stats.weeks[0]).toMatchObject({ highlights: 6, persons: { self: 3 } });
     expect(stats.days[1]!.highlights).toBe(0);
+  });
+});
+
+describe('plates and the camera watermark (0.34.0)', () => {
+  it('ties the plates Frigate read to a vehicle only when one vehicle was in view', () => {
+    const one = { plates: ['G929VD'], aiVehicle: 'zwarte Tesla Model 3', aiVehicles: [{ description: 'zwarte Tesla Model 3 op de oprit', known: false }] };
+    expect(platesFor(one)).toEqual(['G929VD']);
+    const two = { ...one, aiVehicles: [...one.aiVehicles, { description: 'grijze hatchback', known: false }] };
+    expect(platesFor(two)).toEqual([]);
+  });
+
+  it('tells the AI that the camera watermark is no plate', () => {
+    expect(buildPrompt({ cameraName: 'x', time: 't', objects: ['car'] })).toContain('ANNKE');
   });
 });

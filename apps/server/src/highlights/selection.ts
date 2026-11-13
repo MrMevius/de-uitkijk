@@ -146,6 +146,27 @@ export interface Candidate {
   startTime: number;
   cameras: string[];
   score: number;
+  /** Frigate labels without "-verified"; used to tell whether a rejected highlight covers a candidate. */
+  labels?: string[];
+  /** Judged noise by the AI or 👎 by an administrator: it only holds back candidates with nothing new (since 0.34.0). */
+  rejected?: boolean;
+  /** A highlight with 👍 or an answer stays a highlight, whatever its score (since 0.34.0). */
+  pinned?: boolean;
+}
+
+/** Frigate labels in one spelling: "person-verified" (a recognised face) is a person. */
+export const plainLabels = (labels: string[]) => [...new Set(labels.map((l) => l.replace(/-verified$/, '')))];
+
+/**
+ * Whether highlight `k` holds back candidate `c`: same camera within the burst window. A rejected highlight (noise
+ * or 👎) only holds back candidates without a kind of object it did not have: on 2026-11-09 a parked car judged noise
+ * held back a person and car on two cameras (score 3.9) eleven minutes later.
+ */
+function holdsBack(k: Candidate, c: Candidate, burstWindowS: number): boolean {
+  if (Math.abs(k.startTime - c.startTime) >= burstWindowS || !k.cameras.some((cam) => c.cameras.includes(cam))) return false;
+  if (!k.rejected) return true;
+  const seen = new Set(k.labels ?? []);
+  return (c.labels ?? []).every((l) => seen.has(l));
 }
 
 /**
@@ -155,7 +176,8 @@ export interface Candidate {
  * `fixed` are highlights already decided (older than the window that is recalculated): they keep their place and
  * a candidate that clashes with one of them is not selected. Without them, every candidate the best of a series
  * held back became a highlight once that best one left the window (until 0.30.1: 10 clips in one hour on
- * 2026-11-11, where the rule gives 2).
+ * 2026-11-11, where the rule gives 2). Pinned candidates are kept first in the same way: an answer that makes a
+ * highlight count low no longer lets the next clip of the same visit take its place.
  */
 export function selectHighlights(
   candidates: Candidate[],
@@ -163,15 +185,13 @@ export function selectHighlights(
   burstWindowS: number = SELECTION.burstWindowS,
   fixed: Candidate[] = [],
 ): Set<string> {
+  const pinned = candidates.filter((c) => c.pinned);
   const ranked = candidates
-    .filter((c) => c.score >= threshold)
+    .filter((c) => !c.pinned && c.score >= threshold)
     .sort((a, b) => b.score - a.score || a.startTime - b.startTime);
-  const kept: Candidate[] = [...fixed];
+  const kept: Candidate[] = [...fixed, ...pinned];
   for (const c of ranked) {
-    const clash = kept.some(
-      (k) => Math.abs(k.startTime - c.startTime) < burstWindowS && k.cameras.some((cam) => c.cameras.includes(cam)),
-    );
-    if (!clash) kept.push(c);
+    if (!kept.some((k) => holdsBack(k, c, burstWindowS))) kept.push(c);
   }
   return new Set(kept.slice(fixed.length).map((c) => c.id));
 }
@@ -183,11 +203,19 @@ export function periodOf(hour: number): 'nacht' | 'avond' | 'dag' {
   return 'dag';
 }
 
-export const feedbackKey = (camera: string, hour: number) => `${camera}|${periodOf(hour)}`;
+/** What a highlight is about, for learning from feedback: a 👎 on a cat says nothing about a person (since 0.34.0). */
+export function kindOf(labels: string[]): 'persoon' | 'voertuig' | 'overig' {
+  const plain = plainLabels(labels);
+  if (plain.includes('person')) return 'persoon';
+  if (VEHICLE_WEIGHTS.some(([label]) => plain.includes(label))) return 'voertuig';
+  return 'overig';
+}
+
+export const feedbackKey = (camera: string, hour: number, labels: string[]) => `${camera}|${periodOf(hour)}|${kindOf(labels)}`;
 
 /**
- * Score adjustment learned from administrator feedback on earlier highlights with the same camera and
- * time-of-day period (last 90 days): +0.4 per 👍, -0.4 per 👎 or deletion, capped at +1.0 / -1.5.
+ * Score adjustment learned from administrator feedback on earlier highlights with the same camera, time-of-day
+ * period and kind (person, vehicle, other; last 90 days): +0.4 per 👍, -0.4 per 👎 or deletion, capped at +1.0 / -1.5.
  */
 export function feedbackAdjustment(sum: number): number {
   return Math.round(Math.max(-1.5, Math.min(1, 0.4 * sum)) * 100) / 100;

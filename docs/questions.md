@@ -46,6 +46,7 @@ Up to 2026-11-11, 17 of 43 vehicle questions and 6 of 54 person questions were s
 
 - **Vehicles out of view.** "deels/grotendeels verborgen", "achter de …" and similar descriptions are not asked: there is nothing to recognise the vehicle by next time.
 - **Cars without make or plate.** "donkere sedan", "grijze hatchback" look like many others and are not asked. A plate in the description or a real plate from Frigate's LPR (with a digit: Frigate once read "SCHUUR" from the shed) makes them askable, and so do vans, campers, trailers and vehicles with lettering. Trade-off: some of these were answered before (6 times); those answers gave weak facts.
+- **Plates belong to one vehicle.** Frigate does not say which vehicle a plate was read on. Since 0.34.0 the plates of an event only count for its vehicle questions when the AI saw one vehicle; before, a plate of one car made another, vague car askable or known.
 - **Already told about.** A vehicle is not asked when its plate is one character from a plate in a fact (the AI read G-029-VD for G-929-VD) or its make and model equal those of a fact ("zwarte Volkswagen up!" after "Donkere Volkswagen up! is van Noëlle"). Colour is ignored: the AI calls the same car black, dark or dark grey depending on the light. A make alone is not enough.
 - **Tiny people.** The importer stores the height of the largest person box on the clip's camera (`person_size`, a fraction of the frame; 0 = no person on that camera). Below 4% no person question is asked. The limit is low on purpose: the owner named neighbours at 5% of the frame height. The street passers-by at Voordeur that were skipped (10–13%) are handled by the tighter Voordeur zone in Frigate (2026-11-11). Clearly visible people (≥ 30%) are asked first, then by relevance. At the first start of 0.27.0 the highlights of the last week are measured once from Frigate's detections; without them the size stays unknown and the highlight is treated as before.
 - Open questions that the new rules would not ask are withdrawn ("systeem").
@@ -62,6 +63,8 @@ A person question suggests who it probably is, from the same visit (within 15 mi
 2. someone Frigate recognised by face there;
 3. the owner of a register vehicle: from a vehicle answer there ("auto van Mark"), or a plate Frigate read there or in this highlight;
 4. the owner of a register vehicle the AI recognised there or in this highlight (by plate, or the only register vehicle of that make and model).
+
+Since 0.34.0 points 3 (plate) and 4 only count the vehicle the event is about (the AI's `vehicle`: someone drives it, gets in or out): a car parked at the house, and the plate Frigate read on it, made its owner the suggestion for everybody who walked past.
 
 A click on a suggestion fills in the name and marks the answer button of the person's role; nothing is answered until the administrator presses a button. Suggestions never come from appearance or clothing. Example: on 2026-11-09 the question about "Een persoon staat achteraan op het pad" at 23:26 had Johan's answered highlight at the front door one minute before; before 0.33.0 "Zelfde bezoek" only listed highlights without a name.
 

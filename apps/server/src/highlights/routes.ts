@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { FactStore } from '../ai/facts.ts';
 import type { HouseholdStore } from '../household/store.ts';
+import { asCandidate } from './importer.ts';
 import { REPLAY_MINUTES, SELECTION, selectHighlights, THRESHOLD_RANGE } from './selection.ts';
 import { sendFileWithRanges, type ClipCache } from './clips.ts';
 import { toSummary, type HighlightStore } from './store.ts';
@@ -111,7 +112,7 @@ export function registerHighlights(app: FastifyInstance, { store, clips, frigate
   const preview = (threshold: number) => {
     const t = now();
     const recent = store.candidatesSince(t - 7 * 86400);
-    const picked = selectHighlights(recent, threshold);
+    const picked = selectHighlights(recent.map(asCandidate), threshold);
     // Like the rotation: AI noise and highlights marked "not good" are not shown.
     const shown = recent.filter((c) => picked.has(c.id) && c.aiRealEvent !== false && c.feedback !== -1);
     return { last24h: shown.filter((c) => c.startTime >= t - 86400).length, perDay7d: Math.round((shown.length / 7) * 10) / 10 };

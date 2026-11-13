@@ -6,10 +6,12 @@ import {
   feedbackKey,
   groupItems,
   KNOWN_FACTOR,
+  plainLabels,
   scoreGroup,
   selectHighlights,
   SELECTION,
   type Baseline,
+  type Candidate,
   type ReviewItem,
 } from './selection.ts';
 import { realPlates } from '../questions/vehicles.ts';
@@ -94,6 +96,16 @@ export function personSize(events: FrigateEvent[], camera: string): number {
   return Math.round(Math.max(0, ...heights) * 1000) / 1000;
 }
 
+/**
+ * How many people Frigate tracked at most on one camera of the group (since 0.34.0). A name from face recognition is
+ * only put in the description when there was one; the labels say "person" once however many there were.
+ */
+export function personCount(events: FrigateEvent[]): number {
+  const perCamera = new Map<string, number>();
+  for (const e of events) if (e.label === 'person') perCamera.set(e.camera ?? '', (perCamera.get(e.camera ?? '') ?? 0) + 1);
+  return Math.max(0, ...perCamera.values());
+}
+
 /** Plates Frigate's LPR read on these detections, upper case without spaces or dashes, deduplicated. */
 export function platesOf(events: FrigateEvent[]): string[] {
   return realPlates(events.map((e) => e.data?.recognized_license_plate ?? ''));
@@ -101,6 +113,30 @@ export function platesOf(events: FrigateEvent[]): string[] {
 
 /** Selection, feedback and known factors are recalculated over this period; older highlights stay as they are. */
 export const RESELECT_S = 2 * 86400;
+
+/** How long a settled group waits for a neighbouring alert that is still running (since 0.34.0). */
+export const HOLD_S = 10 * 60;
+
+/**
+ * A stored candidate as the selection sees it. Noise and 👎 only hold back candidates with nothing new; 👍 and
+ * answered highlights stay highlights (since 0.34.0).
+ */
+export const asCandidate = (c: StoredCandidate): Candidate => ({
+  id: c.id,
+  startTime: c.startTime,
+  cameras: c.cameras,
+  score: c.score,
+  labels: plainLabels(c.labels),
+  rejected: c.aiRealEvent === false || c.feedback === -1,
+  pinned: c.selected && (c.feedback === 1 || c.annotation !== null),
+});
+
+/**
+ * A person in the event nobody identified: Frigate recognised no face and no administrator named anyone. A known
+ * vehicle does not make such an event known (since 0.34.0: "Een persoon loopt langs de rode Tesla" counted low).
+ */
+const unknownPerson = (c: StoredCandidate) =>
+  plainLabels(c.labels).includes('person') && c.subLabels.length === 0 && !c.annotationKnown;
 
 const AMSTERDAM_HOUR =new Intl.DateTimeFormat('en-GB', { hour: 'numeric', hourCycle: 'h23', timeZone: 'Europe/Amsterdam' });
 export const hourInAmsterdam = (epochS: number) => Number(AMSTERDAM_HOUR.format(epochS * 1000));
@@ -189,7 +225,8 @@ export class HighlightImporter {
       camera: r.camera,
       startTime: r.start_time,
       endTime: r.end_time ?? r.start_time,
-      objects: r.data.objects ?? [],
+      // "person-verified" (a recognised face) is a person: one spelling for scores, prompts and questions (0.34.0).
+      objects: plainLabels(r.data.objects ?? []),
       subLabels: r.data.sub_labels ?? [],
       detections: r.data.detections ?? [],
       ...(typeof r.data.thumb_time === 'number' ? { thumbTime: r.data.thumb_time } : {}),
@@ -225,16 +262,28 @@ export class HighlightImporter {
     const relevant = reviews.filter((r) => this.byFrigate.has(r.camera) && r.start_time >= activated);
     const settled = relevant.filter((r) => r.end_time !== null && r.end_time < now - this.opts.settleS);
     const pending = settled.filter((r) => !this.store.isProcessed(r.id)).map((r) => this.toItem(r));
+    const unsettled = relevant.filter((r) => r.end_time === null || r.end_time >= now - this.opts.settleS);
 
     let created = 0;
+    const waiting: number[] = [];
     for (const group of groupItems(pending)) {
+      // An alert still running that started before this group ended (+30 s) belongs to it: wait for it, at most
+      // `HOLD_S` after the group ended. Until 0.34.0 the group was imported without it, so one visit gave two
+      // highlights (46 of 353 candidates in the week to 2026-11-13).
+      const groupStart = Math.min(...group.map((i) => i.startTime));
+      const groupEnd = Math.max(...group.map((i) => i.endTime));
+      const joins = unsettled.some((r) => r.start_time <= groupEnd + SELECTION.groupGapS);
+      if (joins && now - groupEnd < HOLD_S) {
+        waiting.push(groupStart);
+        continue;
+      }
       await this.importGroup(group);
       created++;
     }
 
     // Next time start from the oldest alert that could not be processed yet.
-    const unsettled = relevant.filter((r) => r.end_time === null || r.end_time >= now - this.opts.settleS);
-    const nextCursor = unsettled.length ? Math.min(...unsettled.map((r) => r.start_time)) : now - this.opts.settleS;
+    const open = [...unsettled.map((r) => r.start_time), ...waiting];
+    const nextCursor = open.length ? Math.min(...open) : now - this.opts.settleS;
     if (nextCursor > cursor) this.store.setMeta('cursor', String(nextCursor));
 
     await this.reselect(now);
@@ -249,14 +298,18 @@ export class HighlightImporter {
     const events = (
       await Promise.all(detectionIds.map((id) => this.get<FrigateEvent>(`/api/events/${encodeURIComponent(id)}`).catch(() => undefined)))
     ).filter((e): e is FrigateEvent => e !== undefined);
-    const scoreOf = new Map(events.map((e) => [e.id, e.data?.top_score ?? e.top_score ?? 0]));
-    // Representative: the alert with the most confident detection; on a tie the longer one.
+    // Representative: the alert with the most confident detection, a person before anything else (since 0.34.0: a
+    // parked car at 0.9 won from a person at 0.8 on another camera); on a tie the longer one.
+    const hasPerson = events.some((e) => e.label === 'person');
+    const scoreOf = new Map(
+      events.map((e) => [e.id, (e.data?.top_score ?? e.top_score ?? 0) - (hasPerson && e.label !== 'person' ? 1 : 0)]),
+    );
     let rep = items[0]!;
     let repEvent = rep.detections[0] ?? '';
-    let best = -1;
+    let best = -Infinity;
     for (const item of items) {
       for (const d of item.detections) {
-        const s = scoreOf.get(d) ?? 0;
+        const s = scoreOf.get(d) ?? (hasPerson ? -1 : 0);
         if (s > best || (s === best && item.endTime - item.startTime > rep.endTime - rep.startTime)) {
           best = s;
           rep = item;
@@ -289,6 +342,7 @@ export class HighlightImporter {
       subLabels: [...new Set(items.flatMap((i) => i.subLabels))],
       plates: platesOf(events),
       personSize: personSize(events, rep.camera),
+      personCount: personCount(events),
       score: scored.score,
       reasons: scored.reasons,
       description: describe(items, (f) => this.byFrigate.get(f)?.name ?? f),
@@ -328,16 +382,17 @@ export class HighlightImporter {
 
   /** Re-runs selection over the last two days and stores thumbnails of newly selected highlights. */
   private async reselect(now: number): Promise<void> {
-    // Learn from feedback: similar recent candidates (same camera and time-of-day period) move up or down.
+    // Learn from feedback: similar recent candidates (same camera, time-of-day period and kind) move up or down.
     const sums = new Map<string, number>();
     for (const f of this.store.feedbackSignals(now - FEEDBACK_WINDOW_S)) {
-      const key = feedbackKey(f.camera, hourInAmsterdam(f.startTime));
+      const key = feedbackKey(f.camera, hourInAmsterdam(f.startTime), f.labels);
       sums.set(key, (sums.get(key) ?? 0) + f.value);
     }
     for (const c of this.store.candidatesSince(now - RESELECT_S)) {
-      const adjustment = feedbackAdjustment(sums.get(feedbackKey(c.camera, hourInAmsterdam(c.startTime))) ?? 0);
-      // Known from answers or facts counts low, like a recognised face (already part of the base score).
-      const known = c.subLabels.length === 0 && (c.aiVehicleKnown || c.annotationKnown) ? KNOWN_FACTOR : 1;
+      const adjustment = feedbackAdjustment(sums.get(feedbackKey(c.camera, hourInAmsterdam(c.startTime), c.labels)) ?? 0);
+      // Known from answers or facts counts low, like a recognised face (already part of the base score). A known
+      // vehicle only when nobody unidentified is with it.
+      const known = c.subLabels.length === 0 && (c.annotationKnown || (c.aiVehicleKnown && !unknownPerson(c))) ? KNOWN_FACTOR : 1;
       if (adjustment !== c.feedbackAdj || known !== c.knownFactor) this.store.setScoreParts(c.id, adjustment, known);
     }
     const since = now - RESELECT_S;
@@ -346,7 +401,6 @@ export class HighlightImporter {
     const before = this.store
       .candidatesSince(since - SELECTION.burstWindowS)
       .filter((c) => c.startTime < since && c.selected);
-    const asCandidate = (c: StoredCandidate) => ({ id: c.id, startTime: c.startTime, cameras: c.cameras, score: c.score });
     const selected = selectHighlights(recent.map(asCandidate), this.store.threshold(), SELECTION.burstWindowS, before.map(asCandidate));
     for (const c of recent) {
       const want = selected.has(c.id);

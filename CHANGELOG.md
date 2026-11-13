@@ -3,6 +3,16 @@
 Op hoofdlijnen, nieuwste eerst. Wordt getoond op Beheer → Change log. Elke release krijgt hier een kopje
 `## <versie> — <datum>` met een paar bullets; een test controleert dat de bovenste versie gelijk is aan `VERSION`.
 
+## 0.34.0 — 2026-11-13
+
+- Een highlight die de AI ruis vond of die 👎 kreeg, houdt geen andere highlights meer tegen als daarin iets nieuws gebeurt. Een persoon na een geparkeerde auto wordt dus gewoon een highlight.
+- Een highlight met 👍 of een antwoord blijft een highlight. Daardoor schuift de volgende clip van hetzelfde bezoek niet meer in zijn plaats. Highlights met 👍 blijven ook in het archief.
+- Een bekende auto maakt een gebeurtenis alleen nog "bekend" als er geen onbekende persoon bij is. "Een persoon loopt langs de rode Tesla" telt dus weer volledig mee.
+- Leren van 👍/👎 gebeurt per camera, dagdeel én soort (persoon, voertuig, overig): een 👎 op een kat drukt geen personen meer.
+- Alerts op meerdere camera's die op elkaar aansluiten worden één gebeurtenis, ook als er nog één liep. De clip toont bij voorkeur de persoon, niet een geparkeerde auto.
+- Een naam uit gezichtsherkenning komt alleen in de beschrijving als er één persoon in beeld was.
+- Suggesties bij "Wie is dit?" komen niet meer van een auto die alleen geparkeerd staat. Een kenteken telt bij vragen alleen als er één voertuig in beeld was. Het camerawatermerk ANNKE is geen kenteken.
+
 ## 0.33.1 — 2026-11-13
 
 - 👍/👎 alleen nog bij de vraag "Was dit een goede highlight?", niet meer bij elke vraag. Na een antwoord staat er even een korte bevestiging die vanzelf verdwijnt.

@@ -177,16 +177,21 @@ export function personSuggestions(
       else if (owner) add(c, 2, owner, roleKey(owner), `${where(c)}: ${c.annotation}, jouw antwoord.`);
     }
     if (c.id !== h.id) for (const n of c.subLabels) add(c, 1, n, roleKey(n), `${where(c)}: Frigate herkende het gezicht van ${n}.`);
-      for (const v of plateMatches(c.plates, { people: ctx.people, vehicles: ctx.vehicles })) {
+    // Only the vehicle the event is about (someone drives, gets in or out): a car parked at the house, and the plate
+    // Frigate read on it, say nothing about who walks past it (since 0.34.0).
+    const subject = c.aiVehicle && c.aiVehicleKnown ? c.aiVehicle : null;
+    if (!subject) continue;
+    const byAi = registerVehicleFor(subject, ctx.vehicles);
+    const mm = makeModel(subject);
+    const byPlate = plateMatches(c.plates, { people: ctx.people, vehicles: ctx.vehicles }).filter(
+      (v) => v === byAi || (mm !== null && makeModel(`${v.make} ${v.model}`) === mm),
+    );
+    for (const v of byPlate) {
       const owner = ctx.people.find((p) => p.id === v.ownerId);
       if (owner) add(c, 2, owner.name, roleKey(owner.name), `${where(c)}: Frigate las het kenteken ${v.plate} van de ${vehicleLabel({ ...v, plate: '' })} van ${owner.name}.`);
     }
-    const known = [...(c.aiVehicle && c.aiVehicleKnown ? [c.aiVehicle] : []), ...c.aiVehicles.filter((x) => x.known).map((x) => x.description)];
-    for (const d of known) {
-      const v = registerVehicleFor(d, ctx.vehicles);
-      const owner = v && ctx.people.find((p) => p.id === v.ownerId);
-      if (owner) add(c, 3, owner.name, roleKey(owner.name), `${where(c)}: de ${vehicleLabel({ ...v!, plate: '' })} van ${owner.name} (herkend door de AI).`);
-    }
+    const owner = byAi && ctx.people.find((p) => p.id === byAi.ownerId);
+    if (owner) add(c, 3, owner.name, roleKey(owner.name), `${where(c)}: de ${vehicleLabel({ ...byAi!, plate: '' })} van ${owner.name} (herkend door de AI).`);
   }
   const out: PersonSuggestion[] = [];
   for (const s of found.sort((a, b) => a.strength - b.strength || a.distance - b.distance)) {

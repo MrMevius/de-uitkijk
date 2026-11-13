@@ -163,7 +163,8 @@ export class AiWorker {
       // An administrator's answer outranks face recognition: no name is put in for it then.
       const verdict = checkVerdict(answer, {
         recognized: next.annotation ? [] : next.subLabels,
-        objects,
+        // Older highlights were not counted: one person when Frigate reported one, as before 0.34.0.
+        persons: next.personCount ?? (objects.includes('person') ? 1 : 0),
         matches,
         knownPlates: knownPlates(register, facts),
         vehicles: register.vehicles,

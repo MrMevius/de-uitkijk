@@ -141,12 +141,13 @@ const PERSON_START = /^een persoon\b/i;
  */
 export function checkVerdict(
   verdict: AiVerdict,
-  ctx: { recognized: string[]; objects: string[]; matches: Vehicle[]; knownPlates: string[]; vehicles: Vehicle[] },
+  ctx: { recognized: string[]; persons: number; matches: Vehicle[]; knownPlates: string[]; vehicles: Vehicle[] },
 ): AiVerdict {
   const known = (d: string, k: boolean) => vehicleKnown(d, k, ctx);
   let description = verdict.description;
   const names = [...new Set(ctx.recognized.map(firstName))];
-  const persons = ctx.objects.filter((o) => o === 'person').length;
+  // Counted from Frigate's tracked objects (since 0.34.0); the labels say "person" once however many there were.
+  const persons = ctx.persons;
   const named = names.some((n) => new RegExp(`(?<![\\p{L}])${n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}])`, 'iu').test(description));
   if (names.length === 1 && persons === 1 && !named && PERSON_START.test(description)) description = description.replace(PERSON_START, names[0]!);
   return {

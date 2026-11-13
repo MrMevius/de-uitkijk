@@ -30,6 +30,8 @@ export interface CandidateRecord {
    * 0 = no person on that camera, null = not measured (older highlights).
    */
   personSize?: number | null;
+  /** Most people Frigate tracked on one camera of the group (since 0.34.0); null = not counted (older highlights). */
+  personCount?: number | null;
   score: number;
   reasons: string[];
   description: string;
@@ -75,6 +77,7 @@ interface Row {
   ai_vehicles: string | null;
   plates: string | null;
   person_size: number | null;
+  person_count: number | null;
 }
 
 export interface StoredCandidate extends CandidateRecord {
@@ -112,7 +115,7 @@ export interface StoredCandidate extends CandidateRecord {
 }
 
 const COLUMNS =
-  'id, start_time, end_time, cameras, camera, frigate_camera, rep_event, clip_start, clip_end, event_start, event_end, labels, sub_labels, score, reasons, description, selected, feedback, deleted, thumbnail IS NOT NULL AS has_thumbnail, ai_description, ai_real, ai_status, ai_attempts, ai_updated, base_score, feedback_adj, frame_time, ai_vehicle, ai_vehicle_known, annotation, detections, annotation_known, known_factor, ai_person_marker, ai_redo, ai_vehicles, plates, person_size';
+  'id, start_time, end_time, cameras, camera, frigate_camera, rep_event, clip_start, clip_end, event_start, event_end, labels, sub_labels, score, reasons, description, selected, feedback, deleted, thumbnail IS NOT NULL AS has_thumbnail, ai_description, ai_real, ai_status, ai_attempts, ai_updated, base_score, feedback_adj, frame_time, ai_vehicle, ai_vehicle_known, annotation, detections, annotation_known, known_factor, ai_person_marker, ai_redo, ai_vehicles, plates, person_size, person_count';
 
 const fromRow = (r: Row): StoredCandidate => ({
   id: r.id,
@@ -154,6 +157,7 @@ const fromRow = (r: Row): StoredCandidate => ({
   aiRedo: r.ai_redo === 1,
   plates: r.plates ? (JSON.parse(r.plates) as string[]) : [],
   personSize: r.person_size,
+  personCount: r.person_count,
 });
 
 export const toSummary = (c: StoredCandidate): HighlightSummary => ({
@@ -270,6 +274,8 @@ export class HighlightStore {
       ['plates', 'TEXT'],
       // Added in 0.27.0 (no questions about tiny people far away).
       ['person_size', 'REAL'],
+      // Added in 0.34.0 (a recognised name only in the description when there was one person).
+      ['person_count', 'INTEGER'],
     ] as const) {
       if (!columns.has(name)) this.db.exec(`ALTER TABLE candidates ADD COLUMN ${name} ${type}`);
     }
@@ -319,14 +325,15 @@ export class HighlightStore {
       this.db
         .prepare(
           `INSERT INTO candidates (id, start_time, end_time, cameras, camera, frigate_camera, rep_event, clip_start, clip_end,
-             event_start, event_end, labels, sub_labels, score, reasons, description, base_score, frame_time, detections, plates, person_size)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             event_start, event_end, labels, sub_labels, score, reasons, description, base_score, frame_time, detections, plates, person_size,
+             person_count)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           c.id, c.startTime, c.endTime, JSON.stringify(c.cameras), c.camera, c.frigateCamera, c.repEvent, c.clipStart,
           c.clipEnd, c.eventStart, c.eventEnd, JSON.stringify(c.labels), JSON.stringify(c.subLabels), c.score,
           JSON.stringify(c.reasons), c.description, c.score, c.frameTime ?? null, c.detections ? JSON.stringify(c.detections) : null,
-          c.plates?.length ? JSON.stringify(c.plates) : null, c.personSize ?? null,
+          c.plates?.length ? JSON.stringify(c.plates) : null, c.personSize ?? null, c.personCount ?? null,
         );
       const mark = this.db.prepare('INSERT OR IGNORE INTO processed_reviews (review_id, candidate_id) VALUES (?, ?)');
       for (const id of reviewIds) mark.run(id, c.id);
@@ -369,18 +376,18 @@ export class HighlightStore {
   }
 
   /**
-   * Feedback signals since `since`, per representative camera and start time: 👍 = +1, 👎 = -1,
+   * Feedback signals since `since`, per representative camera, start time and labels: 👍 = +1, 👎 = -1,
    * deleted without 👍 = -1.
    */
-  feedbackSignals(since: number): { camera: string; startTime: number; value: number }[] {
+  feedbackSignals(since: number): { camera: string; startTime: number; labels: string[]; value: number }[] {
     return (
       this.db
         .prepare(
-          `SELECT camera, start_time AS startTime, CASE WHEN feedback = 1 THEN 1 ELSE -1 END AS value FROM candidates
+          `SELECT camera, start_time AS startTime, labels, CASE WHEN feedback = 1 THEN 1 ELSE -1 END AS value FROM candidates
              WHERE start_time >= ? AND (feedback IN (1, -1) OR deleted = 1)`,
         )
-        .all(since) as { camera: string; startTime: number; value: number }[]
-    ).map((r) => ({ ...r, value: Number(r.value) }));
+        .all(since) as { camera: string; startTime: number; labels: string; value: number }[]
+    ).map((r) => ({ ...r, labels: JSON.parse(r.labels) as string[], value: Number(r.value) }));
   }
 
   /** Stores the learned score parts; `score` becomes base score times known factor plus feedback adjustment. */
@@ -489,18 +496,24 @@ export class HighlightStore {
       .run(at, maxAttempts, maxAttempts, id);
   }
 
-  /** Highlights for the dashboard: selected in the window, not judged noise by the AI nor 👎, best first. */
+  /**
+   * Highlights for the dashboard: selected in the window, not judged noise by the AI nor 👎, best first. One that
+   * stays selected only because of an answer (a resident, counted low) is not shown, as before 0.34.0; 👍 is.
+   */
   rotation(since: number, limit: number): StoredCandidate[] {
     return (
       this.db
-        .prepare(`SELECT ${COLUMNS} FROM candidates WHERE selected = 1 AND deleted = 0 AND (ai_real IS NULL OR ai_real = 1) AND (feedback IS NULL OR feedback = 1) AND start_time >= ? ORDER BY score DESC, start_time DESC LIMIT ?`)
-        .all(since, limit) as unknown as Row[]
+        .prepare(
+          `SELECT ${COLUMNS} FROM candidates WHERE selected = 1 AND deleted = 0 AND (ai_real IS NULL OR ai_real = 1) AND (feedback IS NULL OR feedback = 1)
+             AND (score >= ? OR feedback = 1) AND start_time >= ? ORDER BY score DESC, start_time DESC LIMIT ?`,
+        )
+        .all(this.threshold(), since, limit) as unknown as Row[]
     ).map(fromRow);
   }
 
   archive(q: ArchiveQuery): { items: StoredCandidate[]; total: number } {
-    // Highlights an administrator identified stay in the archive, also when that made them count low.
-    const where = ['(selected = 1 OR annotation_known = 1)', 'deleted = 0'];
+    // Highlights an administrator identified or gave 👍 stay in the archive, also when they dropped out of the selection.
+    const where = ['(selected = 1 OR annotation_known = 1 OR feedback = 1)', 'deleted = 0'];
     const args: (string | number)[] = [];
     if (q.from !== undefined) where.push('start_time >= ?'), args.push(q.from);
     if (q.to !== undefined) where.push('start_time < ?'), args.push(q.to);

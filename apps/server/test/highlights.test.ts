@@ -153,6 +153,28 @@ describe('selection', () => {
     expect([...selectHighlights(series, 2, 1800)].sort()).toEqual(['b', 'd']);
   });
 
+  it('lets noise and 👎 hold back only candidates with nothing new, and keeps 👍 and answered highlights (0.34.0)', () => {
+    // 2026-11-09: a parked car judged noise held back a person and car on two cameras eleven minutes later.
+    const noise = { id: 'n', startTime: 0, cameras: ['achter_1'], score: 4.2, labels: ['car'], rejected: true };
+    const cars = { id: 'c', startTime: 300, cameras: ['achter_1'], score: 2.2, labels: ['car'] };
+    const person = { id: 'p', startTime: 660, cameras: ['achter_1', 'voordeur'], score: 3.9, labels: ['car', 'person'] };
+    expect([...selectHighlights([noise, cars, person], 1.5)].sort()).toEqual(['n', 'p']);
+    // Before 0.34.0 the noise highlight held back everything on its camera.
+    expect([...selectHighlights([{ ...noise, rejected: false }, cars, person], 1.5)]).toEqual(['n']);
+    // An answered highlight that now counts low keeps its place: the next clip of the same visit does not take it.
+    const answered = { id: 'a', startTime: 0, cameras: ['oprit'], score: 1.2, labels: ['person'], pinned: true };
+    const next = { id: 'b', startTime: 120, cameras: ['oprit'], score: 2.5, labels: ['person'] };
+    expect([...selectHighlights([answered, next], 1.5)]).toEqual(['a']);
+    expect([...selectHighlights([{ ...answered, pinned: false }, next], 1.5)]).toEqual(['b']);
+  });
+
+  it('learns from feedback per camera, time of day and kind of event (0.34.0)', async () => {
+    const { feedbackKey, kindOf } = await import('../src/highlights/selection.ts');
+    expect([kindOf(['person-verified', 'car']), kindOf(['car']), kindOf(['bicycle']), kindOf(['cat'])]).toEqual(['persoon', 'voertuig', 'voertuig', 'overig']);
+    expect(feedbackKey('voordeur', 2, ['cat'])).not.toBe(feedbackKey('voordeur', 3, ['person']));
+    expect(feedbackKey('voordeur', 2, ['person'])).toBe(feedbackKey('voordeur', 3, ['person-verified']));
+  });
+
   it('describes in Dutch', () => {
     const name = (f: string) => cameras.find((c) => c.frigateCamera === f)!.name;
     expect(describeGroup([item('a', VOORDEUR, at(14), at(14) + 9)], name)).toBe('Persoon bij Voordeur');
@@ -172,7 +194,7 @@ interface FakeReview {
   data: { objects: string[]; sub_labels: string[]; detections: string[] };
 }
 
-function fakeFrigate(reviews: FakeReview[], scores: Record<string, number> = {}, gone = new Set<string>()) {
+function fakeFrigate(reviews: FakeReview[], scores: Record<string, number> = {}, gone = new Set<string>(), labels: Record<string, string> = {}) {
   const calls: string[] = [];
   const fetchImpl = (async (input: string | URL) => {
     const url = new URL(String(input));
@@ -183,7 +205,11 @@ function fakeFrigate(reviews: FakeReview[], scores: Record<string, number> = {},
     }
     // Like Frigate 0.17: one event per request (its /api/events list has no id filter).
     const event = /^\/api\/events\/([^/]+)$/.exec(url.pathname);
-    if (event) return Response.json({ id: decodeURIComponent(event[1]!), data: { top_score: scores[decodeURIComponent(event[1]!)] ?? 0.7 } });
+    if (event) {
+      const id = decodeURIComponent(event[1]!);
+      const camera = reviews.find((r) => r.data.detections.includes(id))?.camera;
+      return Response.json({ id, camera, ...(labels[id] ? { label: labels[id] } : {}), data: { top_score: scores[id] ?? 0.7 } });
+    }
     if (url.pathname.endsWith('/snapshot-clean.webp')) {
       const id = decodeURIComponent(url.pathname.split('/')[3]!);
       return gone.has(id) ? new Response('not found', { status: 404 }) : new Response(new Uint8Array([0xff, 0xd8, 0xff, 0xd9]));
@@ -202,10 +228,10 @@ const review = (id: string, camera: string, start: number, end: number | null, d
   data: { objects: ['person'], sub_labels: [], detections: [`${id}-d`], ...data },
 });
 
-function setupImporter(reviews: FakeReview[], scores: Record<string, number> = {}) {
+function setupImporter(reviews: FakeReview[], scores: Record<string, number> = {}, labels: Record<string, string> = {}) {
   let clock = at(3);
   const store = new HighlightStore(':memory:');
-  const frigate = fakeFrigate(reviews, scores);
+  const frigate = fakeFrigate(reviews, scores, new Set(), labels);
   const importer = new HighlightImporter(store, { frigateUrl: 'http://frigate:5000', cameras, fetch: frigate.fetchImpl, now: () => clock });
   cleanup.push(() => store.close());
   return { store, importer, frigate, setClock: (t: number) => (clock = t) };
@@ -248,6 +274,49 @@ describe('importer', () => {
     expect(c!.clipStart).toBe(at(3, 5) + 28);
     expect(c!.description).toBe("Persoon bij Voordeur, daarna Oprit / Pad, 's nachts");
     expect(t.store.isProcessed('old')).toBe(false);
+  });
+
+  it('waits for a neighbouring alert that is still running, at most ten minutes (0.34.0)', async () => {
+    const reviews = [review('a', OPRIT, at(3, 1), at(3, 1) + 10), review('b', VOORDEUR, at(3, 1) + 5, null)];
+    const t = setupImporter(reviews);
+    t.store.setMeta('activated_at', String(at(3)));
+    t.setClock(at(3, 3));
+    expect(await t.importer.runOnce()).toBe(0);
+    reviews[1]!.end_time = at(3, 3);
+    t.setClock(at(3, 5));
+    expect(await t.importer.runOnce()).toBe(1);
+    expect(t.store.get('a')).toMatchObject({ cameras: ['oprit', 'voordeur'] });
+    // An alert that keeps running does not hold the group back for longer than ten minutes.
+    const long = [review('c', OPRIT, at(3, 1), at(3, 1) + 10), review('d', VOORDEUR, at(3, 1), null)];
+    const t2 = setupImporter(long);
+    t2.store.setMeta('activated_at', String(at(3)));
+    t2.setClock(at(3, 6));
+    expect(await t2.importer.runOnce()).toBe(0);
+    t2.setClock(at(3, 12));
+    expect(await t2.importer.runOnce()).toBe(1);
+    expect(t2.store.get('c')).toMatchObject({ cameras: ['oprit'] });
+  });
+
+  it('takes a person as representative before a more confident car, and counts people per camera (0.34.0)', async () => {
+    const reviews = [
+      review('car', OPRIT, at(3, 1), at(3, 1) + 20, { objects: ['car'], detections: ['car-1'] }),
+      review('p', VOORDEUR, at(3, 1) + 10, at(3, 1) + 30, { objects: ['person-verified', 'person'], detections: ['p-1', 'p-2'], sub_labels: ['Jasper Mevius'] }),
+    ];
+    const t = setupImporter(reviews, { 'car-1': 0.9, 'p-1': 0.8, 'p-2': 0.6 }, { 'car-1': 'car', 'p-1': 'person', 'p-2': 'person' });
+    t.store.setMeta('activated_at', String(at(3)));
+    t.setClock(at(3, 5));
+    await t.importer.runOnce();
+    expect(t.store.get('car')).toMatchObject({ camera: 'voordeur', repEvent: 'p-1', personCount: 2, labels: ['car', 'person'] });
+  });
+
+  it('keeps a 👍 highlight in the archive when it drops out of the selection (0.34.0)', async () => {
+    const t = setupImporter([review('x', VOORDEUR, at(3, 30), at(3, 30) + 15)]);
+    t.store.setMeta('activated_at', String(at(3)));
+    t.setClock(at(4));
+    await t.importer.runOnce();
+    t.store.setFeedback('x', 1);
+    t.store.setSelected('x', false);
+    expect(t.store.archive({ limit: 10, offset: 0 }).items.map((c) => c.id)).toEqual(['x']);
   });
 
   it('catches up after an outage and never re-imports a deleted highlight', async () => {
@@ -434,15 +503,25 @@ describe('feedback learning', () => {
   });
 
   it('counts highlights low once they are known from an answer or a vehicle fact, like a recognised face', async () => {
-    const t2 = setupImporter([review('v1', VOORDEUR, at(4, 20), at(4, 20) + 20), review('v2', VOORDEUR, at(4, 22), at(4, 22) + 20)]);
+    const t2 = setupImporter([
+      review('v1', VOORDEUR, at(4, 20), at(4, 20) + 20),
+      review('v2', TUIN, at(4, 22), at(4, 22) + 20, { objects: ['car'] }),
+      review('v3', OPRIT, at(4, 40), at(4, 40) + 20, { objects: ['person', 'car'] }),
+    ]);
     t2.store.setMeta('activated_at', String(at(1)));
     t2.setClock(at(5));
     await t2.importer.runOnce();
     const base = Object.fromEntries(t2.store.candidatesSince(0).map((c) => [c.id, c.baseScore]));
     t2.store.setAnnotation('v1', 'Tineke Mevius (bewoner)', true);
     t2.store.setAiResult('v2', 'Auto op de oprit', true, at(5), 'grijze Toyota Yaris', true);
+    // A known car with somebody nobody identified is not a known event (0.34.0).
+    t2.store.setAiResult('v3', 'Een persoon loopt langs de rode Tesla.', true, at(5), 'rode Tesla Model 3', true);
     await t2.importer.runOnce();
     const after = Object.fromEntries(t2.store.candidatesSince(0).map((c) => [c.id, c]));
+    expect(after.v3).toMatchObject({ knownFactor: 1, score: base.v3 });
+    // The answered resident stays a highlight (archive, holds its place) but leaves the TV, as before 0.34.0.
+    expect(after.v1!.selected).toBe(true);
+    expect(t2.store.rotation(0, 15).map((c) => c.id)).not.toContain('v1');
     expect(after.v1).toMatchObject({ knownFactor: 0.4, score: Math.round(base.v1! * 0.4 * 100) / 100 });
     expect(after.v2).toMatchObject({ knownFactor: 0.4, score: Math.round(base.v2! * 0.4 * 100) / 100 });
     expect(toSummaryReasons(after.v1!)).toContain('bekend volgens beheer of AI');

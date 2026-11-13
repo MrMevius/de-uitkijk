@@ -41,8 +41,9 @@ describe('who a person question is probably about (0.33.0)', () => {
     t.add('answered', T - 60, 'voordeur');
     t.highlights.setAnnotation('answered', 'Johan Mevius (bewoner)', true);
     t.add('plate', T + 120, 'oprit', { plates: ['G929VD'] });
+    t.highlights.setAiResult('plate', 'Een zwarte Tesla rijdt de oprit op.', true, T + 120, 'zwarte Tesla Model 3', true, null, []);
     t.add('face', T - 300, 'voordeur', { subLabels: ['Tineke Mevius'] });
-    // The AI recognised Tineke's e-up in this highlight itself; she is suggested once, from the stronger face.
+    // Tineke's e-up parked in this highlight says nothing (0.34.0); she is suggested from her face.
     t.highlights.setAiResult('q', 'Een persoon staat op het pad.', true, T, null, false, null, [{ description: 'lichtblauwe Volkswagen e-Up', known: true }]);
     // Too long before: another visit.
     t.add('old', T - 20 * 60, 'voordeur', { subLabels: ['Mark Mevius'] });
@@ -66,5 +67,14 @@ describe('who a person question is probably about (0.33.0)', () => {
       { name: 'Mark Mevius', category: 'familie', text: 'Om 23:24 bij Oprit / Pad: auto van Mark Mevius, jouw antwoord.' },
       { name: 'Tineke Mevius', category: 'bewoner', text: 'In deze highlight: de lichtblauw Volkswagen E-UP van Tineke Mevius (herkend door de AI).' },
     ]);
+  });
+
+  it('suggests nobody from a car parked at the house or the plate Frigate read on it (0.34.0)', () => {
+    const t = setup();
+    const h = t.add('q', T, 'oprit', { plates: ['G929VD'] });
+    // "Een persoon loopt langs de zwarte Tesla": the Tesla is in view, the event is not about it.
+    t.highlights.setAiResult('q', 'Een persoon loopt langs de zwarte Tesla.', true, T, null, false, null, [{ description: 'zwarte Tesla Model 3', known: true }]);
+    t.add('parked', T - 60, 'voordeur', { plates: ['G929VD'] });
+    expect(personSuggestions(h, t.ctx())).toEqual([]);
   });
 });
