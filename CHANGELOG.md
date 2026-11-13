@@ -3,6 +3,10 @@
 Op hoofdlijnen, nieuwste eerst. Wordt getoond op Beheer → Change log. Elke release krijgt hier een kopje
 `## <versie> — <datum>` met een paar bullets; een test controleert dat de bovenste versie gelijk is aan `VERSION`.
 
+## 0.34.1 — 2026-11-13
+
+- "Was dit een goede highlight?" wordt pas gevraagd als de AI de highlight bekeken heeft. Vindt de AI het ruis, dan verdwijnt een open vraag vanzelf.
+
 ## 0.34.0 — 2026-11-13
 
 - Een highlight die de AI ruis vond of die 👎 kreeg, houdt geen andere highlights meer tegen als daarin iets nieuws gebeurt. Een persoon na een geparkeerde auto wordt dus gewoon een highlight.

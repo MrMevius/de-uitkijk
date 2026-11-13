@@ -137,6 +137,21 @@ describe('question generator', () => {
     expect(open.some((q) => q.kind === 'highlight')).toBe(true);
   });
 
+  it('asks about a borderline highlight only after the AI looked, and withdraws it when the AI calls it noise (0.34.1)', () => {
+    const t = setup();
+    const id = t.add({ score: 2.1, labels: ['car'] });
+    const aiStatus = () => ({ enabled: true as const, provider: 'codex' as const, model: 'm', callsToday: 1, dailyCap: 60, lastSuccessAt: null, lastError: null, pending: 1 });
+    const g = t.generator({ aiStatus });
+    g.runOnce();
+    expect(t.questions.list('open').some((q) => q.kind === 'highlight')).toBe(false);
+    // Asked before 0.34.1 (or without AI), then judged noise: withdrawn.
+    t.generator().runOnce();
+    expect(t.questions.list('open').some((q) => q.kind === 'highlight')).toBe(true);
+    t.highlights.setAiResult(id, "Er staan geparkeerde auto's.", false, NOW);
+    g.runOnce();
+    expect(t.questions.list('open').some((q) => q.kind === 'highlight')).toBe(false);
+  });
+
   it('warns after a camera has had no picture for an hour and when Codex looks logged out', () => {
     const t = setup();
     let clock = NOW;

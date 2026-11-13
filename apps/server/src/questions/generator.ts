@@ -135,6 +135,8 @@ export class QuestionGenerator {
         if (!askableVehicle(vehicle, plates) || knownVehicle(vehicle, plates, this.opts.knownVehicles()) || (h && !inArchive(h))) this.questions.withdraw(q.id, now);
       }
       if (q.kind === 'person' && typeof h?.personSize === 'number' && h.personSize < MIN_PERSON_SIZE) this.questions.withdraw(q.id, now);
+      // The AI judged it noise after the question was asked: it is not on the TV, there is nothing to rate (0.34.1).
+      if (q.kind === 'highlight' && h?.aiRealEvent === false) this.questions.withdraw(q.id, now);
     }
 
     // Unknown people: real events with a person whom Frigate did not recognise and nobody named yet. Best first.
@@ -229,9 +231,12 @@ export class QuestionGenerator {
     }
 
     const threshold = this.highlights.threshold();
-    // Borderline highlights without feedback: a quick 👍/👎 teaches the selection the most here.
+    // Borderline highlights without feedback: a quick 👍/👎 teaches the selection the most here. With AI on, only once
+    // the AI has looked (0.34.1): a parked car asked about at 13:35 on 2026-11-13 was judged noise minutes later.
+    const aiOn = this.opts.aiStatus() !== undefined;
     const borderline = recent
       .filter((c) => c.selected && c.hasThumbnail && c.startTime > now - 3 * 86400 && c.feedback === null && c.aiRealEvent !== false)
+      .filter((c) => !aiOn || c.aiStatus !== null)
       .filter((c) => c.score >= threshold && c.score < threshold + 0.6 && freeHighlight(c))
       .sort((a, b) => a.score - b.score);
     for (const c of borderline.slice(0, Math.max(0, room('highlight')))) {
