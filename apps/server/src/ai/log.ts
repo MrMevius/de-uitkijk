@@ -64,6 +64,8 @@ export interface AiLogOptions {
  * Every AI call with prompt, image, schema and raw answer, so administrators can see what the AI was asked and
  * what it said. Kept for 14 days (about 60 calls a day, ~30 KB image each). Logging never breaks a call.
  */
+const AMSTERDAM_DAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Amsterdam', year: 'numeric', month: '2-digit', day: '2-digit' });
+
 export class AiLog {
   private readonly db: DatabaseSync;
   private readonly keepDays: number;
@@ -121,6 +123,19 @@ export class AiLog {
     }
     args.push(Math.min(Math.max(limit, 1), 100));
     return (this.db.prepare(`SELECT ${COLUMNS} FROM ai_calls WHERE ${where.join(' AND ')} ORDER BY id DESC LIMIT ?`).all(...args) as unknown as Row[]).map(fromRow);
+  }
+
+  /**
+   * Calls per purpose on the current Europe/Amsterdam day. The daily caps count from here, so a restart or deployment
+   * no longer starts them at zero (until 0.31.0 the count lived in memory).
+   */
+  callsToday(): Record<AiPurpose, number> {
+    const day = (t: number) => AMSTERDAM_DAY.format(t * 1000);
+    const today = day(this.now());
+    const counts: Record<AiPurpose, number> = { beschrijving: 0, feit: 0, huishouden: 0 };
+    const rows = this.db.prepare('SELECT at, purpose FROM ai_calls WHERE at >= ?').all(this.now() - 26 * 3600) as { at: number; purpose: AiPurpose }[];
+    for (const r of rows) if (r.purpose in counts && day(r.at) === today) counts[r.purpose]++;
+    return counts;
   }
 
   image(id: number): Uint8Array | undefined {

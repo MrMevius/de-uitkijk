@@ -1,7 +1,7 @@
 import type { Fact } from './facts.ts';
 import type { AiVerdict } from './codex.ts';
 import { plateKey, vehicleLabel, type Person, type Vehicle } from '../household/store.ts';
-import { DISTINCT_BODY, makeModel, platesClose, platesIn, vehicleNoun } from '../questions/vehicles.ts';
+import { DISTINCT_BODY, makeModel, platesClose, platesIn, realPlates, vehicleNoun } from '../questions/vehicles.ts';
 
 /** What the AI may rely on: the household register plus raw facts the register does not hold yet (since 0.30.0). */
 export interface Register {
@@ -81,9 +81,6 @@ function inRegister(f: Fact, used: Set<string>): boolean {
   const question = /\(vraag (\d+)\)$/.exec(f.createdBy)?.[1];
   return !f.createdBy.startsWith('AI') && question !== undefined && used.has(`vraag ${question}`);
 }
-
-/** Plates Frigate read that can be real: four characters or more with a digit (Frigate once read "SCHUUR"). */
-const realPlates = (plates: string[]) => plates.map(plateKey).filter((p) => p.length >= 4 && /\d/.test(p));
 
 /** Register vehicles whose plate Frigate read in this event (one misread character allowed). */
 export function plateMatches(framePlates: string[], register: Register): Vehicle[] {

@@ -457,7 +457,7 @@ export function acceptProposal(store: HouseholdStore, id: number, by: string, at
       for (const f of FIELDS) if (!kept[f] && other[f]) fill[f] = other[f];
       if (!kept.ownerId && other.ownerId) fill.ownerId = other.ownerId;
       if (Object.keys(fill).length) store.updateVehicle(kept.id, fill, { at });
-      store.removeVehicle(m);
+      store.removeVehicle(m, at);
     }
   }
   store.decide(id, 'accepted', by, at);

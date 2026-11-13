@@ -285,9 +285,15 @@ export class HouseholdStore {
     return this.person(id);
   }
 
-  removePerson(id: number): boolean {
+  removePerson(id: number, at: number = Date.now() / 1000): boolean {
     this.db.prepare('UPDATE household_vehicles SET owner_id = NULL WHERE owner_id = ?').run(id);
-    return this.db.prepare('DELETE FROM household_people WHERE id = ?').run(id).changes > 0;
+    return this.removed(this.db.prepare('DELETE FROM household_people WHERE id = ?').run(id).changes > 0, at);
+  }
+
+  /** Removals count as a change of the register (since 0.31.0), see `lastChange`. */
+  private removed(changed: boolean, at: number): boolean {
+    if (changed) this.setMeta('removed_at', String(at));
+    return changed;
   }
 
   /** Puts `fromId` into `intoId`: its name becomes an alias, its vehicles move over. */
@@ -298,7 +304,7 @@ export class HouseholdStore {
     const aliases = [...new Set([...into.aliases, from.name, ...from.aliases].filter((a) => a.toLowerCase() !== into.name.toLowerCase()))];
     this.db.prepare('UPDATE household_vehicles SET owner_id = ? WHERE owner_id = ?').run(intoId, fromId);
     this.updatePerson(intoId, { aliases, role: into.role || from.role, relation: into.relation || from.relation }, { sources: from.sources, at });
-    this.db.prepare('DELETE FROM household_people WHERE id = ?').run(fromId);
+    this.removed(this.db.prepare('DELETE FROM household_people WHERE id = ?').run(fromId).changes > 0, at);
     return this.person(intoId);
   }
 
@@ -326,16 +332,18 @@ export class HouseholdStore {
     return this.vehicle(id);
   }
 
-  /** Epoch seconds of the newest change to a person or vehicle; null when the register is empty. */
+  /** Epoch seconds of the newest change to a person or vehicle, removals included; null when nothing changed yet. */
   lastChange(): number | null {
     const row = this.db
-      .prepare('SELECT MAX(at) AS at FROM (SELECT MAX(updated_at) AS at FROM household_people UNION ALL SELECT MAX(updated_at) FROM household_vehicles)')
+      .prepare(
+        "SELECT MAX(at) AS at FROM (SELECT MAX(updated_at) AS at FROM household_people UNION ALL SELECT MAX(updated_at) FROM household_vehicles UNION ALL SELECT CAST(value AS REAL) FROM household_meta WHERE key = 'removed_at')",
+      )
       .get() as { at: number | null };
     return row.at;
   }
 
-  removeVehicle(id: number): boolean {
-    return this.db.prepare('DELETE FROM household_vehicles WHERE id = ?').run(id).changes > 0;
+  removeVehicle(id: number, at: number = Date.now() / 1000): boolean {
+    return this.removed(this.db.prepare('DELETE FROM household_vehicles WHERE id = ?').run(id).changes > 0, at);
   }
 
   startRun(by: string, at: number): Run {

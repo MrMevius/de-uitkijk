@@ -14,7 +14,11 @@ export interface FactWorkerOptions {
   maxAttempts?: number;
   now?: () => number;
   log?: (msg: string) => void;
+  /** Fact calls logged today (the AI log), so the cap survives a restart (since 0.31.0). */
+  callsToday?: () => number;
 }
+
+const amsterdamDay = (epochS: number) => new Date(epochS * 1000).toLocaleDateString('sv-SE', { timeZone: 'Europe/Amsterdam' });
 
 /**
  * Turns answers about people into facts: the AI looks at the highlight's still together with the answer
@@ -45,6 +49,7 @@ export class FactWorker {
       maxAttempts: 3,
       now: () => Date.now() / 1000,
       log: () => {},
+      callsToday: () => 0,
       ...options,
     };
   }
@@ -63,10 +68,10 @@ export class FactWorker {
 
   /** Handles at most one answered question. Returns true when one was attempted. */
   async runOnce(): Promise<boolean> {
-    const today = new Date(this.opts.now() * 1000).toDateString();
+    const today = amsterdamDay(this.opts.now());
     if (today !== this.day) {
       this.day = today;
-      this.calls = 0;
+      this.calls = this.opts.callsToday();
     }
     if (this.calls >= this.opts.dailyCap) return false;
     const q = this.questions.factPending(this.opts.maxAttempts)[0];

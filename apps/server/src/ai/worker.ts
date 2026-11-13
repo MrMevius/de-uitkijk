@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import type { Camera } from '@uitkijk/shared';
 import { RESELECT_S } from '../highlights/importer.ts';
 import type { HighlightStore, StoredCandidate } from '../highlights/store.ts';
+import { realPlates } from '../questions/vehicles.ts';
 import type { Describer } from './codex.ts';
 import { checkVerdict, knownPlates, plateCertainties, plateMatches, type Register } from './knowledge.ts';
 
@@ -24,6 +25,8 @@ export interface AiWorkerOptions {
   still?: (c: StoredCandidate) => Promise<Uint8Array | undefined>;
   /** Converts the stored WebP thumbnail to JPEG; override in tests. */
   toJpeg?: (webp: Uint8Array) => Promise<Uint8Array>;
+  /** AI calls logged today per purpose (the AI log), so the cap survives a restart (since 0.31.0). */
+  callsToday?: () => Record<'beschrijving' | 'feit' | 'huishouden', number>;
 }
 
 export interface AiStatus {
@@ -35,6 +38,8 @@ export interface AiStatus {
   lastSuccessAt: number | null;
   lastError: string | null;
   pending: number;
+  /** Other AI calls today, outside the description cap: facts from answers and household bundling. */
+  otherCallsToday?: { feit: number; huishouden: number };
 }
 
 /** WebP → JPEG with ffmpeg through pipes (no files). */
@@ -89,6 +94,7 @@ export class AiWorker {
       register: () => ({ people: [], vehicles: [] }),
       still: async () => undefined,
       toJpeg: ffmpegToJpeg,
+      callsToday: () => ({ beschrijving: 0, feit: 0, huishouden: 0 }),
       ...options,
     };
   }
@@ -108,15 +114,17 @@ export class AiWorker {
   }
 
   status(): AiStatus {
+    const logged = this.opts.callsToday();
     return {
       enabled: true,
       provider: 'codex',
       model: this.opts.model,
-      callsToday: this.day === dayFormat.format(this.opts.now() * 1000) ? this.callsToday : 0,
+      callsToday: Math.max(logged.beschrijving, this.day === dayFormat.format(this.opts.now() * 1000) ? this.callsToday : 0),
       dailyCap: this.opts.dailyCap,
       lastSuccessAt: this.lastSuccessAt,
       lastError: this.lastError,
       pending: this.store.aiPending(this.opts.now() - RESELECT_S, this.opts.maxAttempts).length,
+      otherCallsToday: { feit: logged.feit, huishouden: logged.huishouden },
     };
   }
 
@@ -126,7 +134,8 @@ export class AiWorker {
     const today = dayFormat.format(now * 1000);
     if (today !== this.day) {
       this.day = today;
-      this.callsToday = 0;
+      // After a restart the calls made earlier today still count.
+      this.callsToday = this.opts.callsToday().beschrijving;
     }
     if (this.callsToday >= this.opts.dailyCap) return false;
     const next = this.store.aiPending(now - RESELECT_S, this.opts.maxAttempts)[0];
@@ -138,7 +147,8 @@ export class AiWorker {
       const still = await this.opts.still(next).catch(() => undefined);
       const register = this.opts.register();
       const facts = this.opts.facts();
-      const matches = plateMatches(next.plates, register);
+      const plates = realPlates(next.plates);
+      const matches = plateMatches(plates, register);
       const objects = next.labels.map((l) => l.replace(/-verified$/, ''));
       const answer = await this.describe(still ?? (await this.opts.toJpeg(webp)), {
         cameraName: this.names.get(next.camera) ?? next.camera,
@@ -147,7 +157,7 @@ export class AiWorker {
         recognized: next.subLabels,
         facts,
         ...(next.annotation ? { annotation: next.annotation } : {}),
-        ...(next.plates.length ? { plates: next.plates } : {}),
+        ...(plates.length ? { plates } : {}),
         ...(matches.length ? { certain: plateCertainties(matches, register) } : {}),
       });
       // An administrator's answer outranks face recognition: no name is put in for it then.

@@ -130,7 +130,7 @@ export function answerHousehold(q: Question, body: Record<string, unknown>, ctx:
     const cited = new Set(d.facts.map((f) => f.id));
     for (const id of option?.retire ?? []) {
       const old = d.facts.find((f) => f.id === id);
-      if (cited.has(id) && facts?.remove(id)) register.log(`Feit ${id} vervallen door vraag ${q.id}: ${old?.text ?? ''}`, by, now);
+      if (cited.has(id) && facts?.remove(id, now)) register.log(`Feit ${id} vervallen door vraag ${q.id}: ${old?.text ?? ''}`, by, now);
     }
     const proposal = register.proposals('pending').find((p) => p.kind === 'question' && p.summary === d.summary);
     if (proposal) register.decide(proposal.id, 'accepted', by, now);

@@ -8,6 +8,7 @@ interface AiStatus {
   model?: string;
   callsToday?: number;
   dailyCap?: number;
+  otherCallsToday?: { feit: number; huishouden: number };
   lastSuccessAt?: number | null;
   lastError?: string | null;
   pending?: number;
@@ -143,7 +144,7 @@ export function AiTab() {
           <p className="ui-muted">Laden…</p>
         ) : ai.enabled ? (
           <div className="ui-stats">
-            <Stat label="Vandaag" value={`${ai.callsToday} / ${ai.dailyCap}`} hint="beschrijvingen van het dagmaximum" />
+            <Stat label="Vandaag" value={`${ai.callsToday} / ${ai.dailyCap}`} hint={`beschrijvingen van het dagmaximum${ai.otherCallsToday ? ` · plus ${ai.otherCallsToday.feit} feit, ${ai.otherCallsToday.huishouden} huishouden` : ''}`} />
             <Stat label="Wachtend" value={ai.pending ?? 0} hint="highlights in de wachtrij" />
             <Stat label="Laatste gelukt" value={ai.lastSuccessAt ? highlightTime(ai.lastSuccessAt) : 'nog niet'} level={ai.lastError ? 'warn' : 'ok'} hint={ai.lastError ? 'met een fout daarna' : 'zonder fouten'} />
             <Stat label="Model" value={ai.model} hint="Codex met je ChatGPT-login" />

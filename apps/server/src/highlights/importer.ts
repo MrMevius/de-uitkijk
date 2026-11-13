@@ -12,6 +12,7 @@ import {
   type Baseline,
   type ReviewItem,
 } from './selection.ts';
+import { realPlates } from '../questions/vehicles.ts';
 import type { CandidateRecord, HighlightStore, StoredCandidate } from './store.ts';
 
 export interface ImporterOptions {
@@ -95,8 +96,7 @@ export function personSize(events: FrigateEvent[], camera: string): number {
 
 /** Plates Frigate's LPR read on these detections, upper case without spaces or dashes, deduplicated. */
 export function platesOf(events: FrigateEvent[]): string[] {
-  const plates = events.map((e) => (e.data?.recognized_license_plate ?? '').toUpperCase().replace(/[^A-Z0-9]/g, ''));
-  return [...new Set(plates.filter((p) => p.length >= 4))];
+  return realPlates(events.map((e) => e.data?.recognized_license_plate ?? ''));
 }
 
 /** Selection, feedback and known factors are recalculated over this period; older highlights stay as they are. */

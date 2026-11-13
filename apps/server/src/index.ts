@@ -86,6 +86,7 @@ const ai =
         facts: () => promptKnowledge(register(), facts?.list() ?? []),
         register,
         still: highlightStill,
+        ...(aiLog ? { callsToday: () => aiLog.callsToday() } : {}),
         // `app` exists by the time the worker logs (it starts after the app is built).
         log: (msg) => app.log.warn(msg),
       })
@@ -316,6 +317,7 @@ const factWorker =
         cameras: config.cameras,
         still: highlightStill,
         toJpeg: ffmpegToJpeg,
+        ...(aiLog ? { callsToday: () => aiLog.callsToday().feit } : {}),
         log: (msg) => app.log.warn(msg),
       })
     : undefined;

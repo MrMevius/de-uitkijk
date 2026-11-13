@@ -432,8 +432,11 @@ describe('learning from answers (0.13)', () => {
       { description: 'rode Tesla Model 3', known: true },
       { description: 'zwarte kleine hatchback, merk en model niet duidelijk herkenbaar', known: false },
     ]);
-    const parked = t.add({ labels: ['car'], selected: false });
+    const parked = t.add({ labels: ['car'] });
     t.highlights.setAiResult(parked, 'Een auto staat geparkeerd.', true, NOW, null, false, false, [{ description: 'witte Renault Kangoo bestelbus', known: false }]);
+    // An event that is no highlight (any more) is not asked about: it is not in the archive (0.31.0).
+    const dropped = t.add({ labels: ['car'], selected: false });
+    t.highlights.setAiResult(dropped, 'Een auto rijdt weg.', true, NOW, null, false, false, [{ description: 'grijze Peugeot 108', known: false }]);
     t.generator().runOnce();
     const open = t.questions.list('open');
     // The person question comes first for the first highlight; its vehicle waits until that one is answered.

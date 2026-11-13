@@ -35,6 +35,14 @@ export function makeModel(description: string): string | null {
   return model ? `${brand} ${model}` : brand;
 }
 
+/**
+ * A plate Frigate read that can be real: four characters or more with a digit, upper case without dashes or spaces.
+ * Frigate once read "SCHUUR" from the shed; Dutch plates always have a digit. One rule everywhere since 0.31.0 (the
+ * importer, the questions and the AI each had their own before).
+ */
+export const realPlates = (plates: string[]): string[] =>
+  [...new Set(plates.map((p) => p.toUpperCase().replace(/[^A-Z0-9]/g, '')))].filter((p) => p.length >= 4 && /\d/.test(p));
+
 /** Plates in a description, upper case without dashes. */
 export const platesIn = (description: string) => [...description.matchAll(PLATE)].map((m) => m[0].toUpperCase().replace(/-/g, ''));
 

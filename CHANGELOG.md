@@ -3,6 +3,13 @@
 Op hoofdlijnen, nieuwste eerst. Wordt getoond op Beheer → Change log. Elke release krijgt hier een kopje
 `## <versie> — <datum>` met een paar bullets; een test controleert dat de bovenste versie gelijk is aan `VERSION`.
 
+## 0.31.0 — 2026-11-13
+
+- Het dagmaximum van de AI telt na een herstart of update gewoon door; Beheer → AI toont ook de aanroepen voor feiten en het huishouden.
+- Eén regel voor wat een kenteken is: tekst als "SCHUUR" gaat niet meer naar de AI of in vragen.
+- Een verwijderd feit of een verwijderd of samengevoegd item in Huishouden telt als wijziging: oudere beschrijvingen worden opnieuw gemaakt voor er een voertuigvraag over komt.
+- Voertuigvragen alleen nog over highlights, niet over gebeurtenissen die je in het archief niet terugvindt.
+
 ## 0.30.1 — 2026-11-13
 
 - Geen reeksen bijna gelijke clips meer in het archief: een highlight die uit het rekenvenster van twee dagen viel, liet de volgende van dezelfde reeks alsnog highlight worden. Oudere highlights zijn eenmalig rechtgezet (17 eruit); highlights met een antwoord of 👍 bleven staan.

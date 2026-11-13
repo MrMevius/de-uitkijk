@@ -9,7 +9,7 @@ import type { FactStore } from '../ai/facts.ts';
 import type { HouseholdStore } from '../household/store.ts';
 import { householdQuestionApplies, householdQuestions } from './household.ts';
 import type { QuestionStore } from './store.ts';
-import { askableVehicle, knownVehicle, normalizeVehicle, vehicleNoun } from './vehicles.ts';
+import { askableVehicle, knownVehicle, normalizeVehicle, realPlates, vehicleNoun } from './vehicles.ts';
 
 export interface GeneratorOptions {
   cameras: Camera[];
@@ -39,8 +39,6 @@ const NOISE_THRESHOLD = 5;
 export const MIN_PERSON_SIZE = 0.04;
 /** Above this a person is big enough; among them the highest score is asked first. */
 const CLEAR_PERSON_SIZE = 0.3;
-/** Frigate reads text on a shed as a plate ("SCHUUR"); Dutch plates always have a digit. */
-const realPlates = (plates: string[]) => plates.filter((p) => /\d/.test(p));
 const CAMERA_DOWN_S = 3600;
 
 const dayKey = (epochS: number) => new Date(epochS * 1000).toLocaleDateString('sv-SE', { timeZone: 'Europe/Amsterdam' });
@@ -128,13 +126,13 @@ export class QuestionGenerator {
     const freeHighlight = (c: StoredCandidate) => !this.questions.hasForHighlight(c.id);
 
     // Open questions the rules would no longer ask are withdrawn: a vehicle the AI could not tell apart or the owner
-    // already told about, a person too small to recognise.
+    // already told about, or on an event that is no highlight (any more), a person too small to recognise.
     for (const q of this.questions.list('open', 1000)) {
       const h = q.highlightId ? this.highlights.get(q.highlightId) : undefined;
       if (q.kind === 'vehicle') {
         const vehicle = String(q.data.vehicle ?? '');
         const plates = realPlates(h?.plates ?? []);
-        if (!askableVehicle(vehicle, plates) || knownVehicle(vehicle, plates, this.opts.knownVehicles())) this.questions.withdraw(q.id, now);
+        if (!askableVehicle(vehicle, plates) || knownVehicle(vehicle, plates, this.opts.knownVehicles()) || (h && !inArchive(h))) this.questions.withdraw(q.id, now);
       }
       if (q.kind === 'person' && typeof h?.personSize === 'number' && h.personSize < MIN_PERSON_SIZE) this.questions.withdraw(q.id, now);
     }
@@ -176,7 +174,9 @@ export class QuestionGenerator {
     const vehicles: { c: StoredCandidate; vehicle: string; key: string }[] = [];
     for (const c of [...recent].sort((a, b) => b.startTime - a.startTime)) {
       // A highlight waiting for a new description is judged again first.
-      if (!c.hasThumbnail || c.aiRedo || this.questions.hasOpenForHighlight(c.id)) continue;
+      // Only about highlights (since 0.31.0): an event that dropped out of the selection is not in the archive, and
+      // the same vehicle comes back in a later highlight.
+      if (!c.hasThumbnail || !inArchive(c) || c.aiRedo || this.questions.hasOpenForHighlight(c.id)) continue;
       const seen = [...(c.aiVehicle && !c.aiVehicleKnown ? [c.aiVehicle] : []), ...c.aiVehicles.filter((v) => !v.known).map((v) => v.description)];
       for (const vehicle of seen) {
         const key = normalizeVehicle(vehicle);
@@ -204,7 +204,7 @@ export class QuestionGenerator {
         key: `vehicle:${key}`,
         highlightId: c.id,
         title: `Van wie is deze ${noun}?`,
-        body: `De AI ziet: ${sentence(vehicle)} ${this.name(c.camera)}, ${timeText(c.startTime)}.${platesText(c.plates, vehicle)} Klopt de omschrijving niet precies, pas hem dan aan.`,
+        body: `De AI ziet: ${sentence(vehicle)} ${this.name(c.camera)}, ${timeText(c.startTime)}.${platesText(realPlates(c.plates), vehicle)} Klopt de omschrijving niet precies, pas hem dan aan.`,
         data: { vehicle, noun },
       });
     }
@@ -301,6 +301,9 @@ export class QuestionGenerator {
     return added;
   }
 }
+
+/** A highlight, or an event an administrator answered about: both are in the archive. */
+const inArchive = (c: Pick<StoredCandidate, 'selected' | 'annotation'>) => c.selected || Boolean(c.annotation);
 
 /** Person size capped at "clearly visible", so big people are sorted by score among themselves. */
 const visibility = (c: StoredCandidate) => Math.min(c.personSize ?? CLEAR_PERSON_SIZE, CLEAR_PERSON_SIZE);

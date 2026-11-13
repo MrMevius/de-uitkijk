@@ -33,6 +33,7 @@ export class FactStore {
         created_by TEXT NOT NULL,
         created_at REAL NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS ai_facts_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
     `);
   }
 
@@ -71,13 +72,20 @@ export class FactStore {
     return this.list().find((f) => f.id === Number(lastInsertRowid))!;
   }
 
-  /** Epoch seconds of the newest added or replaced fact; null without facts. */
+  /**
+   * Epoch seconds of the newest added, replaced or removed fact; null without any. A removal counts since 0.31.0:
+   * descriptions written with a fact that is gone are out of date too.
+   */
   lastChange(): number | null {
-    const row = this.db.prepare('SELECT MAX(created_at) AS at FROM ai_facts').get() as { at: number | null };
+    const row = this.db
+      .prepare("SELECT MAX(at) AS at FROM (SELECT MAX(created_at) AS at FROM ai_facts UNION ALL SELECT CAST(value AS REAL) FROM ai_facts_meta WHERE key = 'removed_at')")
+      .get() as { at: number | null };
     return row.at;
   }
 
-  remove(id: number): boolean {
-    return this.db.prepare('DELETE FROM ai_facts WHERE id = ?').run(id).changes > 0;
+  remove(id: number, at: number = Date.now() / 1000): boolean {
+    const removed = this.db.prepare('DELETE FROM ai_facts WHERE id = ?').run(id).changes > 0;
+    if (removed) this.db.prepare("INSERT INTO ai_facts_meta (key, value) VALUES ('removed_at', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(String(at));
+    return removed;
   }
 }
