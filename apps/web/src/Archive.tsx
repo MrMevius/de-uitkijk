@@ -114,6 +114,15 @@ export function ArchiveView({ embedded = false }: { embedded?: boolean }) {
     );
   };
 
+  // Frigate's face recognition named the wrong person (since 0.36.0).
+  const notRecognised = (h: HighlightSummary, person: string) => {
+    if (!confirm(`Is dit niet ${person}? De naam gaat eraf en je krijgt de vraag "Wie is dit?".`)) return;
+    send('POST', `/api/admin/highlights/${encodeURIComponent(h.id)}/not-recognised`, { name: person }).then(
+      () => setItems((cur) => cur.map((i) => (i.id === h.id ? { ...i, recognized: i.recognized.filter((n) => n !== person) } : i))),
+      (err: Error) => setError(err.message),
+    );
+  };
+
   const nameOf = (id: string) => cameras.find((c) => c.id === id)?.name ?? id;
 
   return (
@@ -213,6 +222,11 @@ export function ArchiveView({ embedded = false }: { embedded?: boolean }) {
                     <button className={h.feedback === -1 ? 'ui-btn ui-btn--small ui-btn--on' : 'ui-btn ui-btn--small'} onClick={() => feedback(h, -1)} title="Geen goede keuze">
                       👎
                     </button>
+                    {(h.recognized ?? []).map((n) => (
+                      <button key={n} className="ui-btn ui-btn--small" onClick={() => notRecognised(h, n)} title={`Frigate herkende ${n}`}>
+                        Niet {n.split(' ')[0]}
+                      </button>
+                    ))}
                     <button className="ui-btn ui-btn--small ui-btn--danger" onClick={() => remove(h)}>
                       <Icon name="trash" size={14} />
                       Verwijderen

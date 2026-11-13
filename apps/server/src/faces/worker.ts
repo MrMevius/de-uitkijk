@@ -69,8 +69,14 @@ export class FaceWorker {
         continue;
       }
       const name = matchFaceName(q.faceName, this.faces.knownNames());
-      const attempts = this.faces.attemptsFor(h.detections).slice(0, this.opts.maxPerAnswer);
       try {
+        // Frigate's own crops only when they show a face: frontal enough, sharp and not overexposed (since 0.36.0;
+        // before, every crop was learned, infrared blobs included).
+        const attempts = [];
+        for (const a of this.faces.attemptsFor(h.detections)) {
+          if (attempts.length >= this.opts.maxPerAnswer) break;
+          if (await this.faces.usable(await this.faces.image(a.file))) attempts.push(a);
+        }
         if (attempts.length) {
           for (const a of attempts) await this.faces.classify(name, a.file);
           this.questions.setFace(q.id, 'done', name, `${photos(attempts.length)} toegevoegd aan ${name}`);

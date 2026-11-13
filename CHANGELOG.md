@@ -3,6 +3,11 @@
 Op hoofdlijnen, nieuwste eerst. Wordt getoond op Beheer → Change log. Elke release krijgt hier een kopje
 `## <versie> — <datum>` met een paar bullets; een test controleert dat de bovenste versie gelijk is aan `VERSION`.
 
+## 0.36.0 — 2026-11-13
+
+- Herkent Frigate iemand verkeerd, dan staat bij de highlight "Dit is niet …" (bij de vraag) of "Niet …" (in het archief). De naam gaat eraf, de highlight telt weer gewoon mee en wordt opnieuw beschreven, en daarna volgt de vraag "Wie is dit?".
+- Gezichten die Frigate leert, moeten nu scherp en niet overbelicht zijn. Wazige infraroodvlekken komen niet meer in de gezichtenbibliotheek; twee daarvan bij Roel zorgden ervoor dat Frigate iedereen met een donkere muts voor Roel hield.
+
 ## 0.35.0 — 2026-11-13
 
 - Auto's uit het huishouden met een kenteken staan voortaan ook in Frigate. Frigate zet dan de naam bij de auto ("Tesla Model 3 van Mark"), ook in de Frigate-app, en verbetert een kenteken dat het net verkeerd leest. Wijzigingen in het register gaan vanzelf mee; onder Beheer → Huishouden staat hoeveel auto's erin staan.

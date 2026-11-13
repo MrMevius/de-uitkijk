@@ -59,6 +59,12 @@ function setup() {
   return { highlights, questions, add, generator, faceStub };
 }
 
+/** Grey pixels for the face quality check: a sharp pattern, or a white blob for images 121 px wide (0.36.0). */
+const testGrey = async (image: Uint8Array) => {
+  const width = image.length >= 30 ? (image[24]! | (image[25]! << 8) | (image[26]! << 16)) + 1 : 0;
+  return Uint8Array.from({ length: 64 * 64 }, (_, i) => (width === 121 ? 250 : ((i >> 2) + (i >> 8)) % 2 ? 200 : 60));
+};
+
 /** A minimal extended WebP header with the given size. */
 function webp(width: number, height: number): Uint8Array<ArrayBuffer> {
   const b = new Uint8Array(30);
@@ -248,6 +254,29 @@ describe('answering questions', () => {
     const answer = (id: number, payload: object) => app.inject({ method: 'POST', url: `/api/admin/questions/${id}/answer`, headers, payload });
     return { ...t, facts, app, headers, answer };
   }
+
+  it('takes a wrong Frigate name off a highlight, then asks who it is (0.36.0)', async () => {
+    const t = await api();
+    // 2026-11-13: Frigate called a man under a dark cap "Roel" at 100 %; the score had the × 0.4 of a known person.
+    const id = t.add({ ai: { real: true }, subLabels: ['Roel Snippe'], score: 1.8, reasons: ['fiets', 'bekende persoon'], description: 'Roel Snippe bij Voordeur' });
+    t.questions.add({ kind: 'highlight', key: `highlight:${id}`, highlightId: id, title: 'Was dit een goede highlight?', body: '' }, NOW);
+    const list = (await t.app.inject({ url: '/api/admin/questions', headers: t.headers })).json() as { highlight: { recognized: string[] } }[];
+    expect(list[0]!.highlight.recognized).toEqual(['Roel Snippe']);
+    const wrong = await t.app.inject({ method: 'POST', url: `/api/admin/highlights/${id}/not-recognised`, headers: t.headers, payload: { name: 'Jasper Mevius' } });
+    expect(wrong.statusCode).toBe(404);
+    const res = await t.app.inject({ method: 'POST', url: `/api/admin/highlights/${id}/not-recognised`, headers: t.headers, payload: { name: 'Roel Snippe' } });
+    expect(res.statusCode).toBe(200);
+    expect(t.highlights.get(id)).toMatchObject({
+      subLabels: [], rejectedNames: ['Roel Snippe'], baseScore: 4.5, score: 4.5, reasons: ['fiets'], description: 'Persoon bij Voordeur', aiRedo: true,
+    });
+    expect(t.questions.openFor(id, 'highlight')).toBeUndefined();
+    // "Wie is dit?" waits for the new description, then follows.
+    t.generator().runOnce();
+    expect(t.questions.openFor(id, 'person')).toBeUndefined();
+    t.highlights.setAiResult(id, 'Een man met een muts staat bij de voordeur.', true, NOW);
+    t.generator().runOnce();
+    expect(t.questions.openFor(id, 'person')).toBeDefined();
+  });
 
   it('applies one answer to the other highlights of the same visit that were ticked (0.27.0)', async () => {
     const t = await api();
@@ -504,14 +533,21 @@ describe('learning from answers (0.13)', () => {
     const q = t.questions.list('all')[0]!;
     t.questions.resolve(q.id, 'answered', 'tineke (bewoner)', 'mark', NOW);
     t.questions.setFace(q.id, 'pending', 'tineke');
-    const train = [`${ev}-1794150563.53-unknown-0.webp`, `${ev}-1794150564.1-Tineke Mevius-0.61.webp`, '1794150000.1-other-1794150001.2-unknown-0.webp'];
+    const train = [
+      `${ev}-1794150563.53-unknown-0.webp`,
+      `${ev}-1794150564.1-Tineke Mevius-0.61.webp`,
+      '1794150000.1-other-1794150001.2-unknown-0.webp',
+      `${ev}-1794150565.2-Tineke Mevius-0.9.webp`,
+    ];
     const calls: { url: string; body?: string }[] = [];
     const fetchStub = (async (url: string, init?: RequestInit) => {
       calls.push({ url: decodeURIComponent(url), ...(typeof init?.body === 'string' ? { body: init.body } : {}) });
       if (url.endsWith('/api/faces')) return Response.json({ 'Tineke Mevius': ['a.webp'], 'Mark Mevius': [], train });
+      // The best guess (0.9) is an infrared blob: not learned (0.36.0).
+      if (url.includes('/clips/faces/train/')) return new Response(decodeURIComponent(url).includes('0.9.webp') ? webp(121, 130) : webp(120, 150));
       return new Response(null, { status: url.includes('/classify') ? 200 : 404 });
     }) as typeof fetch;
-    await new FaceWorker(t.questions, t.highlights, new FaceLibrary({ frigateUrl: 'https://f', fetch: fetchStub })).runOnce();
+    await new FaceWorker(t.questions, t.highlights, new FaceLibrary({ frigateUrl: 'https://f', fetch: fetchStub, grey: testGrey })).runOnce();
 
     expect(calls.filter((c) => c.url.includes('/classify'))).toEqual([
       { url: 'https://f/api/faces/train/Tineke Mevius/classify', body: JSON.stringify({ training_file: train[1] }) },
@@ -529,9 +565,12 @@ describe('learning from answers (0.13)', () => {
       t.questions.add({ kind: 'person', key: `person:${n}`, highlightId: h, title: 'Wie is dit?', body: 'x' }, NOW + n);
     }
     for (const q of t.questions.list('all')) t.questions.setFace(q.id, 'pending', 'Oma');
-    const fetchStub = (async (url: string) =>
-      url.endsWith('/api/faces') ? Response.json({ train: [`${ev}-1794150563.53-unknown-0.webp`] }) : new Response('{"detail":"admin required"}', { status: 403 })) as typeof fetch;
-    const worker = new FaceWorker(t.questions, t.highlights, new FaceLibrary({ frigateUrl: 'https://f', fetch: fetchStub }), { maxAttempts: 2 });
+    const fetchStub = (async (url: string) => {
+      if (url.endsWith('/api/faces')) return Response.json({ train: [`${ev}-1794150563.53-unknown-0.webp`] });
+      if (url.includes('/clips/faces/train/')) return new Response(webp(120, 150));
+      return new Response('{"detail":"admin required"}', { status: 403 });
+    }) as typeof fetch;
+    const worker = new FaceWorker(t.questions, t.highlights, new FaceLibrary({ frigateUrl: 'https://f', fetch: fetchStub, grey: testGrey }), { maxAttempts: 2 });
     await worker.runOnce();
     await worker.runOnce();
     const byHighlight = Object.fromEntries(t.questions.list('all').map((q) => [q.highlightId, q]));
@@ -590,7 +629,7 @@ describe('learning from answers (0.13)', () => {
       return new Response(null, { status: 404 });
     }) as typeof fetch;
     const crop = async (_: Uint8Array, r: { y: number }) => (expect(r.y).toBeGreaterThanOrEqual(0), new TextEncoder().encode(`|${frame}|`));
-    const faces = new FaceLibrary({ frigateUrl: 'https://f', fetch: fetchStub, rebuildDelayMs: 60_000 });
+    const faces = new FaceLibrary({ frigateUrl: 'https://f', fetch: fetchStub, rebuildDelayMs: 60_000, grey: testGrey });
     await new FaceWorker(t.questions, t.highlights, faces, {
       recording: new RecordingFaces({ frigateUrl: 'https://f', fetch: fetchStub, crop, perPerson: 4 }),
       maxFromRecording: 2,
@@ -713,3 +752,14 @@ describe('learning from answers (0.13)', () => {
     expect(t.highlights.archive({ limit: 10, offset: 0 }).items.map((c) => c.id)).toEqual([old]);
   });
 });
+
+describe('face quality (0.36.0)', () => {
+  it('rejects blurred and overexposed faces', async () => {
+    const { clearFace } = await import('../src/faces/library.ts');
+    expect(clearFace(await testGrey(webp(120, 150)))).toBe(true);
+    expect(clearFace(new Uint8Array(64 * 64).fill(250))).toBe(false);
+    // Smooth gradient: no edges, a blur.
+    expect(clearFace(Uint8Array.from({ length: 64 * 64 }, (_, i) => 80 + (i % 64)))).toBe(false);
+  });
+});
+

@@ -16,6 +16,7 @@ const h = (id: string, score = 3): HighlightSummary => ({
   aiDescribed: false,
   aiNoise: false,
   annotation: null,
+  recognized: [],
   score,
   reasons: [],
   feedback: null,

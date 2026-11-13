@@ -1,6 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
 import type { HighlightSummary } from '@uitkijk/shared';
-import { REPLAY_MINUTES, SELECTION, THRESHOLD_RANGE } from './selection.ts';
+import { KNOWN_FACTOR, REPLAY_MINUTES, SELECTION, THRESHOLD_RANGE } from './selection.ts';
 
 /** A scored group of Frigate alerts. Highlights are the selected candidates. */
 export interface CandidateRecord {
@@ -78,6 +78,7 @@ interface Row {
   plates: string | null;
   person_size: number | null;
   person_count: number | null;
+  rejected_names: string | null;
 }
 
 export interface StoredCandidate extends CandidateRecord {
@@ -112,10 +113,12 @@ export interface StoredCandidate extends CandidateRecord {
   /** Waiting for a new AI description after an administrator's answer. */
   aiRedo: boolean;
   plates: string[];
+  /** Names Frigate's face recognition gave that an administrator said are wrong (since 0.36.0). */
+  rejectedNames: string[];
 }
 
 const COLUMNS =
-  'id, start_time, end_time, cameras, camera, frigate_camera, rep_event, clip_start, clip_end, event_start, event_end, labels, sub_labels, score, reasons, description, selected, feedback, deleted, thumbnail IS NOT NULL AS has_thumbnail, ai_description, ai_real, ai_status, ai_attempts, ai_updated, base_score, feedback_adj, frame_time, ai_vehicle, ai_vehicle_known, annotation, detections, annotation_known, known_factor, ai_person_marker, ai_redo, ai_vehicles, plates, person_size, person_count';
+  'id, start_time, end_time, cameras, camera, frigate_camera, rep_event, clip_start, clip_end, event_start, event_end, labels, sub_labels, score, reasons, description, selected, feedback, deleted, thumbnail IS NOT NULL AS has_thumbnail, ai_description, ai_real, ai_status, ai_attempts, ai_updated, base_score, feedback_adj, frame_time, ai_vehicle, ai_vehicle_known, annotation, detections, annotation_known, known_factor, ai_person_marker, ai_redo, ai_vehicles, plates, person_size, person_count, rejected_names';
 
 const fromRow = (r: Row): StoredCandidate => ({
   id: r.id,
@@ -158,6 +161,7 @@ const fromRow = (r: Row): StoredCandidate => ({
   plates: r.plates ? (JSON.parse(r.plates) as string[]) : [],
   personSize: r.person_size,
   personCount: r.person_count,
+  rejectedNames: r.rejected_names ? (JSON.parse(r.rejected_names) as string[]) : [],
 });
 
 export const toSummary = (c: StoredCandidate): HighlightSummary => ({
@@ -173,6 +177,7 @@ export const toSummary = (c: StoredCandidate): HighlightSummary => ({
   aiDescribed: c.aiDescription !== null,
   aiNoise: c.aiRealEvent === false,
   annotation: c.annotation,
+  recognized: c.subLabels,
   score: c.score,
   reasons: [
     ...c.reasons,
@@ -276,6 +281,8 @@ export class HighlightStore {
       ['person_size', 'REAL'],
       // Added in 0.34.0 (a recognised name only in the description when there was one person).
       ['person_count', 'INTEGER'],
+      // Added in 0.36.0 (an administrator can say a name Frigate recognised is wrong).
+      ['rejected_names', 'TEXT'],
     ] as const) {
       if (!columns.has(name)) this.db.exec(`ALTER TABLE candidates ADD COLUMN ${name} ${type}`);
     }
@@ -466,6 +473,32 @@ export class HighlightStore {
         )
         .run().changes,
     );
+  }
+
+  /**
+   * An administrator says Frigate's face recognition put the wrong name on this highlight (since 0.36.0: Frigate called
+   * a man under a dark cap "Roel" at 100 %). The name is taken off, kept as rejected, and the highlight no longer counts
+   * as a recognised person: the × 0.4 comes off its base score and the rule description loses the name.
+   */
+  rejectRecognised(id: string, name: string): StoredCandidate | undefined {
+    const c = this.get(id);
+    if (!c || c.deleted || !c.subLabels.includes(name)) return undefined;
+    const rest = c.subLabels.filter((n) => n !== name);
+    let base = c.baseScore;
+    let reasons = c.reasons;
+    if (!rest.length && reasons.includes('bekende persoon')) {
+      base = Math.round((base / KNOWN_FACTOR) * 100) / 100;
+      reasons = reasons.filter((r) => r !== 'bekende persoon');
+    }
+    const known = rest.length === 0 && !c.annotationKnown ? 1 : c.knownFactor;
+    const description = c.description.split(name).join(rest.length ? rest.join(' en ') : 'Persoon').replace(/^(Persoon) en \1\b/, '$1');
+    this.db
+      .prepare(
+        `UPDATE candidates SET sub_labels = ?, rejected_names = ?, base_score = ?, reasons = ?, known_factor = ?, score = ROUND(? * ? + feedback_adj, 2),
+           description = ? WHERE id = ?`,
+      )
+      .run(JSON.stringify(rest), JSON.stringify([...c.rejectedNames, name]), base, JSON.stringify(reasons), known, base, known, description, id);
+    return this.get(id);
   }
 
   setPersonSize(id: string, size: number): void {

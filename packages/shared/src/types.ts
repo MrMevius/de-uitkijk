@@ -97,6 +97,8 @@ export interface HighlightSummary {
   aiNoise: boolean;
   /** Administrator's answer about who or what is shown (questions tab). */
   annotation: string | null;
+  /** Names Frigate's face recognition gave (an administrator can reject a wrong one, since 0.36.0). */
+  recognized: string[];
   score: number;
   reasons: string[];
   /** Administrator feedback: 1 good selection, -1 bad selection. */

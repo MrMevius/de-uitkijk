@@ -1,3 +1,5 @@
+import { spawn } from 'node:child_process';
+
 /**
  * Frigate's face library (face recognition, Frigate 0.17): known names, and the "train" attempts Frigate keeps
  * for faces it saw but did not recognise. An attempt is named `<event id>-<time>-<best guess>-<score>.webp`,
@@ -43,6 +45,8 @@ export interface FaceLibraryOptions {
   fetch?: typeof fetch;
   /** Quiet time after the last deletion before Frigate's face model is rebuilt once more. */
   rebuildDelayMs?: number;
+  /** A face image as 64x64 grey pixels, for the quality check; override in tests. */
+  grey?: (image: Uint8Array) => Promise<Uint8Array | undefined>;
 }
 
 /** Cached view of the face library plus the two write actions De Uitkijk needs (admin role in Frigate). */
@@ -57,11 +61,24 @@ export class FaceLibrary {
   lastError: string | null = null;
 
   private readonly rebuildDelayMs: number;
+  private readonly grey: (image: Uint8Array) => Promise<Uint8Array | undefined>;
 
-  constructor({ frigateUrl, fetch: f = globalThis.fetch, rebuildDelayMs = 20_000 }: FaceLibraryOptions) {
+  constructor({ frigateUrl, fetch: f = globalThis.fetch, rebuildDelayMs = 20_000, grey = ffmpegGrey }: FaceLibraryOptions) {
     this.url = frigateUrl.replace(/\/$/, '');
     this.fetch = f;
     this.rebuildDelayMs = rebuildDelayMs;
+    this.grey = grey;
+  }
+
+  /**
+   * Whether a face image (WebP) is worth learning from: large and frontal enough (`usableFace`), sharp and not
+   * overexposed (`clearFace`, since 0.36.0). An image that cannot be measured counts as not usable.
+   */
+  async usable(image: Uint8Array | undefined): Promise<boolean> {
+    const size = image && webpSize(image);
+    if (!image || !size || !usableFace(size)) return false;
+    const pixels = await this.grey(image).catch(() => undefined);
+    return pixels !== undefined && clearFace(pixels);
   }
 
   async refresh(): Promise<void> {
@@ -215,8 +232,7 @@ export class FaceLibrary {
     let kept = false;
     const reject: string[] = [];
     for (const file of added) {
-      const size = webpSize((await this.libraryImage(name, file)) ?? new Uint8Array());
-      if (size && usableFace(size)) kept = true;
+      if (await this.usable(await this.libraryImage(name, file))) kept = true;
       else reject.push(file);
     }
     if (reject.length) await this.deleteImages(name, reject);
@@ -259,6 +275,46 @@ export function libraryTime(name: string, file: string): number | null | undefin
   if (!file.startsWith(name) || !file.endsWith('.webp') || /[/\\]|\.\./.test(file)) return undefined;
   const m = /^[-_](\d+(?:\.\d+)?)\.webp$/.exec(file.slice(name.length));
   return m ? Number(m[1]) : null;
+}
+
+/** Grey 64x64 pixels of an image (any format ffmpeg reads), through pipes. */
+export const ffmpegGrey = (image: Uint8Array): Promise<Uint8Array | undefined> =>
+  new Promise((resolve, reject) => {
+    const proc = spawn('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-i', 'pipe:0', '-vf', 'scale=64:64:flags=area,format=gray', '-f', 'rawvideo', 'pipe:1']);
+    const out: Buffer[] = [];
+    proc.stdout.on('data', (d: Buffer) => out.push(d));
+    proc.on('error', reject);
+    proc.on('close', (code) => {
+      const b = Buffer.concat(out);
+      resolve(code === 0 && b.length === 64 * 64 ? new Uint8Array(b) : undefined);
+    });
+    proc.stdin.end(Buffer.from(image));
+  });
+
+/**
+ * A face that can be seen: not a blur (variance of the Laplacian at 64x64 at least 50) and not overexposed (under half
+ * of the pixels at 235 or brighter). On 2026-11-13 two of Roel's four library images were such infrared blobs
+ * (sharpness 27; 55 % white) and Frigate recognised him at 100 % in any face under a dark cap. Calibrated on the 157
+ * library images of that day: only those two and two of Jasper's (82 % and 67 % white) fail.
+ */
+export function clearFace(grey: Uint8Array, size = 64): boolean {
+  let bright = 0;
+  for (const v of grey) if (v >= 235) bright++;
+  if (bright / grey.length >= 0.5) return false;
+  let sum = 0;
+  let sq = 0;
+  let n = 0;
+  for (let y = 1; y < size - 1; y++) {
+    for (let x = 1; x < size - 1; x++) {
+      const i = y * size + x;
+      const l = 4 * grey[i]! - grey[i - size]! - grey[i + size]! - grey[i - 1]! - grey[i + 1]!;
+      sum += l;
+      sq += l * l;
+      n++;
+    }
+  }
+  const variance = sq / n - (sum / n) ** 2;
+  return variance >= 50;
 }
 
 /** A face crop worth learning from: at least 40 px wide and not narrow like a side view (width/height ≥ 0.68). */

@@ -234,7 +234,9 @@ export function registerQuestions(app: FastifyInstance, options: QuestionRouteOp
       const visible = h && !h.deleted ? h : undefined;
       return {
         ...q,
-        highlight: visible ? { id: visible.id, hasThumbnail: visible.hasThumbnail, camera: visible.camera, startTime: visible.startTime, feedback: visible.feedback } : null,
+        highlight: visible
+          ? { id: visible.id, hasThumbnail: visible.hasThumbnail, camera: visible.camera, startTime: visible.startTime, feedback: visible.feedback, recognized: visible.subLabels }
+          : null,
         // Same visit, so one answer can name the person on all of them.
         ...(visible && q.kind === 'person' && q.status === 'open'
           ? {
@@ -369,6 +371,18 @@ export function registerQuestions(app: FastifyInstance, options: QuestionRouteOp
     }
 
     return reply.code(400).send({ error: 'Deze melding heeft geen antwoord; markeer hem als gezien' });
+  });
+
+  // A name Frigate's face recognition got wrong (since 0.36.0). The highlight loses it, is described again and gets a
+  // "Wie is dit?" question once that is done; an open rating question about it is withdrawn (its score changed).
+  app.post<{ Params: { id: string }; Body: { name?: unknown } }>('/api/admin/highlights/:id/not-recognised', async (request, reply) => {
+    const name = typeof request.body?.name === 'string' ? request.body.name : '';
+    const h = highlights.rejectRecognised(request.params.id, name);
+    if (!h) return reply.code(404).send({ error: 'Highlight of naam niet gevonden' });
+    if (autoFacts) highlights.requestRedescribe(h.id);
+    const open = questions.openFor(h.id, 'highlight');
+    if (open) questions.withdraw(open.id, now());
+    return { recognized: h.subLabels, description: h.description };
   });
 
   app.post<{ Params: { id: string } }>('/api/admin/questions/:id/dismiss', async (request, reply) => {

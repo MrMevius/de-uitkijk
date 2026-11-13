@@ -33,7 +33,7 @@ interface Question {
   fact: string | null;
   faceStatus: 'pending' | 'done' | 'none' | 'failed' | null;
   faceResult: string | null;
-  highlight: { id: string; hasThumbnail: boolean; feedback?: -1 | 1 | null } | null;
+  highlight: { id: string; hasThumbnail: boolean; feedback?: -1 | 1 | null; recognized?: string[] } | null;
   /** Other highlights of the same visit that the answer about a person can also apply to (since 0.27.0). */
   sameVisit?: { id: string; camera: string; startTime: number; description: string }[];
   /** Who it probably is, from the same visit: an earlier answer, a recognised face or a known vehicle (since 0.33.0). */
@@ -351,6 +351,18 @@ function QuestionCard({ q, names, onDone }: { q: Question; names: string[]; onDo
     }
   };
 
+  // Frigate's face recognition named the wrong person (since 0.36.0): the name comes off and "Wie is dit?" follows.
+  const notRecognised = async (person: string) => {
+    if (!q.highlight) return;
+    setError(null);
+    try {
+      await api('POST', `/api/admin/highlights/${encodeURIComponent(q.highlight.id)}/not-recognised`, { name: person });
+      onDone(`Gecorrigeerd: niet ${person}. Na een nieuwe beschrijving volgt de vraag "Wie is dit?".`);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
   return (
     <section className={`ui-card ui-question${q.highlight ? '' : ' ui-question--plain'}`}>
       <Media highlight={q.highlight} />
@@ -431,6 +443,17 @@ function QuestionCard({ q, names, onDone }: { q: Question; names: string[]; onDo
               👎 Niet goed
             </button>
           </div>
+        )}
+
+        {q.highlight && (q.highlight.recognized ?? []).length > 0 && (
+          <p className="ui-muted ui-small">
+            Frigate herkende {q.highlight.recognized!.join(' en ')}.{' '}
+            {q.highlight.recognized!.map((n) => (
+              <button key={n} className="ui-btn ui-btn--small ui-btn--ghost" onClick={() => void notRecognised(n)}>
+                Dit is niet {n.split(' ')[0]}
+              </button>
+            ))}
+          </p>
         )}
 
         <div className="ui-question__foot">

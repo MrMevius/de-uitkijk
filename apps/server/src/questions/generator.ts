@@ -145,6 +145,8 @@ export class QuestionGenerator {
       .filter((c) => c.selected && c.hasThumbnail && c.startTime > now - 7 * 86400 && c.labels.some((l) => l.startsWith('person')))
       // Also after a 👍/👎 question about the same highlight, but never two open questions at once.
       .filter((c) => c.subLabels.length === 0 && c.aiRealEvent === true && !c.annotation)
+      // Described again first (after a rejected Frigate name, the description may still carry it).
+      .filter((c) => !c.aiRedo)
       // Not about a speck in the distance or a highlight whose camera saw no person at all (unknown size: asked as before).
       .filter((c) => c.personSize === null || c.personSize === undefined || c.personSize >= MIN_PERSON_SIZE)
       .filter((c) => !this.questions.hasForHighlight(c.id, 'person') && !this.questions.hasOpenForHighlight(c.id))
