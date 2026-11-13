@@ -53,6 +53,15 @@ People and vehicles can be added, changed, merged (people) and deleted on the ta
 
 In 0.22.0 the register was only shown and maintained; descriptions still used the raw facts. The plan to give the AI the register in 0.24.0 was not built then (0.24.0 became the change log page). Since 0.30.0 the description prompt holds the register plus the raw facts it does not hold yet, and the server matches plates Frigate read against the register's plates ([ai.md](ai.md#what-the-server-decides-since-0300)). A change to the register counts like a new fact: highlights described before it are described again before a vehicle question is asked about them. Links from highlights to the people and vehicles they show are not built yet.
 
+## Known plates in Frigate (since 0.35.0)
+
+The register's vehicles with a plate are kept in Frigate's `lpr.known_plates`, named after make, model and the owner's first name ("Tesla Model 3 van Mark" → `G929VD`; without make the kind, without owner no "van"). Frigate then puts that name on the car in its own app (review, search) and corrects plates it reads one character off. For De Uitkijk itself little changes: it already matched plates to the register.
+
+- A check runs a minute after the start, every 10 minutes, and a minute after an answer changed the register. It writes only when Frigate's list differs, through `PUT /api/config/set` with `update_topic: config/lpr` (no Frigate restart); names no longer in the register are removed. Frigate validates the result and puts its old config file back on an error. Only `lpr.known_plates` is written. Frigate rewrites `config.yml` on such a write (comments stay, indentation may change).
+- Frigate reports such a name like a face (`sub_labels` of the review). The importer leaves out names Frigate put on non-person detections, so a known car is never counted as a recognised person.
+- Beheer → Huishouden shows how many vehicles are in Frigate and when the list last changed, or the error.
+- Off: `UITKIJK_KNOWN_PLATES=off` in the runtime environment (next deployment); the list in Frigate stays until removed there.
+
 ## Privacy
 
 The bundling sends the raw facts, names and roles to OpenAI through Codex once per run, under the same confinement as the descriptions ([ai.md](ai.md#confinement)). Relations are not sent to the bundling; since 0.30.0 they are part of every description prompt, with the rest of the register. The register never holds appearance, clothing or behaviour of people.

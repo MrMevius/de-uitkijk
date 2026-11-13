@@ -42,7 +42,7 @@ Safeguards:
 
 ## Access
 
-Since 2026-11-08, production uses the authenticated API on port 8971 with the dedicated viewer account `uitkijk` and the pinned Frigate certificate (`FRIGATE_AUTH_FILE`, see [security.md](security.md)). The client logs in through `POST /api/login`, sends the `frigate_token` cookie and logs in again after a 401. Development and tests may still use the unauthenticated port 5000 (no auth file).
+Since 2026-11-08, production uses the authenticated API on port 8971 with the dedicated viewer account `uitkijk` and the pinned Frigate certificate (`FRIGATE_AUTH_FILE`, see [security.md](security.md)). The client logs in through `POST /api/login`, sends the `frigate_token` cookie and logs in again after a 401. Development and tests may still use the unauthenticated port 5000 (no auth file); on production it is only reachable on VM502 itself since 2026-11-13.
 
 ## Open points
 

@@ -33,6 +33,8 @@ export interface ServerConfig {
   publicUrl: string;
   /** Internal go2rtc base URL used only for the backend health probe; never sent to browsers. */
   go2rtcUrl?: string;
+  /** Keep Frigate's known plates equal to the household register (since 0.35.0); UITKIJK_KNOWN_PLATES=off disables. */
+  knownPlates: boolean;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
@@ -55,6 +57,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     ai: env.UITKIJK_AI === 'codex' ? 'codex' : 'off',
     aiModel: env.UITKIJK_AI_MODEL || 'gpt-6-luna',
     clipCacheBytes: int(env.UITKIJK_CLIP_CACHE_MB, 512) * 1024 * 1024,
+    knownPlates: env.UITKIJK_KNOWN_PLATES !== 'off',
     publicUrl: new URL(env.UITKIJK_PUBLIC_URL || 'http://127.0.0.1:8080').origin,
     ...(env.GO2RTC_URL ? { go2rtcUrl: env.GO2RTC_URL.replace(/\/$/, '') } : {}),
   };

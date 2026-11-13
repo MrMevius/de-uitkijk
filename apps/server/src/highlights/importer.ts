@@ -106,6 +106,16 @@ export function personCount(events: FrigateEvent[]): number {
   return Math.max(0, ...perCamera.values());
 }
 
+/** Names Frigate put on non-person detections: a known plate's name ("Tesla Model 3 van Mark"), not a face. */
+export function vehicleNames(events: FrigateEvent[]): Set<string> {
+  const names = new Set<string>();
+  for (const e of events) {
+    if (e.label === 'person' || !e.sub_label) continue;
+    names.add(Array.isArray(e.sub_label) ? e.sub_label[0] : e.sub_label);
+  }
+  return names;
+}
+
 /** Plates Frigate's LPR read on these detections, upper case without spaces or dashes, deduplicated. */
 export function platesOf(events: FrigateEvent[]): string[] {
   return realPlates(events.map((e) => e.data?.recognized_license_plate ?? ''));
@@ -290,14 +300,17 @@ export class HighlightImporter {
     return created;
   }
 
-  private async importGroup(items: ReviewItem[]): Promise<void> {
-    const scored = scoreGroup(items, this.baseline, hourInAmsterdam);
-    const detectionIds = items.flatMap((i) => i.detections);
+  private async importGroup(group: ReviewItem[]): Promise<void> {
+    const detectionIds = group.flatMap((i) => i.detections);
     // One request per detection: Frigate's /api/events has no id filter (an `ids` parameter is ignored and
     // returns the latest events of all cameras; found 2026-11-09). A detection Frigate removed is skipped.
     const events = (
       await Promise.all(detectionIds.map((id) => this.get<FrigateEvent>(`/api/events/${encodeURIComponent(id)}`).catch(() => undefined)))
     ).filter((e): e is FrigateEvent => e !== undefined);
+    // Names Frigate put on vehicles (known plates, synced from the register since 0.35.0) are no faces.
+    const vehicles = vehicleNames(events);
+    const items = vehicles.size ? group.map((i) => ({ ...i, subLabels: i.subLabels.filter((n) => !vehicles.has(n)) })) : group;
+    const scored = scoreGroup(items, this.baseline, hourInAmsterdam);
     // Representative: the alert with the most confident detection, a person before anything else (since 0.34.0: a
     // parked car at 0.9 won from a person at 0.8 on another camera); on a tie the longer one.
     const hasPerson = events.some((e) => e.label === 'person');

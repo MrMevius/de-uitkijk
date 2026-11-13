@@ -63,6 +63,8 @@ interface Household {
   facts: { id: number; text: string; createdBy: string; processed: boolean }[];
   /** Automatic bundling (since 0.28.0); `next` in epoch seconds, null when off. */
   schedule: (Schedule & { next: number | null }) | null;
+  /** Frigate's known plates kept equal to the register (since 0.35.0); null when not configured. */
+  plates?: { checkedAt: number | null; changedAt: number | null; error: string | null; count: number } | null;
 }
 
 interface Schedule {
@@ -183,6 +185,13 @@ export function HouseholdTab() {
         {error && <Notice>{error}</Notice>}
         <RunStatus data={data} />
         {data.schedule && <ScheduleCard key={JSON.stringify(data.schedule)} schedule={data.schedule} onSaved={() => void load()} />}
+        {data.plates && (
+          <p className="ui-muted ui-small">
+            Kentekens in Frigate: {data.plates.count} {data.plates.count === 1 ? 'voertuig' : 'voertuigen'} uit het register, zodat Frigate de auto een
+            naam geeft. {data.plates.changedAt ? `Laatst bijgewerkt ${highlightTime(data.plates.changedAt)}.` : ''}
+            {data.plates.error ? ` Bijwerken mislukt: ${data.plates.error}` : data.plates.checkedAt ? '' : ' Nog niet gecontroleerd.'}
+          </p>
+        )}
 
         {data.proposals.length > 0 && (
           <Card title={`Voorstellen (${data.proposals.length})`} icon="ai" className="ui-card--accent">

@@ -3,6 +3,11 @@
 Op hoofdlijnen, nieuwste eerst. Wordt getoond op Beheer → Change log. Elke release krijgt hier een kopje
 `## <versie> — <datum>` met een paar bullets; een test controleert dat de bovenste versie gelijk is aan `VERSION`.
 
+## 0.35.0 — 2026-11-13
+
+- Auto's uit het huishouden met een kenteken staan voortaan ook in Frigate. Frigate zet dan de naam bij de auto ("Tesla Model 3 van Mark"), ook in de Frigate-app, en verbetert een kenteken dat het net verkeerd leest. Wijzigingen in het register gaan vanzelf mee; onder Beheer → Huishouden staat hoeveel auto's erin staan.
+- Een auto met zo'n naam telt in De Uitkijk niet als herkende persoon.
+
 ## 0.34.1 — 2026-11-13
 
 - "Was dit een goede highlight?" wordt pas gevraagd als de AI de highlight bekeken heeft. Vindt de AI het ruis, dan verdwijnt een open vraag vanzelf.

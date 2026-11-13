@@ -56,6 +56,7 @@ Server environment variables (all optional in mock mode):
 | `FRIGATE_POLL_MS` | `2000` | Review poll interval (minimum 1000) |
 | `FRIGATE_MAX_ALERT_AGE_S` | `1800` | Ignore open alerts older than this |
 | `GO2RTC_URL` | – | Internal go2rtc URL for the health probe |
+| `UITKIJK_KNOWN_PLATES` | on | `off` stops keeping Frigate's `lpr.known_plates` equal to the household register (live mode with `FRIGATE_AUTH_FILE`, admin role) |
 | `PORT`, `HOST` | `3000`, `0.0.0.0` | Listen address |
 
 ## Live mode (trusted development network only)

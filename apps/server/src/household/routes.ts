@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { FactStore } from '../ai/facts.ts';
 import type { FaceLibrary } from '../faces/library.ts';
+import type { KnownPlatesStatus } from '../frigate/known-plates.ts';
 import type { HighlightStore } from '../highlights/store.ts';
 import { acceptProposal, rejectProposal, type Bundler } from './bundle.ts';
 import { parseSchedule, type BundleScheduler } from './schedule.ts';
@@ -27,6 +28,8 @@ export interface HouseholdRouteOptions {
   faces?: FaceLibrary;
   /** Automatic bundling at a time an administrator chooses (since 0.28.0). */
   scheduler?: BundleScheduler;
+  /** Frigate's known plates kept equal to the register (since 0.35.0). */
+  plates?: () => KnownPlatesStatus;
   now?: () => number;
 }
 
@@ -70,7 +73,7 @@ function vehicleFields(body: Record<string, unknown>, people: Person[]): Partial
 }
 
 /** The household register on the admin page (`/api/admin/`, admin role; since 0.22.0). */
-export function registerHousehold(app: FastifyInstance, { store, bundler, facts, highlights, faces, scheduler, now = () => Date.now() / 1000 }: HouseholdRouteOptions): void {
+export function registerHousehold(app: FastifyInstance, { store, bundler, facts, highlights, faces, scheduler, plates, now = () => Date.now() / 1000 }: HouseholdRouteOptions): void {
   const by = (request: { user?: { username: string } }) => request.user?.username ?? 'beheerder';
 
   app.get('/api/admin/household', async () => {
@@ -91,6 +94,7 @@ export function registerHousehold(app: FastifyInstance, { store, bundler, facts,
       busy: bundler.busy,
       lastRun: store.lastRun() ?? null,
       schedule: scheduler ? { ...scheduler.schedule(), next: scheduler.next() } : null,
+      plates: plates ? plates() : null,
       people: people.map((p) => {
         const names = [p.name, ...p.aliases].map((n) => n.toLowerCase());
         const face = library.find((l) => names.includes(l.name.toLowerCase()));

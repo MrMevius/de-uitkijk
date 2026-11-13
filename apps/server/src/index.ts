@@ -27,6 +27,7 @@ import { applyPersonAnswer, parsePersonAnswer, VEHICLE_ANNOTATION, vehicleIsSubj
 import { QuestionStore } from './questions/store.ts';
 import { loadConfig } from './config.ts';
 import { frigateFetch, readFrigateAuth } from './frigate/client.ts';
+import { KnownPlatesSync } from './frigate/known-plates.ts';
 import { FrigateSource } from './frigate/frigate-source.ts';
 import { FrigatePush } from './frigate/push.ts';
 import { StateHub } from './hub.ts';
@@ -71,6 +72,12 @@ const questionStore = highlightStore ? new QuestionStore(join(config.dataDir, 'u
 // Household register (since 0.22.0): bundles facts and answers into who is who and whose vehicle is which.
 const household = highlightStore ? new HouseholdStore(join(config.dataDir, 'uitkijk.db')) : undefined;
 const register = (): Register => ({ people: household?.people() ?? [], vehicles: household?.vehicles() ?? [] });
+// Frigate's known plates follow the register (since 0.35.0): Frigate names the car and corrects near-miss reads. Needs
+// the authenticated API with the admin role (the `uitkijk` account has it for face learning).
+const plateSync =
+  household && config.frigate && frigateHttp && frigateAuth && config.knownPlates
+    ? new KnownPlatesSync({ frigateUrl: config.frigate.url, fetch: frigateHttp, register, log: (msg) => app.log.warn(msg) })
+    : undefined;
 // AI descriptions (AI-4: only when the owner enabled them; AI-7: isolated, failures never affect the rest).
 const codexOptions = { codexHome: join(config.dataDir, 'codex'), model: config.aiModel };
 // Every AI call with prompt, image and raw answer, for Beheer → AI-log (since 0.23.0).
@@ -119,6 +126,7 @@ const bundleScheduler = household && bundler ? new BundleScheduler(household, bu
 // minutes, so new facts become proposals and new doubts become questions (since 0.29.0).
 let rebundle: ReturnType<typeof setTimeout> | undefined;
 const registerChanged = () => {
+  plateSync?.kick();
   // The next household question right away instead of within ten minutes.
   setTimeout(() => questionGenerator?.runOnce(), 0);
   clearTimeout(rebundle);
@@ -239,7 +247,7 @@ const app = buildApp({
       }
     : {}),
   ...(household && bundler
-    ? { household: { store: household, bundler, ...(bundleScheduler ? { scheduler: bundleScheduler } : {}), ...(facts ? { facts } : {}), ...(highlightStore ? { highlights: highlightStore } : {}), ...(faces ? { faces } : {}) } }
+    ? { household: { store: household, bundler, ...(plateSync ? { plates: () => plateSync.status() } : {}), ...(bundleScheduler ? { scheduler: bundleScheduler } : {}), ...(facts ? { facts } : {}), ...(highlightStore ? { highlights: highlightStore } : {}), ...(faces ? { faces } : {}) } }
     : {}),
   ...(aiLog ? { aiLog } : {}),
   ...(displays ? { displays } : {}),
@@ -327,6 +335,7 @@ cameraProbe?.start();
 ai?.start();
 backup?.start();
 bundleScheduler?.start();
+plateSync?.start();
 
 mock?.start(config.mockScenario);
 const frigate = config.frigate
@@ -377,6 +386,7 @@ const shutdown = async () => {
   ai?.stop();
   backup?.stop();
   bundleScheduler?.stop();
+  plateSync?.stop();
   clearTimeout(rebundle);
   hub.stop();
   clearInterval(purge);
