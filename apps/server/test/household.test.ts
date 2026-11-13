@@ -86,7 +86,7 @@ function setup(answer: unknown = AI_ANSWER) {
 }
 
 describe('household register', () => {
-  it('takes people and roles from the answers without AI: newest answer wins, face names without a role', () => {
+  it('takes people and roles from the answers without AI: the most given role wins, face names without a role', () => {
     const store = new HouseholdStore(':memory:');
     cleanup.push(() => store.close());
     const out = personProposals([], { facts: [], answers: ANSWERS, faceNames: ['Mark Mevius', 'tineke mevius'] });
@@ -345,6 +345,17 @@ describe('questions from the household register (0.29.0)', () => {
     const open = () => questions.list('open').filter((q) => q.kind === 'household');
     return { ...t, questions, answer, generator, open, changed: () => changed };
   }
+
+  it('puts a vehicle answer into the register at once and bundles again (0.32.0)', async () => {
+    const t = await withQuestions();
+    t.questions.add({ kind: 'vehicle', key: 'vehicle:x', highlightId: null, title: 'Van wie is deze auto?', body: '', data: { vehicle: 'grijze Hyundai i10, kenteken 96-NBF-1', noun: 'auto' } }, NOW);
+    const q = t.questions.getByKey('vehicle:x')!;
+    const res = (await t.answer(q.id, { owner: 'Gideon Snippe' })).json();
+    expect(res.register).toBe(`Nieuw voertuig: grijs Hyundai i10, kenteken 96-NBF-1 van Gideon Snippe (vraag ${q.id})`);
+    const fact = t.facts.list().find((f) => f.text.startsWith('Grijze Hyundai'))!;
+    expect(t.store.vehicles().find((v) => v.plate === '96-NBF-1')!.sources).toEqual([`vraag ${q.id}`, `feit ${fact.id}`]);
+    expect(t.changed()).toBe(1);
+  });
 
   it('keeps the answer options of a doubt, limited to its own facts', async () => {
     const t = await withQuestions();

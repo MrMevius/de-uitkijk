@@ -1,6 +1,8 @@
 import type { FactStore } from '../ai/facts.ts';
 import type { DoubtOption } from '../household/bundle.ts';
-import { cleanText, PERSON_ROLES, vehicleLabel, type HouseholdStore, type PersonRole, type Vehicle } from '../household/store.ts';
+import { cleanText, findPerson, PERSON_ROLES, plateKey, vehicleLabel, type HouseholdStore, type PersonRole, type Vehicle } from '../household/store.ts';
+import { stable } from '../ai/knowledge.ts';
+import { makeModel, platesClose, vehicleParts } from './vehicles.ts';
 import type { Question, QuestionStore } from './store.ts';
 
 /**
@@ -9,7 +11,8 @@ import type { Question, QuestionStore } from './store.ts';
  * - doubt: a contradiction the bundling found, with one-click answers (the fact that then holds and the facts it
  *   replaces) or an own answer;
  * - vehicle: make and model of a vague vehicle ("zwarte hatchback van Noëlle"), or the plate of a known one;
- * - role: who a person without a role is.
+ * - role: who a person without a role is;
+ * - same: whether two entries are one vehicle (same plate, or same owner, make and model; since 0.32.0).
  *
  * Every answer goes into the register at once and becomes a fact for the AI; "Overslaan" means "weet ik niet" and
  * is not asked again (each question has a key that is used once).
@@ -17,7 +20,8 @@ import type { Question, QuestionStore } from './store.ts';
 export type HouseholdQuestionData =
   | { type: 'doubt'; summary: string; options: DoubtOption[]; facts: { id: number; text: string }[] }
   | { type: 'vehicle'; vehicleId: number; fields: ('make' | 'model' | 'plate')[]; make: string; model: string; plate: string }
-  | { type: 'role'; personId: number };
+  | { type: 'role'; personId: number }
+  | { type: 'same'; vehicleIds: [number, number]; labels: [string, string] };
 
 interface NewQuestion {
   key: string;
@@ -33,6 +37,24 @@ const PLATED = new Set(['auto', 'bestelbus', 'motor', 'scooter']);
 
 const ownerOf = (register: Register, v: Vehicle) => register.people().find((p) => p.id === v.ownerId)?.name ?? '';
 const the = (v: Vehicle, owner: string) => `de ${vehicleLabel(v)}${owner ? ` van ${owner}` : ''}`;
+
+/**
+ * Two register entries that are probably one vehicle: the same plate, or the same owner, kind, make and model (Noëlle's
+ * "zwart Volkswagen Up" and "donker Volkswagen Up", Johan's Corolla twice). The colour is not compared: the AI calls the
+ * same car black or dark depending on the light.
+ */
+export function sameVehicles(vehicles: Vehicle[]): [Vehicle, Vehicle][] {
+  const type = (v: Vehicle) => (v.make ? makeModel(`${v.make} ${v.model}`) : null);
+  const pairs: [Vehicle, Vehicle][] = [];
+  for (const [i, a] of vehicles.entries()) {
+    for (const b of vehicles.slice(i + 1)) {
+      const plate = a.plate && b.plate && plateKey(a.plate) === plateKey(b.plate);
+      const owner = a.ownerId !== null && a.ownerId === b.ownerId && a.kind === b.kind && type(a) !== null && type(a) === type(b) && (!a.plate || !b.plate);
+      if (plate || owner) pairs.push([a, b]);
+    }
+  }
+  return pairs;
+}
 
 /** Candidate questions, most useful first: doubts, then vague vehicles, people without a role, missing plates. */
 export function householdQuestions(register: Register, facts: Pick<FactStore, 'list'> | undefined): NewQuestion[] {
@@ -54,6 +76,15 @@ export function householdQuestions(register: Register, facts: Pick<FactStore, 'l
     });
   }
   const vehicles = register.vehicles();
+  for (const [a, b] of sameVehicles(vehicles)) {
+    const owner = ownerOf(register, a) || ownerOf(register, b);
+    out.push({
+      key: `household:same:${a.id}:${b.id}`,
+      title: `Zijn dit dezelfde ${a.kind === 'auto' ? 'auto' : a.kind}${owner ? ` van ${owner}` : ''}?`,
+      body: `Het register heeft ${the(a, ownerOf(register, a))} en ${the(b, ownerOf(register, b))}. Ja: ze worden samengevoegd. Nee: ze blijven apart en dit wordt niet meer gevraagd.`,
+      data: { type: 'same', vehicleIds: [a.id, b.id], labels: [vehicleLabel(a), vehicleLabel(b)] },
+    });
+  }
   for (const v of vehicles) {
     if (v.kind === 'fiets' || (v.make && v.model) || (v.locked.includes('make') && v.locked.includes('model'))) continue;
     const owner = ownerOf(register, v);
@@ -91,6 +122,7 @@ export function householdQuestionApplies(q: Question, register: Register): boole
   const d = q.data as HouseholdQuestionData;
   if (d.type === 'doubt') return register.proposals('pending').some((p) => p.kind === 'question' && p.summary === d.summary);
   if (d.type === 'role') return register.people().some((p) => p.id === d.personId && !p.role);
+  if (d.type === 'same') return d.vehicleIds.every((id) => register.vehicles().some((v) => v.id === id));
   const v = register.vehicles().find((x) => x.id === d.vehicleId);
   if (!v) return false;
   return d.fields.includes('make') ? !(v.make && v.model) : !v.plate;
@@ -148,6 +180,22 @@ export function answerHousehold(q: Question, body: Record<string, unknown>, ctx:
     return { answer: role, fact };
   }
 
+  if (d.type === 'same') {
+    if (body.same !== true && body.same !== false) return { error: 'Kies ja of nee' };
+    const [a, b] = d.vehicleIds.map((id) => register.vehicle(id));
+    if (!a || !b) return { error: 'Dit voertuig staat niet meer in het register' };
+    if (!body.same) {
+      register.log(`Niet hetzelfde voertuig: ${vehicleLabel(a)} en ${vehicleLabel(b)} (vraag ${q.id})`, by, now);
+      return { answer: 'Nee, twee voertuigen', fact: null };
+    }
+    // The one with a plate, else the oldest entry, stays.
+    const [keep, other] = !a.plate && b.plate ? [b, a] : [a, b];
+    const merged = register.mergeVehicles(keep.id, other.id, now)!;
+    register.updateVehicle(merged.id, {}, { sources: [`vraag ${q.id}`], at: now });
+    register.log(`Samengevoegd: ${vehicleLabel(other)} in ${vehicleLabel(merged)} (vraag ${q.id})`, by, now);
+    return { answer: `Ja, samengevoegd tot ${vehicleLabel(merged)}`, fact: null };
+  }
+
   const v = register.vehicles().find((x) => x.id === d.vehicleId);
   if (!v) return { error: 'Dit voertuig staat niet meer in het register' };
   const make = d.fields.includes('make') ? cleanText(body.make, 40) : '';
@@ -163,4 +211,53 @@ export function answerHousehold(q: Question, body: Record<string, unknown>, ctx:
   const what = kind ? `is een ${kind}${plate ? ` met kenteken ${plate}` : ''}` : `heeft kenteken ${plate}`;
   const fact = addFact(`${before.charAt(0).toUpperCase()}${before.slice(1)} ${what}.`);
   return { answer: [make, model, plate].filter(Boolean).join(' '), fact };
+}
+
+/**
+ * A "Van wie is deze auto?" answer goes into the register at once, without AI (since 0.32.0; before, it waited for the
+ * next bundling and an administrator's ok). Only clear cases:
+ * - a plate in the description that is in the register: that vehicle (its owner is set when it has none);
+ * - the same owner, kind, make and model as a register vehicle: that vehicle;
+ * - otherwise, with a make or a plate, a new vehicle; an owner not in the register is added without a role.
+ * Anything else (another owner for a known plate, a vehicle without make or plate) is left to the bundling.
+ * Returns what happened, for the history and the answer, or null.
+ */
+export function registerVehicleAnswer(
+  register: HouseholdStore,
+  description: string,
+  ownerName: string,
+  ctx: { questionId: number; factId: number | null; by: string; now: number },
+): string | null {
+  const { by, now } = ctx;
+  const sources = [`vraag ${ctx.questionId}`, ...(ctx.factId !== null ? [`feit ${ctx.factId}`] : [])];
+  const parts = vehicleParts(description);
+  // "met ladders" is a feature, "met open motorkap" a moment.
+  const features = stable(/\smet\s+([^,]+)/i.exec(description)?.[1]?.trim() ?? '');
+  const vehicles = register.vehicles();
+  const known = findPerson(register.people(), ownerName);
+  const type = (v: { make: string; model: string }) => (v.make ? makeModel(`${v.make} ${v.model}`) : null);
+
+  const byPlate = parts.plate ? vehicles.find((v) => v.plate && platesClose(plateKey(v.plate), plateKey(parts.plate))) : undefined;
+  if (byPlate) {
+    if (byPlate.ownerId !== null && byPlate.ownerId !== known?.id) return null;
+    const owner = known ?? register.addPerson({ name: ownerName }, sources, [], now);
+    register.updateVehicle(byPlate.id, byPlate.ownerId === null ? { ownerId: owner.id } : {}, { sources, at: now });
+    const text = `Antwoord bij ${vehicleLabel(byPlate)} van ${owner.name} gezet (vraag ${ctx.questionId})`;
+    register.log(text, by, now);
+    return text;
+  }
+  const sameType = known && type(parts) !== null ? vehicles.find((v) => v.ownerId === known.id && v.kind === parts.kind && type(v) === type(parts)) : undefined;
+  if (sameType) {
+    register.updateVehicle(sameType.id, {}, { sources, at: now });
+    const text = `Antwoord bij ${vehicleLabel(sameType)} van ${known!.name} gezet (vraag ${ctx.questionId})`;
+    register.log(text, by, now);
+    return text;
+  }
+  if (!parts.make && !parts.plate) return null;
+  const owner = known ?? register.addPerson({ name: ownerName }, sources, [], now);
+  if (!known) register.log(`Nieuwe persoon: ${owner.name} (vraag ${ctx.questionId})`, by, now);
+  const added = register.addVehicle({ ...parts, features, ownerId: owner.id }, sources, [], now);
+  const text = `Nieuw voertuig: ${vehicleLabel(added)} van ${owner.name} (vraag ${ctx.questionId})`;
+  register.log(text, by, now);
+  return text;
 }

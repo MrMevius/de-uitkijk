@@ -43,6 +43,39 @@ export function makeModel(description: string): string | null {
 export const realPlates = (plates: string[]): string[] =>
   [...new Set(plates.map((p) => p.toUpperCase().replace(/[^A-Z0-9]/g, '')))].filter((p) => p.length >= 4 && /\d/.test(p));
 
+/** Dutch colour words in a description, adjective forms included, mapped to the plain form ("zwarte" → "zwart"). */
+const COLOUR = /(?<![\p{L}])((?:donker|licht)?(?:zwart|witt|wit|grijs|grijz|zilver|rood|rod|blauw|groen|geel|gel|oranje|bruin|beige|paars|roze|antraciet)(?:e|en|kleurig)?|donkere?|lichte?)(?![\p{L}])/iu;
+
+const BODY_WORD = /^(auto|personenauto|hatchback|sedan|stationwagen|stationcar|suv|cabrio|coup[eé]|mpv|e-?bike|fiets|bakfiets|scooter|motor|bestelwagen)$/i;
+
+/**
+ * Kind, make, model, colour and plate as written in a description ("zwarte Volkswagen up!, kenteken G-929-VD"), for
+ * the household register (since 0.32.0). Empty where the description does not say.
+ */
+export function vehicleParts(description: string): { kind: 'auto' | 'bestelbus' | 'motor' | 'scooter' | 'fiets'; make: string; model: string; colour: string; plate: string } {
+  const noun = vehicleNoun(description);
+  const kind = noun === 'auto' && /bestel|busje|\bbus\b/i.test(description) ? 'bestelbus' : noun;
+  const brand = BRAND.exec(description);
+  const plate = [...description.matchAll(PLATE)][0]?.[0].toUpperCase() ?? '';
+  const colourWord = COLOUR.exec(description)?.[1]?.toLowerCase() ?? '';
+  const stem = colourWord.replace(/(e|en|kleurig)$/, '');
+  // The model is what follows the make up to a comma or "met …", without body words: "up!", "Model 3", "Sprinter".
+  const after = brand ? description.slice(brand.index + brand[1]!.length).split(/,|\s(?:met|kenteken|op|van|die|bij|in)\s/i)[0]! : '';
+  const model = after
+    .split(/\s+/)
+    .map((w) => w.replace(/-?(bestelbus|busje|bus)$/i, ''))
+    .filter((w) => w && !BODY_WORD.test(w))
+    .slice(0, 2)
+    .join(' ');
+  return {
+    kind,
+    make: brand?.[1] ?? '',
+    model,
+    colour: stem.replace(/witt$/, 'wit').replace(/grijz$/, 'grijs').replace(/rod$/, 'rood').replace(/gel$/, 'geel'),
+    plate,
+  };
+}
+
 /** Plates in a description, upper case without dashes. */
 export const platesIn = (description: string) => [...description.matchAll(PLATE)].map((m) => m[0].toUpperCase().replace(/-/g, ''));
 

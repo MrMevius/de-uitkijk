@@ -3,6 +3,12 @@
 Op hoofdlijnen, nieuwste eerst. Wordt getoond op Beheer → Change log. Elke release krijgt hier een kopje
 `## <versie> — <datum>` met een paar bullets; een test controleert dat de bovenste versie gelijk is aan `VERSION`.
 
+## 0.32.0 — 2026-11-13
+
+- Een antwoord op "Van wie is deze auto?" gaat meteen in Huishouden als duidelijk is welk voertuig het is; een nieuwe eigenaar komt erbij zonder rol. Twijfelgevallen blijven bij het bundelen.
+- Nieuwe vraag "Zijn dit dezelfde auto?" bij dubbele voertuigen in Huishouden (zelfde kenteken, of zelfde eigenaar, merk en model); "ja" voegt ze samen.
+- De rol van een persoon volgt het antwoord dat het vaakst gegeven is, niet meer alleen het nieuwste.
+
 ## 0.31.0 — 2026-11-13
 
 - Het dagmaximum van de AI telt na een herstart of update gewoon door; Beheer → AI toont ook de aanroepen voor feiten en het huishouden.

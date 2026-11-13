@@ -65,7 +65,7 @@ export function promptKnowledge(register: Register, facts: Fact[]): string[] {
 const MOMENT = /verborgen|in beeld|zichtbaar|links|rechts|voorgrond|achtergrond|\bopen\b|geopend/i;
 
 /** The parts of a register field that are stable ("kinderzitje, grotendeels verborgen" → "kinderzitje"). */
-const stable = (text: string) =>
+export const stable = (text: string) =>
   text
     .split(/,\s*/)
     .filter((t) => t && !MOMENT.test(t))

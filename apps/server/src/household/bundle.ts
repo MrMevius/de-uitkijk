@@ -38,22 +38,30 @@ const ROLE_OF_CATEGORY = new Set<string>(PERSON_ROLES.filter(Boolean));
 
 /**
  * People and roles straight from the answers, without AI: the answer "Noëlle Snippe (buren)" says it literally.
- * The newest answer about a person sets the role; names in Frigate's face library that nobody answered about yet
- * are added without a role.
+ * The role given most often sets the role, the newest of them on a tie (since 0.32.0; before, the newest answer alone,
+ * so two answers "bezoeker" for Johan against nine "bewoner" proposed a change). Names in Frigate's face library that
+ * nobody answered about yet are added without a role.
  */
 export function personProposals(people: Person[], input: BundleInput): NewProposal[] {
-  const byName = new Map<string, { name: string; role: PersonRole; sources: string[]; at: number }>();
+  type Entry = { name: string; role: PersonRole; sources: string[]; at: number; roles: Map<PersonRole, { n: number; at: number }> };
+  const byName = new Map<string, Entry>();
   for (const a of [...input.answers].sort((x, y) => x.at - y.at)) {
     if (!a.name) continue;
     const key = a.name.toLowerCase();
-    const entry = byName.get(key) ?? { name: a.name, role: '' as PersonRole, sources: [], at: 0 };
-    if (ROLE_OF_CATEGORY.has(a.category)) entry.role = a.category as PersonRole;
+    const entry: Entry = byName.get(key) ?? { name: a.name, role: '', sources: [], at: 0, roles: new Map() };
+    if (ROLE_OF_CATEGORY.has(a.category)) {
+      const r = entry.roles.get(a.category as PersonRole) ?? { n: 0, at: 0 };
+      entry.roles.set(a.category as PersonRole, { n: r.n + 1, at: a.at });
+    }
     entry.sources.push(`vraag ${a.questionId}`);
     entry.at = a.at;
     byName.set(key, entry);
   }
+  for (const e of byName.values()) {
+    e.role = [...e.roles].sort((x, y) => y[1].n - x[1].n || y[1].at - x[1].at)[0]?.[0] ?? '';
+  }
   for (const name of input.faceNames) {
-    if (!byName.has(name.toLowerCase())) byName.set(name.toLowerCase(), { name, role: '', sources: ['gezichtenbibliotheek'], at: 0 });
+    if (!byName.has(name.toLowerCase())) byName.set(name.toLowerCase(), { name, role: '', sources: ['gezichtenbibliotheek'], at: 0, roles: new Map() });
   }
   const out: NewProposal[] = [];
   for (const e of byName.values()) {
@@ -78,7 +86,7 @@ export function personProposals(people: Person[], input: BundleInput): NewPropos
         data: { role: e.role },
         sources: e.sources,
         summary: `Rol van ${existing.name}: ${existing.role || 'onbekend'} → ${e.role}`,
-        reason: 'Volgens het nieuwste antwoord.',
+        reason: 'Het antwoord dat het vaakst is gegeven.',
       });
     }
   }
@@ -446,19 +454,9 @@ export function acceptProposal(store: HouseholdStore, id: number, by: string, at
       const owner = findPerson(store.people(), p.data.owner) ?? store.addPerson({ name: p.data.owner }, p.sources, [], at);
       fields.ownerId = owner.id;
     }
-    const mergedSources = p.mergeIds.flatMap((m) => store.vehicle(m)!.sources);
-    const kept = target
-      ? store.updateVehicle(target.id, fields, { sources: [...p.sources, ...mergedSources], at })!
-      : store.addVehicle(fields, [...p.sources, ...mergedSources], [], at);
+    const kept = target ? store.updateVehicle(target.id, fields, { sources: p.sources, at })! : store.addVehicle(fields, p.sources, [], at);
     // Fields the merged entries knew and the kept one does not: keep them.
-    for (const m of p.mergeIds) {
-      const other = store.vehicle(m)!;
-      const fill: Partial<VehicleFields> = {};
-      for (const f of FIELDS) if (!kept[f] && other[f]) fill[f] = other[f];
-      if (!kept.ownerId && other.ownerId) fill.ownerId = other.ownerId;
-      if (Object.keys(fill).length) store.updateVehicle(kept.id, fill, { at });
-      store.removeVehicle(m, at);
-    }
+    for (const m of p.mergeIds) store.mergeVehicles(kept.id, m, at);
   }
   store.decide(id, 'accepted', by, at);
   store.log(`Voorstel geaccepteerd: ${p.summary}`, by, at);

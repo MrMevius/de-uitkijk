@@ -332,6 +332,24 @@ export class HouseholdStore {
     return this.vehicle(id);
   }
 
+  /**
+   * Puts vehicle `fromId` into `intoId`: fields only it knew (and its owner, when `intoId` has none) are kept, with
+   * their locks; its sources move over.
+   */
+  mergeVehicles(intoId: number, fromId: number, at: number): Vehicle | undefined {
+    const into = this.vehicle(intoId);
+    const from = this.vehicle(fromId);
+    if (!into || !from || intoId === fromId) return undefined;
+    const fill: Partial<VehicleFields> = {};
+    for (const f of ['make', 'model', 'colour', 'plate', 'features', 'place'] as const) if (!into[f] && from[f]) fill[f] = from[f];
+    if (into.ownerId === null && from.ownerId !== null) fill.ownerId = from.ownerId;
+    this.updateVehicle(intoId, fill, { sources: from.sources, at });
+    const locked = [...new Set([...into.locked, ...from.locked.filter((f) => f in fill)])];
+    this.db.prepare('UPDATE household_vehicles SET locked = ? WHERE id = ?').run(JSON.stringify(locked), intoId);
+    this.removeVehicle(fromId, at);
+    return this.vehicle(intoId);
+  }
+
   /** Epoch seconds of the newest change to a person or vehicle, removals included; null when nothing changed yet. */
   lastChange(): number | null {
     const row = this.db

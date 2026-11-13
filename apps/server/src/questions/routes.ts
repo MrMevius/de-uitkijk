@@ -4,7 +4,7 @@ import { ATTEMPT_FILE, matchFaceName, type FaceLibrary } from '../faces/library.
 import type { HighlightStore, StoredCandidate } from '../highlights/store.ts';
 import { findPerson, type HouseholdStore } from '../household/store.ts';
 import { MIN_PERSON_SIZE } from './generator.ts';
-import { answerHousehold } from './household.ts';
+import { answerHousehold, registerVehicleAnswer } from './household.ts';
 import { learningStats } from './learning.ts';
 import type { QuestionStore } from './store.ts';
 import { normalizeVehicle, vehicleNoun } from './vehicles.ts';
@@ -263,7 +263,10 @@ export function registerQuestions(app: FastifyInstance, options: QuestionRouteOp
       if (h && autoFacts) highlights.requestRedescribe(h.id);
       questions.resolve(q.id, 'answered', text, by, now());
       questions.setFact(q.id, stored ? 'done' : 'none', stored?.text ?? null);
-      return { answer: text, fact: stored ? 'done' : 'none' };
+      // Straight into the register when it is clear which vehicle it is (since 0.32.0); the bundling follows.
+      const registered = register ? registerVehicleAnswer(register, vehicle, owner, { questionId: q.id, factId: stored?.id ?? null, by, now: now() }) : null;
+      if (registered) onRegisterChanged?.();
+      return { answer: text, fact: stored ? 'done' : 'none', ...(registered ? { register: registered } : {}) };
     }
 
     if (q.kind === 'household') {

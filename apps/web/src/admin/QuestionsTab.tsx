@@ -14,7 +14,9 @@ interface Question {
     faces?: string[];
     guess?: string;
     /** Household questions (since 0.29.0). */
-    type?: 'doubt' | 'vehicle' | 'role';
+    type?: 'doubt' | 'vehicle' | 'role' | 'same';
+    /** Two register entries that may be one vehicle (since 0.32.0). */
+    labels?: [string, string];
     options?: { label: string; fact: string; retire: number[] }[];
     facts?: { id: number; text: string }[];
     fields?: ('make' | 'model' | 'plate')[];
@@ -67,7 +69,10 @@ const ROLE_BUTTONS = [
   ['bezorger of dienstverlener', 'Bezorger / dienst'],
 ] as const;
 
-/** Answer form of a household question: a doubt with one-click answers, a vehicle's details or a person's role (since 0.29.0). */
+/**
+ * Answer form of a household question: a doubt with one-click answers, a vehicle's details or a person's role (since
+ * 0.29.0), or whether two entries are one vehicle (since 0.32.0).
+ */
 function HouseholdAnswer({ q, send }: { q: Question; send: (body: object) => void }) {
   const [text, setText] = useState('');
   const [make, setMake] = useState(q.data.make ?? '');
@@ -98,6 +103,27 @@ function HouseholdAnswer({ q, send }: { q: Question; send: (body: object) => voi
           <input placeholder="Of schrijf op wat klopt, bijv. Gideon heeft een witte Ford Focus" maxLength={200} value={text} onChange={(e) => setText(e.target.value)} aria-label="Eigen antwoord" />
           <button className="ui-btn" disabled={text.trim().length < 5} onClick={() => send({ text })}>
             Opslaan
+          </button>
+        </div>
+      </>
+    );
+  }
+  if (q.data.type === 'same') {
+    return (
+      <>
+        {q.data.labels && (
+          <ul className="ui-facts">
+            {q.data.labels.map((l, i) => (
+              <li key={i}>{l}</li>
+            ))}
+          </ul>
+        )}
+        <div className="ui-segment" role="group" aria-label="Hetzelfde voertuig?">
+          <button className="ui-btn" onClick={() => send({ same: true })}>
+            Ja, samenvoegen
+          </button>
+          <button className="ui-btn" onClick={() => send({ same: false })}>
+            Nee, twee voertuigen
           </button>
         </div>
       </>
