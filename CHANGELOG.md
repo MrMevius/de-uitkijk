@@ -3,6 +3,12 @@
 Op hoofdlijnen, nieuwste eerst. Wordt getoond op Beheer → Change log. Elke release krijgt hier een kopje
 `## <versie> — <datum>` met een paar bullets; een test controleert dat de bovenste versie gelijk is aan `VERSION`.
 
+## 0.30.1 — 2026-11-13
+
+- Geen reeksen bijna gelijke clips meer in het archief: een highlight die uit het rekenvenster van twee dagen viel, liet de volgende van dezelfde reeks alsnog highlight worden. Oudere highlights zijn eenmalig rechtgezet (17 eruit); highlights met een antwoord of 👍 bleven staan.
+- Een highlight die later dan een dag na het moment geselecteerd wordt, krijgt nu ook een AI-beschrijving.
+- De leermeter telt nu ook personen die Frigate herkende maar die geen highlight werden; een antwoord zonder naam ("onbekend") telt niet meer als "via jou".
+
 ## 0.30.0 — 2026-11-12
 
 - De AI krijgt nu het opgeschoonde register (wie is wie, welk voertuig van wie), plus nieuwe feiten die er nog niet in staan, in plaats van alle losse feiten met dubbelingen en momentopnames.

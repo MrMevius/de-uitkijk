@@ -151,23 +151,29 @@ export interface Candidate {
 /**
  * Which candidates are highlights: score at or above the threshold and the best on each of their cameras
  * within the burst window. Deterministic: ties go to the earlier candidate.
+ *
+ * `fixed` are highlights already decided (older than the window that is recalculated): they keep their place and
+ * a candidate that clashes with one of them is not selected. Without them, every candidate the best of a series
+ * held back became a highlight once that best one left the window (until 0.30.1: 10 clips in one hour on
+ * 2026-11-11, where the rule gives 2).
  */
 export function selectHighlights(
   candidates: Candidate[],
   threshold: number = SELECTION.threshold,
   burstWindowS: number = SELECTION.burstWindowS,
+  fixed: Candidate[] = [],
 ): Set<string> {
   const ranked = candidates
     .filter((c) => c.score >= threshold)
     .sort((a, b) => b.score - a.score || a.startTime - b.startTime);
-  const kept: Candidate[] = [];
+  const kept: Candidate[] = [...fixed];
   for (const c of ranked) {
     const clash = kept.some(
       (k) => Math.abs(k.startTime - c.startTime) < burstWindowS && k.cameras.some((cam) => c.cameras.includes(cam)),
     );
     if (!clash) kept.push(c);
   }
-  return new Set(kept.map((c) => c.id));
+  return new Set(kept.slice(fixed.length).map((c) => c.id));
 }
 
 /** Time-of-day period used to learn from feedback: similar events happen at similar times. */

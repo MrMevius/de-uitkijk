@@ -43,7 +43,10 @@ const shift = (day: string, days: number) => {
 
 const LEARNING_KINDS = new Set(['person', 'vehicle', 'household']);
 
-const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** Annotations that name someone: "Roel Snippe (buren)", "auto van Mark Mevius". */
+const NAMED = /^[^()]+ \([^()]+\)$| van \S/;
+
+const escape =(s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**
  * How much the system recognises by itself, per day (last 14) and per week (last 8): the share of people named
@@ -66,17 +69,24 @@ export function learningStats(candidates: StoredCandidate[], questions: Question
   const periods = (t: number) => [days.get(dayOf(t)), weeks.get(mondayOf(dayOf(t)))].filter((p): p is LearningPeriod => Boolean(p));
 
   for (const c of candidates) {
-    if (c.deleted || c.aiRealEvent === false || !(c.selected || c.annotation)) continue;
+    if (c.deleted || c.aiRealEvent === false) continue;
+    const highlight = c.selected || Boolean(c.annotation);
+    // A recognised face counts low, so such an event is usually no highlight; it is exactly what the meter is about
+    // (until 0.30.1 it counted 1 of 18 recognised faces in a week).
+    const person = c.labels.some((l) => l.replace(/-verified$/, '') === 'person') && (highlight || c.subLabels.length > 0);
+    if (!highlight && !person) continue;
     for (const p of periods(c.startTime)) {
-      p.highlights++;
-      if (c.labels.some((l) => l.replace(/-verified$/, '') === 'person')) {
-        p.persons.total++;
-        if (c.annotation) p.persons.answered++;
-        else if (c.subLabels.length || (nameRe && c.aiDescription && nameRe.test(c.aiDescription))) p.persons.self++;
-        else p.persons.unknown++;
+      if (highlight) {
+        p.highlights++;
+        p.vehicles.total += c.aiVehicles.length;
+        p.vehicles.known += c.aiVehicles.filter((v) => v.known).length;
       }
-      p.vehicles.total += c.aiVehicles.length;
-      p.vehicles.known += c.aiVehicles.filter((v) => v.known).length;
+      if (!person) continue;
+      p.persons.total++;
+      // Only an answer with a name says who it was: "onbekend", "bezoeker" or "onbekende fiets" do not.
+      if (c.annotation && NAMED.test(c.annotation)) p.persons.answered++;
+      else if (c.subLabels.length || (nameRe && c.aiDescription && nameRe.test(c.aiDescription))) p.persons.self++;
+      else p.persons.unknown++;
     }
   }
   for (const q of questions) {

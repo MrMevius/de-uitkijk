@@ -18,7 +18,8 @@ import { DbBackup } from './backup.ts';
 import { FaceWorker } from './faces/worker.ts';
 import { RecordingFaces } from './faces/recording.ts';
 import { ClipCache, ffmpegThumbnail } from './highlights/clips.ts';
-import { HighlightImporter } from './highlights/importer.ts';
+import { HighlightImporter, RESELECT_S } from './highlights/importer.ts';
+import { selectHighlights } from './highlights/selection.ts';
 import { HighlightStore, type StoredCandidate } from './highlights/store.ts';
 import { FactWorker } from './questions/fact-worker.ts';
 import { QuestionGenerator } from './questions/generator.ts';
@@ -191,6 +192,24 @@ if (highlightStore && facts && !highlightStore.getMeta('loose_object_facts')) {
     household?.log(`Feit ${f.id} verwijderd (los voorwerp, geen vast kenmerk): ${f.text}`, 'systeem', Date.now() / 1000);
   }
   highlightStore.setMeta('loose_object_facts', '1');
+}
+// Until 0.30.1 the best highlight of a series leaving the two-day selection window let the next one of the series be
+// selected, and so on: series of near-identical clips in the archive, most never described. Older highlights are put
+// right once with the same rule; one an administrator answered about or gave 👍 stays.
+if (highlightStore && !highlightStore.getMeta('burst_fix')) {
+  const old = highlightStore.candidatesSince(0).filter((c) => c.selected && c.startTime < Date.now() / 1000 - RESELECT_S);
+  const keep = selectHighlights(old.map((c) => ({ id: c.id, startTime: c.startTime, cameras: c.cameras, score: c.score })), -Infinity);
+  let removed = 0;
+  for (const c of old) {
+    if (keep.has(c.id) || c.annotation || c.feedback === 1) continue;
+    highlightStore.setSelected(c.id, false);
+    removed++;
+  }
+  // The ones that stay and never got a description get one now.
+  for (const c of old) if (ai && (keep.has(c.id) || c.annotation || c.feedback === 1) && c.aiStatus === null && c.hasThumbnail) highlightStore.requestRedescribe(c.id);
+  highlightStore.setMeta('burst_fix', '1');
+  // `app` exists by the time this runs.
+  setTimeout(() => app.log.info(`highlights: ${removed} older highlights of a series deselected`), 0);
 }
 // Per-camera picture check for monitoring (live mode only; mock streams are synthetic).
 const cameraProbe = config.mode === 'live' && config.go2rtcUrl ? new CameraVideoProbe(config.cameras, config.go2rtcUrl) : undefined;

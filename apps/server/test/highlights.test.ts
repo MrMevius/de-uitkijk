@@ -140,6 +140,19 @@ describe('selection', () => {
     expect([...selected].sort()).toEqual(['b', 'c', 'd']);
   });
 
+  it('lets a highlight that left the window still hold back its series (0.30.1)', () => {
+    // 'a' was the best of the series and is now older than the recalculated window.
+    const series = [
+      { id: 'b', startTime: 400, cameras: ['tuin'], score: 2.6 },
+      { id: 'c', startTime: 1500, cameras: ['tuin'], score: 2.6 },
+      { id: 'd', startTime: 1600, cameras: ['oprit'], score: 2.6 },
+    ];
+    const fixed = [{ id: 'a', startTime: 0, cameras: ['tuin'], score: 2.6 }];
+    expect([...selectHighlights(series, 2, 1800, fixed)].sort()).toEqual(['d']);
+    // Before 0.30.1 the window simply forgot it.
+    expect([...selectHighlights(series, 2, 1800)].sort()).toEqual(['b', 'd']);
+  });
+
   it('describes in Dutch', () => {
     const name = (f: string) => cameras.find((c) => c.frigateCamera === f)!.name;
     expect(describeGroup([item('a', VOORDEUR, at(14), at(14) + 9)], name)).toBe('Persoon bij Voordeur');

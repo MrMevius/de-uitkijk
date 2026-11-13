@@ -99,7 +99,10 @@ export function platesOf(events: FrigateEvent[]): string[] {
   return [...new Set(plates.filter((p) => p.length >= 4))];
 }
 
-const AMSTERDAM_HOUR = new Intl.DateTimeFormat('en-GB', { hour: 'numeric', hourCycle: 'h23', timeZone: 'Europe/Amsterdam' });
+/** Selection, feedback and known factors are recalculated over this period; older highlights stay as they are. */
+export const RESELECT_S = 2 * 86400;
+
+const AMSTERDAM_HOUR =new Intl.DateTimeFormat('en-GB', { hour: 'numeric', hourCycle: 'h23', timeZone: 'Europe/Amsterdam' });
 export const hourInAmsterdam = (epochS: number) => Number(AMSTERDAM_HOUR.format(epochS * 1000));
 
 const OBJECT_NL: Record<string, string> = { person: 'Persoon', car: 'Auto' };
@@ -331,17 +334,20 @@ export class HighlightImporter {
       const key = feedbackKey(f.camera, hourInAmsterdam(f.startTime));
       sums.set(key, (sums.get(key) ?? 0) + f.value);
     }
-    for (const c of this.store.candidatesSince(now - 2 * 86400)) {
+    for (const c of this.store.candidatesSince(now - RESELECT_S)) {
       const adjustment = feedbackAdjustment(sums.get(feedbackKey(c.camera, hourInAmsterdam(c.startTime))) ?? 0);
       // Known from answers or facts counts low, like a recognised face (already part of the base score).
       const known = c.subLabels.length === 0 && (c.aiVehicleKnown || c.annotationKnown) ? KNOWN_FACTOR : 1;
       if (adjustment !== c.feedbackAdj || known !== c.knownFactor) this.store.setScoreParts(c.id, adjustment, known);
     }
-    const recent = this.store.candidatesSince(now - 2 * 86400);
-    const selected = selectHighlights(
-      recent.map((c) => ({ id: c.id, startTime: c.startTime, cameras: c.cameras, score: c.score })),
-      this.store.threshold(),
-    );
+    const since = now - RESELECT_S;
+    const recent = this.store.candidatesSince(since);
+    // Highlights just before the window stay as they are and still hold back their neighbours in it.
+    const before = this.store
+      .candidatesSince(since - SELECTION.burstWindowS)
+      .filter((c) => c.startTime < since && c.selected);
+    const asCandidate = (c: StoredCandidate) => ({ id: c.id, startTime: c.startTime, cameras: c.cameras, score: c.score });
+    const selected = selectHighlights(recent.map(asCandidate), this.store.threshold(), SELECTION.burstWindowS, before.map(asCandidate));
     for (const c of recent) {
       const want = selected.has(c.id);
       if (want !== c.selected) this.store.setSelected(c.id, want);

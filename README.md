@@ -6,7 +6,7 @@ Self-hosted live camera dashboard for TVs, driven by Frigate alerts.
 - Cameras with an active Frigate alert are enlarged automatically, with a 15 s hold per camera after the alert ends.
 - Video comes from a standalone go2rtc (H.265 passthrough over MSE). It keeps playing when Frigate or the backend is down.
 
-> **Status:** first increment, a development prototype. There is no authentication; run it only on a trusted network. See [PROJECT.md](PROJECT.md).
+> **Status:** in daily use at home. Live mode requires a login ([security](docs/security.md)); highlights, AI descriptions, questions and the household register are described in the docs below. See [PROJECT.md](PROJECT.md).
 
 ## Quick start (no cameras needed)
 
@@ -28,4 +28,4 @@ More in [docs/development.md](docs/development.md) and [docs/testing.md](docs/te
 
 ## Documentation
 
-[PROJECT.md](PROJECT.md) · [requirements](docs/requirements.md) · [architecture](docs/architecture.md) · [Frigate integration](docs/frigate-integration.md) · [streaming](docs/streaming.md) · [security](docs/security.md)
+[PROJECT.md](PROJECT.md) · [requirements](docs/requirements.md) · [architecture](docs/architecture.md) · [Frigate integration](docs/frigate-integration.md) · [streaming](docs/streaming.md) · [security](docs/security.md) · [highlights](docs/highlights.md) · [AI](docs/ai.md) · [questions](docs/questions.md) · [household](docs/household.md) · [deployment](docs/deployment.md)

@@ -15,7 +15,7 @@ export interface GeneratorOptions {
   cameras: Camera[];
   cameraStatus?: () => CameraVideoStatus[];
   aiStatus?: () => AiStatus | undefined;
-  /** Frigate's face library: a person question needs a face Frigate can learn (or another stable feature). */
+  /** Frigate's face library: crops and Frigate's best guess shown with a person question. */
   faces?: Pick<FaceLibrary, 'ready' | 'attemptsFor' | 'refresh'>;
   /** Epoch seconds of the newest fact: an AI verdict "unknown vehicle" from before it may be outdated. */
   factsChangedAt?: () => number | null;

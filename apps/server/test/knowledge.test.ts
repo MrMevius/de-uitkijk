@@ -222,6 +222,11 @@ describe('learning meter (0.30.0)', () => {
     add('noise');
     store.setAiResult('noise', 'Lege oprit.', false, NOW);
     add('car', { labels: ['car'] });
+    // A recognised face counts low and is no highlight, but is what the meter is about.
+    store.insert({ ...base, id: 'face-low', subLabels: ['Tineke Mevius'], score: 1, startTime: NOW - 600 }, ['face-low']);
+    // An answer without a name does not say who it was.
+    add('nameless');
+    store.setAnnotation('nameless', 'onbekend', false);
     questions.add({ kind: 'person', key: 'person:x', title: 'Wie is dit?', body: '' }, NOW - 500);
     questions.add({ kind: 'highlight', key: 'hl:x', title: 'Goed?', body: '' }, NOW - 500);
 
@@ -230,12 +235,12 @@ describe('learning meter (0.30.0)', () => {
     expect(stats.weeks).toHaveLength(8);
     const today = stats.days[0]!;
     expect(today).toMatchObject({
-      highlights: 5,
-      persons: { total: 4, self: 2, answered: 1, unknown: 1 },
+      highlights: 6,
+      persons: { total: 6, self: 3, answered: 1, unknown: 2 },
       vehicles: { total: 2, known: 1 },
       questions: { asked: 1, answered: 0 },
     });
-    expect(stats.weeks[0]).toMatchObject({ highlights: 5, persons: { self: 2 } });
+    expect(stats.weeks[0]).toMatchObject({ highlights: 6, persons: { self: 3 } });
     expect(stats.days[1]!.highlights).toBe(0);
   });
 });

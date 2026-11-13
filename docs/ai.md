@@ -14,7 +14,7 @@ Highlights get a short Dutch description written by an AI from one still image. 
 
 ## How it works
 
-1. Only highlights that passed the rule-based selection (AI-1) are sent, oldest first and one at a time, every two minutes. At most 60 calls a day.
+1. Only highlights that passed the rule-based selection (AI-1) are sent, oldest first and one at a time, every two minutes. At most 60 calls a day. Since 0.30.1 a highlight is described when it is selected within two days (the period the selection is recalculated over), not only within 24 hours: a highlight selected later, after feedback or a known neighbour, stayed without a description.
 2. Input: the stored clean snapshot (converted to JPEG) plus camera name, time and Frigate's labels.
 3. Since 0.20.0 only parked vehicles, with nobody at them and nothing happening, count as noise (`real_event` false): they kept becoming highlights once Frigate tracked cars. Since 0.20.3 a person Frigate reported is never noise, and when the group has a person on the representative camera, the still is taken where that person was seen best (the path point nearest their best box) instead of at Frigate's review thumbnail time, which can be a car's moment (2026-11-09: "a hatchback parked under the carport" while the driver got out and walked past it). Highlights of the last two days that were called noise despite a person were described once more. Plates Frigate read are part of the prompt, so the AI can name them in the vehicle description and match them with plates in household facts.
 4. `codex exec` runs with a strict JSON output schema: `description` (max 120 characters), `real_event` (boolean), `vehicle` and `vehicle_known` (since 0.10.0; motor vehicles only in 0.13.x, bicycles and scooters again since 0.14.0 with type, colour, brand and fixed parts) and `person_marker` (since 0.13.0: a person is recognisable by work clothes, a logo or their own vehicle), and `vehicles` (since 0.18.0: every vehicle clearly in view, also parked ones, each with `known`). The answer is validated and flattened to one plain line.
@@ -52,7 +52,7 @@ An analysis of 2026-11-12 found that answers made the system better at vehicles 
 
 Beheer → AI → *Leert het systeem?* shows per day (last 14) or per week (last 8), over highlights that are shown or answered about and not noise:
 
-- **Personen zelf / via jou / onbekend.** Highlights with a person: named without an answer (Frigate recognised the face, or the AI named someone from the register), named by an administrator's answer, or neither.
+- **Personen zelf / via jou / onbekend.** Highlights with a person, plus events in which Frigate recognised a face (they count low and are usually no highlight; before 0.30.1 they were left out, so the meter showed 1 of 18 recognised faces in a week): named without an answer (Frigate recognised the face, or the AI named someone from the register), named by an administrator's answer, or neither. An answer without a name ("onbekend", "bezoeker", "onbekende fiets") counts as *onbekend*.
 - **Voertuigen herkend.** Vehicles the AI saw clearly that are known (after the server's checks).
 - **Vragen (beantwoord).** Questions about people, vehicles and the register asked in the period. *Vragen per highlight* above the table is for the last seven days.
 

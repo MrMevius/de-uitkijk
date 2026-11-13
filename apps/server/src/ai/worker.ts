@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import type { Camera } from '@uitkijk/shared';
+import { RESELECT_S } from '../highlights/importer.ts';
 import type { HighlightStore, StoredCandidate } from '../highlights/store.ts';
 import type { Describer } from './codex.ts';
 import { checkVerdict, knownPlates, plateCertainties, plateMatches, type Register } from './knowledge.ts';
@@ -115,7 +116,7 @@ export class AiWorker {
       dailyCap: this.opts.dailyCap,
       lastSuccessAt: this.lastSuccessAt,
       lastError: this.lastError,
-      pending: this.store.aiPending(this.opts.now() - 86400, this.opts.maxAttempts).length,
+      pending: this.store.aiPending(this.opts.now() - RESELECT_S, this.opts.maxAttempts).length,
     };
   }
 
@@ -128,7 +129,7 @@ export class AiWorker {
       this.callsToday = 0;
     }
     if (this.callsToday >= this.opts.dailyCap) return false;
-    const next = this.store.aiPending(now - 86400, this.opts.maxAttempts)[0];
+    const next = this.store.aiPending(now - RESELECT_S, this.opts.maxAttempts)[0];
     if (!next) return false;
     const webp = this.store.thumbnail(next.id);
     if (!webp) return false;
