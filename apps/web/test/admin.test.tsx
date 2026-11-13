@@ -46,6 +46,7 @@ function stubApi(role: 'admin' | 'viewer') {
               { id: 'h3', camera: 'oprit', startTime: Date.now() / 1000 - 120, description: 'Iemand loopt over de oprit.' },
               { id: 'h4', camera: 'achter_1', startTime: Date.now() / 1000 - 60, description: 'Iemand bij de schuur.' },
             ],
+            suggestions: [{ name: 'Johan Mevius', category: 'bewoner', text: 'Om 23:25 bij Voordeur: Johan Mevius (bewoner), jouw antwoord.' }],
           },
           {
             id: 3, kind: 'household', title: 'Heeft Gideon een Fiesta of een Focus?', body: 'Het huishouden twijfelt.', status: 'open', answer: null, answeredBy: null, createdAt: Date.now() / 1000, answeredAt: null, highlight: null,
@@ -182,6 +183,23 @@ describe('admin page', () => {
     expect(screen.getAllByTitle('Goede highlight')[0]!.className).toContain('ui-btn--on');
     fireEvent.click(screen.getByRole('button', { name: 'Sluiten' }));
     expect(screen.queryByText(/Beantwoord:/)).toBeNull();
+  });
+
+  it('suggests who it is from the same visit; a click fills in the name and marks the answer (0.33.0)', async () => {
+    stubApi('admin');
+    location.hash = '#vragen';
+    render(<AdminPage />);
+    expect(await screen.findByText('Om 23:25 bij Voordeur: Johan Mevius (bewoner), jouw antwoord.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Bewoner' }).className).not.toContain('ui-btn--primary');
+    fireEvent.click(screen.getByRole('button', { name: 'Johan' }));
+    expect((screen.getByPlaceholderText('bijv. Oma of PostNL') as HTMLInputElement).value).toBe('Johan Mevius');
+    expect(screen.getByRole('button', { name: 'Bewoner' }).className).toContain('ui-btn--primary');
+    // Nothing is answered until the administrator confirms.
+    const calls = (fetch as unknown as { mock: { calls: [string, RequestInit?][] } }).mock.calls;
+    expect(calls.some(([url]) => url === '/api/admin/questions/1/answer')).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Bewoner' }));
+    await waitFor(() => expect(calls.some(([url]) => url === '/api/admin/questions/1/answer')).toBe(true));
+    expect(JSON.parse(String(calls.find(([u]) => u === '/api/admin/questions/1/answer')![1]!.body))).toMatchObject({ category: 'bewoner', name: 'Johan Mevius' });
   });
 
   it('answers a doubt of the household register with one click (0.29.0)', async () => {

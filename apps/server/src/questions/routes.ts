@@ -2,12 +2,13 @@ import type { FastifyInstance } from 'fastify';
 import type { FactStore } from '../ai/facts.ts';
 import { ATTEMPT_FILE, matchFaceName, type FaceLibrary } from '../faces/library.ts';
 import type { HighlightStore, StoredCandidate } from '../highlights/store.ts';
-import { findPerson, type HouseholdStore } from '../household/store.ts';
+import { plateMatches } from '../ai/knowledge.ts';
+import { findPerson, plateKey, vehicleLabel, type HouseholdStore, type Person, type Vehicle } from '../household/store.ts';
 import { MIN_PERSON_SIZE } from './generator.ts';
 import { answerHousehold, registerVehicleAnswer } from './household.ts';
 import { learningStats } from './learning.ts';
 import type { QuestionStore } from './store.ts';
-import { normalizeVehicle, vehicleNoun } from './vehicles.ts';
+import { makeModel, normalizeVehicle, platesClose, platesIn, vehicleNoun } from './vehicles.ts';
 
 export interface QuestionRouteOptions {
   questions: QuestionStore;
@@ -23,6 +24,8 @@ export interface QuestionRouteOptions {
   register?: HouseholdStore;
   /** Called after an answer changed the register or the facts, so the bundling can run again. */
   onRegisterChanged?: () => void;
+  /** Camera names for the suggestions ("Om 23:25 bij Voordeur …"). */
+  cameraName?: (id: string) => string;
   /** Called after an answer queued face learning, to process it right away. */
   onFaceQueued?: () => void;
   /** Epoch seconds. */
@@ -123,12 +126,82 @@ export function sameVisit(h: StoredCandidate, { highlights, questions }: Pick<Qu
     .slice(0, 6);
 }
 
+/** Who a person question may be about, and why (since 0.33.0). */
+export interface PersonSuggestion {
+  name: string;
+  /** Answer button (a key of PERSON_CATEGORIES), or null when not known. */
+  category: string | null;
+  text: string;
+}
+
+const CATEGORY_KEY = new Map<string, string>(Object.entries(PERSON_CATEGORIES).map(([key, label]) => [label, key]));
+const clock = (epochS: number) => new Date(epochS * 1000).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Amsterdam' });
+
+/** The register vehicle an AI description of a known vehicle is about: by plate, else the only one of that make and model. */
+function registerVehicleFor(description: string, vehicles: Vehicle[]): Vehicle | undefined {
+  const plates = platesIn(description);
+  const byPlate = vehicles.find((v) => v.plate && plates.some((p) => platesClose(p, plateKey(v.plate))));
+  if (byPlate) return byPlate;
+  const mm = makeModel(description);
+  const same = mm?.includes(' ') ? vehicles.filter((v) => v.make && makeModel(`${v.make} ${v.model}`) === mm) : [];
+  return same.length === 1 ? same[0] : undefined;
+}
+
+/**
+ * Who a "Wie is dit?" question is probably about, from the same visit (within a quarter of an hour, any camera):
+ * someone an administrator named or Frigate recognised there, or the owner of a register vehicle whose plate Frigate
+ * read or that the AI recognised, in this highlight too. Strongest first, then closest in time; at most three. The
+ * administrator confirms: a suggestion only fills in the name. Not from appearance or clothing.
+ * On 2026-11-09 the question about "Een persoon staat achteraan op het pad" at 23:26 had Johan's answered highlight
+ * at the front door one minute before.
+ */
+export function personSuggestions(
+  h: StoredCandidate,
+  ctx: { highlights: Pick<HighlightStore, 'candidatesSince'>; people: Person[]; vehicles: Vehicle[]; cameraName?: (id: string) => string },
+): PersonSuggestion[] {
+  const where = (c: StoredCandidate) => (c.id === h.id ? 'In deze highlight' : `Om ${clock(c.startTime)} bij ${ctx.cameraName?.(c.camera) ?? c.camera}`);
+  const person = (name: string) => findPerson(ctx.people, name);
+  const roleKey = (name: string) => {
+    const role = person(name)?.role;
+    return role ? (CATEGORY_KEY.get(role) ?? (role === 'vaste hulp' ? 'hulp' : role === 'bezorger of dienstverlener' ? 'bezorger' : null)) : null;
+  };
+  const found: (PersonSuggestion & { strength: number; distance: number })[] = [];
+  const add = (c: StoredCandidate, strength: number, name: string, category: string | null, text: string) =>
+    found.push({ name: person(name)?.name ?? name, category, text, strength, distance: Math.abs(c.startTime - h.startTime) });
+  const visit = ctx.highlights.candidatesSince(h.startTime - VISIT_S).filter((c) => c.startTime <= h.startTime + VISIT_S);
+  for (const c of visit) {
+    if (c.id !== h.id && c.annotation) {
+      const { name, category } = parsePersonAnswer(c.annotation);
+      const owner = /^(?:auto|fiets|scooter|motor) van (.+)$/.exec(c.annotation)?.[1];
+      if (name) add(c, 0, name, CATEGORY_KEY.get(category) ?? null, `${where(c)}: ${name} (${category}), jouw antwoord.`);
+      else if (owner) add(c, 2, owner, roleKey(owner), `${where(c)}: ${c.annotation}, jouw antwoord.`);
+    }
+    if (c.id !== h.id) for (const n of c.subLabels) add(c, 1, n, roleKey(n), `${where(c)}: Frigate herkende het gezicht van ${n}.`);
+      for (const v of plateMatches(c.plates, { people: ctx.people, vehicles: ctx.vehicles })) {
+      const owner = ctx.people.find((p) => p.id === v.ownerId);
+      if (owner) add(c, 2, owner.name, roleKey(owner.name), `${where(c)}: Frigate las het kenteken ${v.plate} van de ${vehicleLabel({ ...v, plate: '' })} van ${owner.name}.`);
+    }
+    const known = [...(c.aiVehicle && c.aiVehicleKnown ? [c.aiVehicle] : []), ...c.aiVehicles.filter((x) => x.known).map((x) => x.description)];
+    for (const d of known) {
+      const v = registerVehicleFor(d, ctx.vehicles);
+      const owner = v && ctx.people.find((p) => p.id === v.ownerId);
+      if (owner) add(c, 3, owner.name, roleKey(owner.name), `${where(c)}: de ${vehicleLabel({ ...v!, plate: '' })} van ${owner.name} (herkend door de AI).`);
+    }
+  }
+  const out: PersonSuggestion[] = [];
+  for (const s of found.sort((a, b) => a.strength - b.strength || a.distance - b.distance)) {
+    if (out.some((o) => o.name === s.name)) continue;
+    out.push({ name: s.name, category: s.category, text: s.text });
+  }
+  return out.slice(0, 3);
+}
+
 const clean = (v: unknown, max: number) =>
   typeof v === 'string' ? v.replace(/<[^>]*>/g, ' ').replace(/[\r\n\t<>]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max) : '';
 
 /** Questions for administrators (`/api/admin/`, admin role). Answers feed back into highlights and facts. */
 export function registerQuestions(app: FastifyInstance, options: QuestionRouteOptions): void {
-  const { questions, highlights, facts, autoFacts = false, faces, household, register, onRegisterChanged, onFaceQueued, now = () => Date.now() / 1000 } = options;
+  const { questions, highlights, facts, autoFacts = false, faces, household, register, onRegisterChanged, onFaceQueued, cameraName, now = () => Date.now() / 1000 } = options;
   // Names for the answer form: Frigate's face library first, then people named in earlier answers whose face Frigate
   // could not learn (neighbours seen from the side, vehicle owners), so they get a one-click button too (since 0.22.5).
   // A nickname from the household register counts as that person ("Tini" → "Tineke Mevius"), not as someone new.
@@ -159,7 +232,10 @@ export function registerQuestions(app: FastifyInstance, options: QuestionRouteOp
         highlight: visible ? { id: visible.id, hasThumbnail: visible.hasThumbnail, camera: visible.camera, startTime: visible.startTime, feedback: visible.feedback } : null,
         // Same visit, so one answer can name the person on all of them.
         ...(visible && q.kind === 'person' && q.status === 'open'
-          ? { sameVisit: sameVisit(visible, options).map((c) => ({ id: c.id, camera: c.camera, startTime: c.startTime, description: c.aiDescription ?? c.description })) }
+          ? {
+              sameVisit: sameVisit(visible, options).map((c) => ({ id: c.id, camera: c.camera, startTime: c.startTime, description: c.aiDescription ?? c.description })),
+              suggestions: personSuggestions(visible, { highlights, people: household?.people() ?? [], vehicles: register?.vehicles() ?? [], ...(cameraName ? { cameraName } : {}) }),
+            }
           : {}),
       };
     });

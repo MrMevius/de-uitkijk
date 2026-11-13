@@ -3,6 +3,10 @@
 Op hoofdlijnen, nieuwste eerst. Wordt getoond op Beheer → Change log. Elke release krijgt hier een kopje
 `## <versie> — <datum>` met een paar bullets; een test controleert dat de bovenste versie gelijk is aan `VERSION`.
 
+## 0.33.0 — 2026-11-13
+
+- Bij "Wie is dit?" staat een suggestie wie het waarschijnlijk is, met de reden: iemand die je in hetzelfde bezoek al benoemde, een gezicht dat Frigate toen herkende, of de eigenaar van een bekend voertuig (kenteken of door de AI herkend). Een klik vult de naam in; jij bevestigt.
+
 ## 0.32.0 — 2026-11-13
 
 - Een antwoord op "Van wie is deze auto?" gaat meteen in Huishouden als duidelijk is welk voertuig het is; een nieuwe eigenaar komt erbij zonder rol. Twijfelgevallen blijven bij het bundelen.

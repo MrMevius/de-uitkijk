@@ -36,6 +36,8 @@ interface Question {
   highlight: { id: string; hasThumbnail: boolean; feedback?: -1 | 1 | null } | null;
   /** Other highlights of the same visit that the answer about a person can also apply to (since 0.27.0). */
   sameVisit?: { id: string; camera: string; startTime: number; description: string }[];
+  /** Who it probably is, from the same visit: an earlier answer, a recognised face or a known vehicle (since 0.33.0). */
+  suggestions?: { name: string; category: string | null; text: string }[];
 }
 
 const KIND_LABEL: Record<Question['kind'], string> = {
@@ -267,6 +269,26 @@ function Faces({ files }: { files: string[] }) {
   );
 }
 
+/** Who it probably is and why; a click fills in the name and marks the answer button, the administrator confirms. */
+function Suggestions({ items, value, onPick }: { items: NonNullable<Question['suggestions']>; value: string; onPick: (s: NonNullable<Question['suggestions']>[number]) => void }) {
+  if (!items.length) return null;
+  return (
+    <div className="ui-suggest">
+      <span className="ui-field__label">Suggestie</span>
+      <ul>
+        {items.map((s) => (
+          <li key={s.name}>
+            <button type="button" className={s.name === value ? 'ui-chip ui-chip--on' : 'ui-chip'} onClick={() => onPick(s)}>
+              {s.name.split(' ')[0]}
+            </button>
+            <span className="ui-muted">{s.text}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 /** One-click names (face library and earlier answers), so the same person always gets the same name. */
 function NameChips({ names, value, onPick }: { names: string[]; value: string; onPick: (name: string) => void }) {
   if (!names.length) return null;
@@ -318,6 +340,7 @@ function HandledCard({ handled, onClose }: { handled: Handled; onClose: () => vo
 
 function QuestionCard({ q, names, onDone }: { q: Question; names: string[]; onDone: (text: string) => void }) {
   const [name, setName] = useState(q.data.guess ?? '');
+  const [suggested, setSuggested] = useState<string | null>(null);
   const [owner, setOwner] = useState('');
   const [vehicle, setVehicle] = useState(q.data.vehicle ?? '');
   const [error, setError] = useState<string | null>(null);
@@ -364,6 +387,14 @@ function QuestionCard({ q, names, onDone }: { q: Question; names: string[]; onDo
           <>
             <Faces files={q.data.faces ?? []} />
             <SameVisit items={q.sameVisit ?? []} chosen={also} onToggle={toggle} />
+            <Suggestions
+              items={q.suggestions ?? []}
+              value={name}
+              onPick={(s) => {
+                setName(s.name);
+                setSuggested(s.category);
+              }}
+            />
             <label className="ui-field">
               <span className="ui-field__label">Naam (optioneel)</span>
               <input placeholder="bijv. Oma of PostNL" maxLength={60} list="known-faces" value={name} onChange={(e) => setName(e.target.value)} />
@@ -374,7 +405,11 @@ function QuestionCard({ q, names, onDone }: { q: Question; names: string[]; onDo
             )}
             <div className="ui-segment" role="group" aria-label="Wie is het?">
               {PERSON_BUTTONS.map(([category, label]) => (
-                <button key={category} className="ui-btn" onClick={() => void send('answer', { category, name, also: [...also] })}>
+                <button
+                  key={category}
+                  className={category === suggested && q.suggestions?.some((s) => s.name === name) ? 'ui-btn ui-btn--primary' : 'ui-btn'}
+                  onClick={() => void send('answer', { category, name, also: [...also] })}
+                >
                   {label}
                 </button>
               ))}

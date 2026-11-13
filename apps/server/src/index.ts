@@ -231,6 +231,7 @@ const app = buildApp({
           questions: questionStore,
           highlights: highlightStore,
           autoFacts: Boolean(ai),
+          cameraName: (id: string) => config.cameras.find((c) => c.id === id)?.name ?? id,
           ...(facts ? { facts } : {}),
           ...(faces ? { faces, onFaceQueued: () => void faceWorker?.kick() } : {}),
           ...(household ? { household, register: household, onRegisterChanged: registerChanged } : {}),

@@ -54,6 +54,17 @@ Up to 2026-11-11, 17 of 43 vehicle questions and 6 of 54 person questions were s
 
 A person question lists the other highlights within 15 minutes (any camera) with a person nobody named, that Frigate did not recognise, that are not noise and not too small, at most six, closest first. They are ticked; the answer applies to every ticked one: it gets its own answered question (`person:<id>`, so its face is learned too), its label and a new description. Only the first answer becomes a fact, so the same fact is not written six times. Highlights with an earlier answer are never changed. Since 0.28.2 a click on a thumbnail plays that clip large under the list; the tick box is separate.
 
+## Suggestions (since 0.33.0)
+
+A person question suggests who it probably is, from the same visit (within 15 minutes, any camera), strongest first and then closest in time, at most three names:
+
+1. someone an administrator named there ("Om 23:25 bij Voordeur: Johan Mevius (bewoner), jouw antwoord.");
+2. someone Frigate recognised by face there;
+3. the owner of a register vehicle: from a vehicle answer there ("auto van Mark"), or a plate Frigate read there or in this highlight;
+4. the owner of a register vehicle the AI recognised there or in this highlight (by plate, or the only register vehicle of that make and model).
+
+A click on a suggestion fills in the name and marks the answer button of the person's role; nothing is answered until the administrator presses a button. Suggestions never come from appearance or clothing. Example: on 2026-11-09 the question about "Een persoon staat achteraan op het pad" at 23:26 had Johan's answered highlight at the front door one minute before; before 0.33.0 "Zelfde bezoek" only listed highlights without a name.
+
 ## Rating from the questions tab (since 0.27.0)
 
 Every question with a highlight has 👍/👎, like the archive: rating while answering costs one tap. Since 0.28.1 an answered or skipped card stays in place with the answer and the 👍/👎 buttons until *Sluiten* or until the tab is left; before, it disappeared at once and the highlight could no longer be rated there.
