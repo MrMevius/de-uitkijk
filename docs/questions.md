@@ -65,7 +65,7 @@ A person question suggests who it probably is, from the same visit (within 15 mi
 
 A click on a suggestion fills in the name and marks the answer button of the person's role; nothing is answered until the administrator presses a button. Suggestions never come from appearance or clothing. Example: on 2026-11-09 the question about "Een persoon staat achteraan op het pad" at 23:26 had Johan's answered highlight at the front door one minute before; before 0.33.0 "Zelfde bezoek" only listed highlights without a name.
 
-## Rating from the questions tab (since 0.27.0)
+## Rating from the questions tab (0.27.0–0.33.0)
 
-Every question with a highlight has 👍/👎, like the archive: rating while answering costs one tap. Since 0.28.1 an answered or skipped card stays in place with the answer and the 👍/👎 buttons until *Sluiten* or until the tab is left; before, it disappeared at once and the highlight could no longer be rated there.
+From 0.27.0 every question with a highlight had 👍/👎, and from 0.28.1 an answered card stayed with them until *Sluiten*. Since 0.33.1 only the highlight question ("Was dit een goede highlight?") asks for a rating (operator decision 2026-11-13: not with every question); the archive keeps 👍/👎 for every highlight. An answered or skipped card leaves a short confirmation in its place that disappears after eight seconds.
 

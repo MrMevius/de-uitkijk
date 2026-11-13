@@ -160,7 +160,7 @@ describe('admin page', () => {
     expect(screen.getByRole('button', { name: 'Opslaan als feit voor de AI' })).toBeTruthy();
   });
 
-  it('answers a person for the ticked highlights of the same visit and rates the highlight (0.27.0)', async () => {
+  it('answers a person for the ticked highlights of the same visit, without a highlight rating (0.33.1)', async () => {
     stubApi('admin');
     location.hash = '#vragen';
     render(<AdminPage />);
@@ -171,16 +171,16 @@ describe('admin page', () => {
     fireEvent.click(visit.querySelectorAll('button')[0]!);
     expect(visit.querySelector('video')!.getAttribute('src')).toBe('/api/highlights/h3/clip.mp4');
     expect((visit.querySelectorAll('input[type=checkbox]')[0] as HTMLInputElement).checked).toBe(true);
-    fireEvent.click(screen.getAllByTitle('Goede highlight')[0]!);
+    // 👍/👎 only in highlight questions.
+    expect(screen.queryAllByTitle('Goede highlight')).toEqual([]);
     fireEvent.click(screen.getByRole('button', { name: 'Bewoner' }));
     const calls = (fetch as unknown as { mock: { calls: [string, RequestInit?][] } }).mock.calls;
     await waitFor(() => expect(calls.some(([url]) => url === '/api/admin/questions/1/answer')).toBe(true));
     const body = (url: string) => JSON.parse(String(calls.find(([u]) => u === url)![1]!.body));
     expect(body('/api/admin/questions/1/answer')).toEqual({ category: 'bewoner', name: '', also: ['h3'] });
-    expect(body('/api/admin/highlights/h1/feedback')).toEqual({ value: 1 });
-    // The card stays with the answer, so the highlight can still be rated (0.28.1); the rating given stays on.
+    // A short confirmation takes the card's place.
     expect(await screen.findByText('Beantwoord: Tineke Mevius (bewoner) (ook voor 1 andere highlight)')).toBeTruthy();
-    expect(screen.getAllByTitle('Goede highlight')[0]!.className).toContain('ui-btn--on');
+    expect(screen.queryAllByTitle('Goede highlight')).toEqual([]);
     fireEvent.click(screen.getByRole('button', { name: 'Sluiten' }));
     expect(screen.queryByText(/Beantwoord:/)).toBeNull();
   });

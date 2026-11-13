@@ -232,31 +232,6 @@ function SameVisit({ items, chosen, onToggle }: { items: NonNullable<Question['s
   );
 }
 
-/** Ratings given in this tab, so the card after answering shows a rating given just before. */
-const ratings = new Map<string, -1 | 1 | null>();
-
-/** 👍/👎 on the highlight of a question: rating while answering costs one tap (since 0.27.0). */
-function Rating({ highlight }: { highlight: NonNullable<Question['highlight']> }) {
-  const [value, setValue] = useState<-1 | 1 | null>(ratings.has(highlight.id) ? ratings.get(highlight.id)! : (highlight.feedback ?? null));
-  const rate = (v: -1 | 1) => {
-    const next = value === v ? null : v;
-    void api('POST', `/api/admin/highlights/${encodeURIComponent(highlight.id)}/feedback`, { value: next }).then(() => {
-      ratings.set(highlight.id, next);
-      setValue(next);
-    }, () => {});
-  };
-  return (
-    <span className="ui-rating" role="group" aria-label="Goede highlight?">
-      <button className={value === 1 ? 'ui-btn ui-btn--small ui-btn--on' : 'ui-btn ui-btn--small'} onClick={() => rate(1)} title="Goede highlight">
-        👍
-      </button>
-      <button className={value === -1 ? 'ui-btn ui-btn--small ui-btn--on' : 'ui-btn ui-btn--small'} onClick={() => rate(-1)} title="Geen goede highlight">
-        👎
-      </button>
-    </span>
-  );
-}
-
 /** Face crops Frigate kept but could not recognise; a name plus Bewoner/Bezoeker stores them in Frigate. */
 function Faces({ files }: { files: string[] }) {
   if (!files.length) return null;
@@ -306,7 +281,7 @@ function NameChips({ names, value, onPick }: { names: string[]; value: string; o
   );
 }
 
-/** What an administrator just did with a question; the card stays in place so the highlight can still be rated. */
+/** What an administrator just did with a question. */
 interface Handled {
   q: Question;
   text: string;
@@ -314,21 +289,25 @@ interface Handled {
   index: number;
 }
 
-/** A question answered or skipped in this visit of the tab: the result, 👍/👎 and a close button (since 0.28.1). */
+/**
+ * A question answered or skipped in this visit of the tab: a short confirmation in its place, gone by itself after a
+ * few seconds. Until 0.33.1 it stayed with 👍/👎 for the highlight; rating is only asked in highlight questions now.
+ */
 function HandledCard({ handled, onClose }: { handled: Handled; onClose: () => void }) {
   const { q, text } = handled;
+  useEffect(() => {
+    const timer = setTimeout(onClose, 8000);
+    return () => clearTimeout(timer);
+  }, []);
   return (
-    <section className={`ui-card ui-question ui-question--handled${q.highlight ? '' : ' ui-question--plain'}`}>
-      <Media highlight={q.highlight} />
+    <section className="ui-card ui-question ui-question--handled ui-question--plain">
       <div className="ui-question__body">
         <div className="ui-question__meta">
           <Pill level="ok">{KIND_LABEL[q.kind]}</Pill>
           <span className="ui-muted">{q.title}</span>
         </div>
         <h3>{text}</h3>
-        {q.highlight && q.kind !== 'highlight' && <p className="ui-muted">Was dit een goede highlight? Je oordeel stuurt de selectie bij.</p>}
         <div className="ui-question__foot">
-          {q.highlight && q.kind !== 'highlight' && <Rating highlight={q.highlight} />}
           <button className="ui-btn ui-btn--ghost" onClick={onClose}>
             Sluiten
           </button>
@@ -455,7 +434,6 @@ function QuestionCard({ q, names, onDone }: { q: Question; names: string[]; onDo
         )}
 
         <div className="ui-question__foot">
-          {q.highlight && q.kind !== 'highlight' && <Rating highlight={q.highlight} />}
           <button className="ui-btn ui-btn--ghost" onClick={() => void send('dismiss')}>
             {q.kind === 'noise' || q.kind === 'system' ? 'Gezien' : q.kind === 'household' ? 'Weet ik niet' : 'Overslaan'}
           </button>
