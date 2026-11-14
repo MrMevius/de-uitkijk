@@ -278,6 +278,15 @@ describe('answering questions', () => {
     expect(t.questions.openFor(id, 'person')).toBeDefined();
   });
 
+  it('keeps the other recognised name when one of two is rejected (0.36.1)', async () => {
+    // 2026-11-13: "Roel Snippe en Johan Mevius" became "Johan Mevius en Johan Mevius".
+    const t = await api();
+    const id = t.add({ ai: { real: true }, subLabels: ['Roel Snippe', 'Johan Mevius'], description: 'Roel Snippe en Johan Mevius bij Achter het huis 1, daarna Oprit / Pad' });
+    const res = await t.app.inject({ method: 'POST', url: `/api/admin/highlights/${id}/not-recognised`, headers: t.headers, payload: { name: 'Roel Snippe' } });
+    expect(res.statusCode).toBe(200);
+    expect(t.highlights.get(id)).toMatchObject({ subLabels: ['Johan Mevius'], description: 'Johan Mevius bij Achter het huis 1, daarna Oprit / Pad' });
+  });
+
   it('applies one answer to the other highlights of the same visit that were ticked (0.27.0)', async () => {
     const t = await api();
     const first = t.add({ ai: { real: true, marker: true }, startTime: NOW - 600, score: 5 });

@@ -3,6 +3,10 @@
 Op hoofdlijnen, nieuwste eerst. Wordt getoond op Beheer → Change log. Elke release krijgt hier een kopje
 `## <versie> — <datum>` met een paar bullets; een test controleert dat de bovenste versie gelijk is aan `VERSION`.
 
+## 0.36.1 — 2026-11-14
+
+- Herkende Frigate twee mensen en wijs je er één af ("Niet Roel"), dan blijft de andere naam gewoon staan. Eerder stond er dan twee keer dezelfde naam ("Johan Mevius en Johan Mevius").
+
 ## 0.36.0 — 2026-11-13
 
 - Herkent Frigate iemand verkeerd, dan staat bij de highlight "Dit is niet …" (bij de vraag) of "Niet …" (in het archief). De naam gaat eraf, de highlight telt weer gewoon mee en wordt opnieuw beschreven, en daarna volgt de vraag "Wie is dit?".

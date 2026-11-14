@@ -491,7 +491,11 @@ export class HighlightStore {
       reasons = reasons.filter((r) => r !== 'bekende persoon');
     }
     const known = rest.length === 0 && !c.annotationKnown ? 1 : c.knownFactor;
-    const description = c.description.split(name).join(rest.length ? rest.join(' en ') : 'Persoon').replace(/^(Persoon) en \1\b/, '$1');
+    // The rule description starts with the names joined by " en " (importer `describe`); rebuild that subject.
+    const subject = c.subLabels.join(' en ');
+    const description = c.description.startsWith(subject)
+      ? (rest.length ? rest.join(' en ') : 'Persoon') + c.description.slice(subject.length)
+      : c.description.split(name).join('Persoon');
     this.db
       .prepare(
         `UPDATE candidates SET sub_labels = ?, rejected_names = ?, base_score = ?, reasons = ?, known_factor = ?, score = ROUND(? * ? + feedback_adj, 2),
