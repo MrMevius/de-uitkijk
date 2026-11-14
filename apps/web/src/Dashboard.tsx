@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { computeLayout, summarizeHealth, type DashboardState, type DisplayProfile, type Rect } from '@uitkijk/shared';
 import { CameraTile } from './CameraTile.tsx';
 import { StatusBar } from './StatusBar.tsx';
-import { highlightCapacity, highlightStrip, HighlightTile, useHighlightRotation } from './highlights.tsx';
+import { highlightCapacity, highlightStrip, HighlightTile, isPhone, useHighlightRotation } from './highlights.tsx';
 
 interface Props {
   state: DashboardState | null;
@@ -53,9 +53,9 @@ export function Dashboard({ state, connected, profile }: Props) {
   const topBand = height > width ? band : 0;
   // In landscape the highlight column runs along the right edge, where the status bar is: it starts below it.
   const stripBand = height > width ? 0 : band;
-  // Up to five highlights in a column beside the cameras (fewer in a row on a phone), except while a camera has
+  // Up to five highlights in a column beside the cameras (fewer in a row on a portrait tablet, none on a phone), except while a camera has
   // an alert (then live cameras get all space).
-  const capacity = highlightCapacity(width, height - topBand - stripBand, profile.gapPx);
+  const capacity = isPhone(width, height) ? 0 : highlightCapacity(width, height - topBand - stripBand, profile.gapPx);
   const { tiles, fail: failHighlight } = useHighlightRotation(focusedIds.length > 0, capacity);
   const playing = tiles.filter((t) => t !== null).length;
   const { rects, highlightRects } = useMemo(() => {

@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { HighlightSummary } from '@uitkijk/shared';
-import { HighlightTile, highlightCapacity, highlightStrip, highlightTime, useHighlightRotation } from '../src/highlights.tsx';
+import { HighlightTile, highlightCapacity, highlightStrip, highlightTime, isPhone, useHighlightRotation } from '../src/highlights.tsx';
 
 const h = (id: string, score = 3): HighlightSummary => ({
   id,
@@ -123,7 +123,14 @@ describe('highlight rotation', () => {
     expect(ids(result.current)).toEqual(['a']);
   });
 
-  it('puts five highlights in a column beside the cameras, fewer in a row on a phone', () => {
+  it('shows no highlights on a phone, in either orientation (0.37.0)', () => {
+    expect(isPhone(390, 800)).toBe(true);
+    expect(isPhone(844, 390)).toBe(true);
+    expect(isPhone(1024, 620)).toBe(false);
+    expect(isPhone(768, 1024)).toBe(false);
+  });
+
+  it('puts five highlights in a column beside the cameras, fewer in a row on a portrait tablet', () => {
     const land = highlightStrip(1920, 1080, 8, 5);
     expect(land.cameras).toEqual({ width: 1920 - 374, height: 1080 });
     expect(land.highlights).toHaveLength(5);
@@ -136,11 +143,11 @@ describe('highlight rotation', () => {
     // A 4:3 screen: the column is capped at a quarter of the width.
     expect(highlightStrip(1024, 768, 8, 5).cameras.width).toBe(1024 - 256);
 
-    expect(highlightCapacity(390, 800, 6)).toBe(2);
-    const port = highlightStrip(390, 800, 6, 2);
-    expect(port.highlights.map((r) => r.w)).toEqual([186, 186]);
-    expect(port.cameras.height).toBe(800 - port.highlights[0]!.h - 6);
-    expect(port.highlights[0]!.y + port.highlights[0]!.h).toBeLessThanOrEqual(800);
+    expect(highlightCapacity(768, 1024, 6)).toBe(4);
+    const port = highlightStrip(768, 1024, 6, 2, 4);
+    expect(port.highlights.map((r) => r.w)).toEqual([184, 184]);
+    expect(port.cameras.height).toBe(1024 - port.highlights[0]!.h - 6);
+    expect(port.highlights[0]!.y + port.highlights[0]!.h).toBeLessThanOrEqual(1024);
   });
 
   it('formats times relative to today in Amsterdam', () => {

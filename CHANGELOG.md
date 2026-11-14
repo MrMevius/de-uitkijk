@@ -3,6 +3,10 @@
 Op hoofdlijnen, nieuwste eerst. Wordt getoond op Beheer → Change log. Elke release krijgt hier een kopje
 `## <versie> — <datum>` met een paar bullets; een test controleert dat de bovenste versie gelijk is aan `VERSION`.
 
+## 0.37.0 — 2026-11-14
+
+- Op een telefoon toont het dashboard geen highlights meer, in staande en liggende stand: de camera's krijgen het hele scherm. Op tv's, pc's en tablets blijven de highlights zoals ze waren.
+
 ## 0.36.1 — 2026-11-14
 
 - Herkende Frigate twee mensen en wijs je er één af ("Niet Roel"), dan blijft de andere naam gewoon staan. Eerder stond er dan twee keer dezelfde naam ("Johan Mevius en Johan Mevius").

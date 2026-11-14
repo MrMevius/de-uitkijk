@@ -8,6 +8,12 @@ const MAX_COLUMN_SHARE = 0.25;
 /** In a portrait row, a highlight tile is at least this wide (px). */
 const MIN_ROW_TILE_W = 150;
 
+/** A screen whose shorter side is below this (px) is a phone: too small for highlights, the cameras get it all. */
+const PHONE_SHORT_SIDE = 600;
+
+/** True for a phone-sized window (the whole viewport), in either orientation. */
+export const isPhone = (width: number, height: number) => Math.min(width, height) < PHONE_SHORT_SIDE;
+
 /** How many highlights fit beside or below the cameras. */
 export function highlightCapacity(width: number, height: number, gap: number, max = MAX_HIGHLIGHTS): number {
   if (width >= height) return max;
