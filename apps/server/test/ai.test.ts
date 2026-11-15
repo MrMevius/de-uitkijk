@@ -29,6 +29,7 @@ describe('AI answer handling', () => {
     expect(prompt).toContain('Alleen "een fiets" is te vaag');
     expect(prompt).toContain('alleen de voornaam');
     expect(prompt).toContain('- person_marker:');
+    expect(prompt).toContain('Op een nachtbeeld');
     expect(prompt).not.toContain('gaf aan wie of wat het is');
     expect(buildPrompt({ cameraName: 'Voordeur', time: 't', objects: ['person'], annotation: 'Tineke Mevius (bewoner)' })).toContain(
       'gaf aan wie of wat het is (betrouwbaar): Tineke Mevius (bewoner).',

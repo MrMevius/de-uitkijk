@@ -132,7 +132,13 @@ export class QuestionGenerator {
       if (q.kind === 'vehicle') {
         const vehicle = String(q.data.vehicle ?? '');
         const plates = h ? platesFor(h) : [];
-        if (!askableVehicle(vehicle, plates) || knownVehicle(vehicle, plates, this.opts.knownVehicles()) || (h && !inArchive(h))) this.questions.withdraw(q.id, now);
+        if (
+          !askableVehicle(vehicle, plates) ||
+          knownVehicle(vehicle, plates, this.opts.knownVehicles()) ||
+          (h && (!inArchive(h) || !pointable(h, vehicle)))
+        ) {
+          this.questions.withdraw(q.id, now);
+        }
       }
       if (q.kind === 'person' && typeof h?.personSize === 'number' && h.personSize < MIN_PERSON_SIZE) this.questions.withdraw(q.id, now);
       // The AI judged it noise after the question was asked: it is not on the TV, there is nothing to rate (0.34.1).
@@ -185,7 +191,7 @@ export class QuestionGenerator {
       for (const vehicle of seen) {
         const key = normalizeVehicle(vehicle);
         const plates = platesFor(c);
-        if (busy.has(c.id) || !askableVehicle(vehicle, plates) || seenVehicles.has(key) || this.questions.has(`vehicle:${key}`)) continue;
+        if (busy.has(c.id) || !askableVehicle(vehicle, plates) || !pointable(c, vehicle) || seenVehicles.has(key) || this.questions.has(`vehicle:${key}`)) continue;
         // Already told about under another description: the AI may not have matched it (colour, misread plate).
         if (knownVehicle(vehicle, plates, knownTexts)) continue;
         seenVehicles.add(key);
@@ -336,6 +342,14 @@ const inArchive = (c: Pick<StoredCandidate, 'selected' | 'annotation'>) => c.sel
 export function platesFor(c: Pick<StoredCandidate, 'plates' | 'aiVehicle' | 'aiVehicles'>): string[] {
   // The AI lists the main vehicle in `vehicles` too, often in other words: count the list.
   return Math.max(c.aiVehicles.length, c.aiVehicle ? 1 : 0) <= 1 ? realPlates(c.plates) : [];
+}
+
+/**
+ * A vehicle a question can point at: the one the event is about, or the only one in view. Among several parked cars
+ * the owner cannot tell which one the AI means (four "Volkswagen Golfs" on a night image of Achter het huis 1, 2026-11-15).
+ */
+export function pointable(c: Pick<StoredCandidate, 'aiVehicle' | 'aiVehicles'>, vehicle: string): boolean {
+  return vehicle === c.aiVehicle || c.aiVehicles.length <= 1;
 }
 
 /** Person size capped at "clearly visible", so big people are sorted by score among themselves. */

@@ -3,6 +3,11 @@
 Op hoofdlijnen, nieuwste eerst. Wordt getoond op Beheer → Change log. Elke release krijgt hier een kopje
 `## <versie> — <datum>` met een paar bullets; een test controleert dat de bovenste versie gelijk is aan `VERSION`.
 
+## 0.38.1 — 2026-11-15
+
+- "Van wie is deze auto?" gaat alleen nog over een geparkeerde auto als die de enige in beeld is, of als de gebeurtenis om die auto draait. Bij een rij geparkeerde auto's was niet te zien welke de AI bedoelde. Zo'n open vraag wordt ingetrokken.
+- De AI raadt op nachtbeelden (zwart-wit) geen merk, model of kenteken meer, tenzij het echt te zien is. Op 15 november zag hij vier "Volkswagen Golfs" waar geen Golf stond.
+
 ## 0.38.0 — 2026-11-15
 
 - Wijs je twee keer of vaker een naam van Frigate af ("Niet Roel"), dan markeert Beheer → Gezichten de foto's van die persoon die toen al in de bibliotheek stonden als verdacht (gestippelde rand, knop "Verdachte foto's kiezen"). Onder Vragen verschijnt dan een melding.

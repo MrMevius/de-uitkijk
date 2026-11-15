@@ -104,6 +104,28 @@ describe('question generator', () => {
     expect(v[0]!.data.vehicle).toMatch(/Volkswagen up!/);
   });
 
+  it('asks only about a vehicle the question can point at, and withdraws one among several parked cars (0.38.1)', () => {
+    const t = setup();
+    const parked = t.add({ labels: ['car'], ai: { real: false } });
+    const golfs = ['grijze Volkswagen Golf, kenteken Z-632-FL', 'donkere Volkswagen Golf', 'zwarte Volvo V60'];
+    t.highlights.setAiResult(parked, 'Er staan alleen geparkeerde auto\'s.', false, NOW, null, false, null, golfs.map((description) => ({ description, known: false })));
+    const alone = t.add({ labels: ['car'], ai: { real: false } });
+    t.highlights.setAiResult(alone, 'Er staat een auto.', false, NOW, null, false, null, [{ description: 'rode Tesla Model 3', known: false }]);
+    const subject = t.add({ labels: ['car'] });
+    t.highlights.setAiResult(subject, 'Een auto rijdt weg.', true, NOW, 'witte Ford Transit', false, null, [
+      { description: 'witte Ford Transit', known: false },
+      { description: 'grijze Kia Picanto', known: false },
+    ]);
+    const g = t.generator();
+    g.runOnce();
+    const asked = () => t.questions.list('open').filter((q) => q.kind === 'vehicle').map((q) => q.data.vehicle).sort();
+    expect(asked()).toEqual(['rode Tesla Model 3', 'witte Ford Transit']);
+    // A question asked before 0.38.1 about one of the parked cars is withdrawn.
+    t.questions.add({ kind: 'vehicle', key: 'vehicle:old', highlightId: parked, title: 'Van wie is deze auto?', body: '', data: { vehicle: 'donkere Volkswagen Golf', noun: 'auto' } }, NOW);
+    g.runOnce();
+    expect(asked()).toEqual(['rode Tesla Model 3', 'witte Ford Transit']);
+  });
+
   it('describes a highlight again before asking about a vehicle judged against older facts (0.22.1)', () => {
     const t = setup();
     // Described at 08:27 against the facts of then; at 10:17 the answer about the same van on another highlight added a fact.
@@ -530,8 +552,9 @@ describe('learning from answers (0.13)', () => {
     t.questions.resolve(person.id, 'answered', 'Mark Mevius (bewoner)', 'mark', NOW);
     t.generator().runOnce();
     const vehicles = t.questions.list('open').filter((q) => q.kind === 'vehicle');
-    expect(vehicles.map((q) => q.data.vehicle).sort()).toEqual(['donkerblauwe Volvo V60', 'witte Renault Kangoo bestelbus']);
-    expect(vehicles.find((q) => q.highlightId === id)!.title).toBe('Van wie is deze auto?');
+    // The Volvo stands among other cars: a question could not point at it (0.38.1).
+    expect(vehicles.map((q) => q.data.vehicle)).toEqual(['witte Renault Kangoo bestelbus']);
+    expect(vehicles[0]!.title).toBe('Van wie is deze auto?');
     // An open question about a vehicle the AI could not tell apart (asked before this rule) is withdrawn.
     t.questions.add({ kind: 'vehicle', key: 'vehicle:x', highlightId: null, title: 'Van wie is deze auto?', body: 'x', data: { vehicle: 'grijze hatchback, merk en model niet duidelijk herkenbaar' } }, NOW);
     t.generator().runOnce();
