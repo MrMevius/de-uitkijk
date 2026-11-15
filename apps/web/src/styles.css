@@ -594,7 +594,8 @@ body,
 
 @media (max-width: 56rem) {
   .admin {
-    grid-template-columns: 1fr;
+    /* minmax(0, …): a wide row (the scrolling tab bar, a long detail) must not stretch the page past the screen. */
+    grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto 1fr;
   }
 
@@ -943,6 +944,82 @@ body,
   display: block;
   color: var(--ui-muted);
   font-size: 0.85rem;
+}
+
+/* Overview: compact, everything on one screen (0.38.2) */
+.ui-overview .ui-page-header {
+  margin-bottom: 0.9rem;
+}
+
+.ui-overview .ui-stats,
+.ui-overview .ui-grid {
+  gap: 0.75rem;
+}
+
+.ui-overview .ui-stats {
+  grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr));
+  margin-bottom: 0.75rem;
+}
+
+.ui-overview .ui-stat {
+  gap: 0.05rem;
+  padding: 0.6rem 0.85rem;
+}
+
+.ui-overview .ui-stat__label {
+  font-size: 0.7rem;
+}
+
+.ui-overview .ui-stat__value {
+  font-size: 1.25rem;
+}
+
+.ui-overview .ui-stat__hint {
+  font-size: 0.78rem;
+}
+
+.ui-overview .ui-card__header {
+  padding: 0.55rem 0.9rem;
+}
+
+.ui-overview .ui-card__body {
+  padding: 0.5rem 0.9rem 0.7rem;
+}
+
+.ui-overview .ui-services {
+  margin: 0;
+}
+
+.ui-overview .ui-service {
+  padding: 0.35rem 0;
+  font-size: 0.9rem;
+}
+
+/* Name and detail on one line, the detail wraps below when there is no room. */
+.ui-overview .ui-service > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 0.6rem;
+  min-width: 0;
+}
+
+.ui-overview .ui-service__detail {
+  font-size: 0.8rem;
+}
+
+.ui-overview .ui-form-grid {
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 0.9rem;
+}
+
+.ui-overview .ui-field__help,
+.ui-overview .ui-field__preview {
+  font-size: 0.78rem;
+}
+
+.ui-overview .ui-actions {
+  margin-top: 0.6rem;
 }
 
 /* Lists */

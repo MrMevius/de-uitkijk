@@ -3,6 +3,11 @@
 Op hoofdlijnen, nieuwste eerst. Wordt getoond op Beheer → Change log. Elke release krijgt hier een kopje
 `## <versie> — <datum>` met een paar bullets; een test controleert dat de bovenste versie gelijk is aan `VERSION`.
 
+## 0.38.2 — 2026-11-15
+
+- Beheer → Overzicht is compacter en past op een laptop op één scherm: kleinere tegels, diensten en camera's op één regel, Schermen en "Highlights op de tv" naast elkaar, kortere uitleg.
+- Op een telefoon liep Beheer rechts buiten beeld; de pagina past nu in de breedte.
+
 ## 0.38.1 — 2026-11-15
 
 - "Van wie is deze auto?" gaat alleen nog over een geparkeerde auto als die de enige in beeld is, of als de gebeurtenis om die auto draait. Bij een rij geparkeerde auto's was niet te zien welke de AI bedoelde. Zo'n open vraag wordt ingetrokken.

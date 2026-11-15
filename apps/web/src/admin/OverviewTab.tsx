@@ -45,7 +45,7 @@ function Displays({ version }: { version: string | undefined }) {
     if (confirm('Dit scherm uit de lijst halen? Het komt terug zodra het het dashboard weer toont.')) void api('DELETE', `/api/admin/displays/${encodeURIComponent(d.id)}`).then(load, () => {});
   };
   return (
-    <Card title="Schermen" icon="monitor" className="ui-span-2">
+    <Card title="Schermen" icon="monitor">
       {!displays ? (
         <p className="ui-muted">Laden…</p>
       ) : displays.length === 0 ? (
@@ -139,10 +139,10 @@ function HighlightSettings() {
   };
 
   return (
-    <Card title="Highlights op de tv" icon="settings" className="ui-span-2">
+    <Card title="Highlights op de tv" icon="settings">
       <div className="ui-form-grid">
         <label className="ui-field">
-          <span className="ui-field__label">Drempel voor een highlight</span>
+          <span className="ui-field__label">Drempel</span>
           <input
             type="number"
             step={0.1}
@@ -156,16 +156,14 @@ function HighlightSettings() {
             }}
           />
           <span className="ui-field__help">
-            Relevantie {settings.min}–{settings.max}, standaard {settings.default}. Lager geeft meer highlights (ook
-            gewone dingen), hoger alleen het meest ongewone.
+            {settings.min}–{settings.max}, standaard {settings.default}. Lager geeft meer highlights, hoger alleen het meest ongewone.
           </span>
           <span className="ui-field__preview">
-            Met {settings.preview.threshold}: <strong>{settings.preview.last24h}</strong> highlights in de afgelopen 24 uur,
-            gemiddeld <strong>{settings.preview.perDay7d}</strong> per dag deze week
+            Met {settings.preview.threshold}: <strong>{settings.preview.last24h}</strong> in 24 uur, <strong>{settings.preview.perDay7d}</strong> per dag deze week
           </span>
         </label>
         <label className="ui-field">
-          <span className="ui-field__label">Opnieuw afspelen elke … minuten</span>
+          <span className="ui-field__label">Opnieuw afspelen na … min</span>
           <input
             type="number"
             step={1}
@@ -175,9 +173,8 @@ function HighlightSettings() {
             onChange={(e) => setReplay(e.target.value)}
           />
           <span className="ui-field__help">
-            {settings.replay.min}–{settings.replay.max} minuten, standaard {settings.replay.default}. Elke highlight speelt één
-            keer af en blijft daarna stilstaan op het interessantste moment; na deze tijd speelt het vak opnieuw af, met een highlight die nog niet in
-            beeld was als die er is. Een nieuwe highlight verschijnt meteen.
+            {settings.replay.min}–{settings.replay.max}, standaard {settings.replay.default}. Een highlight speelt één keer en blijft dan
+            stilstaan; na deze tijd speelt het vak opnieuw, bij voorkeur met een andere. Een nieuwe verschijnt meteen.
           </span>
         </label>
       </div>
@@ -240,7 +237,7 @@ export function OverviewTab() {
     return () => clearInterval(timer);
   }, []);
 
-  const header = <PageHeader title="Overzicht" description="De gezondheid van De Uitkijk in één oogopslag. Ververst elke 30 seconden." />;
+  const header = <PageHeader title="Overzicht" description="Ververst elke 30 seconden." />;
   if (error)
     return (
       <>
@@ -269,30 +266,30 @@ export function OverviewTab() {
   const okCameras = status.cameras.filter((c) => c.video === 'ok').length;
 
   return (
-    <>
+    <div className="ui-overview">
       {header}
       <div className="ui-stats">
         <Stat
           label="Systeem"
           value={problems === 0 ? 'In orde' : 'Let op'}
           level={problems === 0 ? 'ok' : 'warn'}
-          hint={`${problems === 0 ? 'geen aandachtspunten' : `${problems} ${problems === 1 ? 'aandachtspunt' : 'aandachtspunten'}`} · De Uitkijk ${status.version ?? 'onbekend'}`}
+          hint={`${problems === 0 ? 'geen aandachtspunten' : `${problems} ${problems === 1 ? 'aandachtspunt' : 'aandachtspunten'}`} · versie ${status.version ?? '?'}`}
         />
         <Stat
           label="Camera's met beeld"
           value={unknown ? '–' : `${okCameras} / ${status.cameras.length}`}
           level={unknown ? undefined : failed.length ? 'bad' : 'ok'}
-          hint={failed.length ? `${failed.map((c) => status.cameraNames[c.id] ?? c.id).join(', ')}: geen beeld` : 'alle camera\'s leveren beeld'}
+          hint={failed.length ? `${failed.map((c) => status.cameraNames[c.id] ?? c.id).join(', ')}: geen beeld` : 'alle leveren beeld'}
         />
         <Stat
           label="Highlights"
           value={stats ? stats.last24h : '–'}
-          hint={stats ? `${stats.last24h} in 24 uur · ${stats.last7d} in 7 dagen · ${stats.rotation} nu op de tv` : undefined}
+          hint={stats ? `in 24 uur · ${stats.last7d} in 7 dagen · ${stats.rotation} op de tv` : undefined}
         />
         <Stat
           label="Gebruikers"
           value={status.users.total}
-          hint={`${status.users.admins} beheerder${status.users.admins === 1 ? '' : 's'}${status.users.inactive > 0 ? ` · ${status.users.inactive} niet geactiveerd` : ''}`}
+          hint={`${status.users.admins} beheerder${status.users.admins === 1 ? '' : 's'}${status.users.inactive > 0 ? ` · ${status.users.inactive} inactief` : ''}`}
         />
         <Stat
           label="AI vandaag"
@@ -370,7 +367,7 @@ export function OverviewTab() {
                   name={status.cameraNames[c.id] ?? c.id}
                   level={cameraLevel(c.video)}
                   status={c.video === 'ok' ? 'Beeld' : c.video === 'failed' ? 'Geen beeld' : 'Onbekend'}
-                  detail={`Gecontroleerd ${ago(c.checkedAt)}${c.video === 'failed' && c.detail ? ` · ${c.detail}` : ''}`}
+                  detail={`${ago(c.checkedAt)}${c.video === 'failed' && c.detail ? ` · ${c.detail}` : ''}`}
                 />
               ))}
             </ul>
@@ -380,8 +377,7 @@ export function OverviewTab() {
         <Displays version={status.version} />
 
         {status.highlights.enabled && <HighlightSettings />}
-
       </div>
-    </>
+    </div>
   );
 }
