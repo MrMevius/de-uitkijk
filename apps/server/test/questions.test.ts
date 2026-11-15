@@ -5,7 +5,7 @@ import { buildApp } from '../src/app.ts';
 import { FactStore } from '../src/ai/facts.ts';
 import { hashPassword } from '../src/auth/passwords.ts';
 import { AuthStore } from '../src/auth/store.ts';
-import { FaceLibrary, libraryTime, matchFaceName, parseAttempt, type FaceAttempt } from '../src/faces/library.ts';
+import { FaceLibrary, libraryTime, markSuspects, matchFaceName, parseAttempt, type FaceAttempt } from '../src/faces/library.ts';
 import { FaceWorker } from '../src/faces/worker.ts';
 import { moments, personRect, RecordingFaces, singlePeople, type PersonTrack } from '../src/faces/recording.ts';
 import { HighlightStore, type CandidateRecord } from '../src/highlights/store.ts';
@@ -276,6 +276,38 @@ describe('answering questions', () => {
     t.highlights.setAiResult(id, 'Een man met een muts staat bij de voordeur.', true, NOW);
     t.generator().runOnce();
     expect(t.questions.openFor(id, 'person')).toBeDefined();
+  });
+
+  it('marks library photos suspect after two wrong names and says so once (0.38.0)', () => {
+    // A photo added after the wrong names is not suspect; one wrong name is not enough.
+    const people = [
+      { name: 'Roel Snippe', images: [{ file: 'new.webp', time: NOW - 100 }, { file: 'old.webp', time: NOW - 9 * 86400 }] },
+      { name: 'Jasper Mevius', images: [{ file: 'j.webp', time: NOW - 9 * 86400 }] },
+    ];
+    const marked = markSuspects(people, [
+      { name: 'Roel Snippe', at: NOW - 2 * 86400 },
+      { name: 'Roel Snippe', at: NOW - 86400 },
+      { name: 'Jasper Mevius', at: NOW - 86400 },
+    ]);
+    expect(marked.map((p) => [p.name, p.rejected, p.images.map((i) => i.suspect)])).toEqual([
+      ['Roel Snippe', 2, [false, true]],
+      ['Jasper Mevius', 1, [false]],
+    ]);
+
+    const t = setup();
+    for (const at of [NOW - 2 * 86400, NOW - 86400]) {
+      const id = t.add({ subLabels: ['Roel Snippe'], startTime: at, selected: false });
+      t.highlights.rejectRecognised(id, 'Roel Snippe');
+    }
+    const faces = { ...t.faceStub(), libraryImages: () => people };
+    t.generator({ faces }).runOnce();
+    const asked = t.questions.list('open', 100).filter((q) => q.kind === 'system');
+    expect(asked.map((q) => q.title)).toEqual(['Frigate noemde 2 keer ten onrechte Roel']);
+    expect(asked[0]!.body).toContain("1 foto als verdacht gemarkeerd");
+    // Not again for the same library.
+    t.questions.resolve(asked[0]!.id, 'dismissed', null, 'mark', NOW);
+    t.generator({ faces }).runOnce();
+    expect(t.questions.list('all', 100).filter((q) => q.kind === 'system')).toHaveLength(1);
   });
 
   it('keeps the other recognised name when one of two is rejected (0.36.1)', async () => {

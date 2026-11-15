@@ -1594,6 +1594,17 @@ body,
   opacity: 0.55;
 }
 
+/* Suspect (since 0.38.0): in the library while Frigate named the wrong person twice or more */
+.ui-face--suspect {
+  border-style: dashed;
+  border-color: var(--ui-warn);
+}
+
+.ui-face--suspect.ui-face--picked {
+  border-style: solid;
+  border-color: var(--ui-bad, #d64545);
+}
+
 @media (max-width: 44rem) {
   .ui-question {
     grid-template-columns: 1fr;

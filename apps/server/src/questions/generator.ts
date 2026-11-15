@@ -1,7 +1,7 @@
 import type { Camera } from '@uitkijk/shared';
 import type { AiStatus } from '../ai/worker.ts';
 import type { CameraVideoStatus } from '../camera-probe.ts';
-import type { FaceLibrary } from '../faces/library.ts';
+import { markSuspects, REJECTION_WINDOW_S, rejectionsOf, type FaceLibrary } from '../faces/library.ts';
 import { hourInAmsterdam } from '../highlights/importer.ts';
 import { periodOf } from '../highlights/selection.ts';
 import type { HighlightStore, StoredCandidate } from '../highlights/store.ts';
@@ -16,7 +16,7 @@ export interface GeneratorOptions {
   cameraStatus?: () => CameraVideoStatus[];
   aiStatus?: () => AiStatus | undefined;
   /** Frigate's face library: crops and Frigate's best guess shown with a person question. */
-  faces?: Pick<FaceLibrary, 'ready' | 'attemptsFor' | 'refresh'>;
+  faces?: Pick<FaceLibrary, 'ready' | 'attemptsFor' | 'refresh'> & Partial<Pick<FaceLibrary, 'libraryImages'>>;
   /** Epoch seconds of the newest fact: an AI verdict "unknown vehicle" from before it may be outdated. */
   factsChangedAt?: () => number | null;
   /** Texts about vehicles the owner already told about (facts such as "Grijze Peugeot 108, kenteken TV-666-R is van Noëlle"). */
@@ -283,6 +283,23 @@ export class QuestionGenerator {
           key: `system:camera:${s.id}:${dayKey(now)}`,
           title: `${this.name(s.id)} geeft geen beeld`,
           body: `Sinds ${timeText(since)} levert ${this.name(s.id)} geen beeld aan De Uitkijk${s.detail ? ` (${s.detail})` : ''}. Controleer stroom/netwerk van de camera; de NVR en Frigate gebruiken dezelfde camera.`,
+        });
+      }
+    }
+
+    // System: Frigate named the wrong person at least twice with the same library photos (since 0.38.0). Asked once per
+    // state of that person's library, so it comes back only when new photos keep giving wrong names.
+    if (faces.ready && faces.libraryImages) {
+      const rejections = rejectionsOf(this.highlights.candidatesSince(now - REJECTION_WINDOW_S));
+      for (const p of markSuspects(faces.libraryImages(), rejections)) {
+        const suspect = p.images.filter((i) => i.suspect).length;
+        if (!suspect) continue;
+        const first = p.name.split(' ')[0];
+        add({
+          kind: 'system',
+          key: `system:faces:${p.name}:${p.images.length}:${p.images[0]?.time ?? 0}`,
+          title: `Frigate noemde ${p.rejected} keer ten onrechte ${first}`,
+          body: `In de afgelopen twee weken was het ${p.rejected} keer niet ${first}, terwijl Frigate dat wel zei. Waarschijnlijk staat er een foto van iemand anders of een onscherpe foto bij ${first}. Onder Beheer → Gezichten zijn ${suspect} ${suspect === 1 ? 'foto' : "foto's"} als verdacht gemarkeerd; verwijder wat niet van ${first} is of te onscherp is.`,
         });
       }
     }

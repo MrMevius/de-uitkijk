@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { FactStore } from '../ai/facts.ts';
-import { ATTEMPT_FILE, matchFaceName, type FaceLibrary } from '../faces/library.ts';
+import { ATTEMPT_FILE, markSuspects, matchFaceName, REJECTION_WINDOW_S, rejectionsOf, type FaceLibrary } from '../faces/library.ts';
 import type { HighlightStore, StoredCandidate } from '../highlights/store.ts';
 import { plateMatches } from '../ai/knowledge.ts';
 import { findPerson, plateKey, vehicleLabel, type HouseholdStore, type Person, type Vehicle } from '../household/store.ts';
@@ -263,7 +263,8 @@ export function registerQuestions(app: FastifyInstance, options: QuestionRouteOp
   app.get('/api/admin/faces/library', async (_request, reply) => {
     if (!faces) return reply.code(404).send({ error: 'Gezichtsherkenning is niet beschikbaar' });
     await faces.refresh().catch(() => undefined);
-    return { available: faces.ready, people: faces.ready ? faces.libraryImages() : [] };
+    const rejections = rejectionsOf(highlights.candidatesSince(now() - REJECTION_WINDOW_S));
+    return { available: faces.ready, people: faces.ready ? markSuspects(faces.libraryImages(), rejections) : [] };
   });
 
   app.get<{ Params: { name: string; file: string } }>('/api/admin/faces/library/:name/:file', async (request, reply) => {

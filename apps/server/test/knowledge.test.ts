@@ -219,7 +219,11 @@ describe('learning meter (0.30.0)', () => {
     add('answered');
     store.setAnnotation('answered', 'Roel Snippe (buren)', true);
     add('unknown');
-    store.setAiResult('unknown', 'Een persoon loopt over het pad.', true, NOW, null, false, null, [{ description: 'grijze Peugeot 108', known: false }]);
+    store.setAiResult('unknown', 'Een persoon loopt over het pad.', true, NOW, null, false, null, [
+      { description: 'grijze Peugeot 108', known: false },
+      // Unrecognisable: not counted among the vehicles (0.38.0).
+      { description: 'donkere auto onder de carport, merk en model niet herkenbaar', known: false },
+    ]);
     add('noise');
     store.setAiResult('noise', 'Lege oprit.', false, NOW);
     add('car', { labels: ['car'] });

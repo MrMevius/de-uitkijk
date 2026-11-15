@@ -3,6 +3,12 @@
 Op hoofdlijnen, nieuwste eerst. Wordt getoond op Beheer → Change log. Elke release krijgt hier een kopje
 `## <versie> — <datum>` met een paar bullets; een test controleert dat de bovenste versie gelijk is aan `VERSION`.
 
+## 0.38.0 — 2026-11-15
+
+- Wijs je twee keer of vaker een naam van Frigate af ("Niet Roel"), dan markeert Beheer → Gezichten de foto's van die persoon die toen al in de bibliotheek stonden als verdacht (gestippelde rand, knop "Verdachte foto's kiezen"). Onder Vragen verschijnt dan een melding.
+- De leermeter telt bij "Voertuigen herkend" alleen nog auto's die de AI duidelijk zag. Auto's in het donker of half verborgen onder de carport, die nooit herkend kunnen worden, drukten het percentage onterecht.
+- "Zijn dit dezelfde auto?" wordt ook gevraagd als bij één van de twee het model ontbreekt, zoals Johans "donkere Toyota" naast zijn Corolla.
+
 ## 0.37.0 — 2026-11-14
 
 - Op een telefoon toont het dashboard geen highlights meer, in staande en liggende stand: de camera's krijgen het hele scherm. Op tv's, pc's en tablets blijven de highlights zoals ze waren.

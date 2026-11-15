@@ -40,16 +40,20 @@ const the = (v: Vehicle, owner: string) => `de ${vehicleLabel(v)}${owner ? ` van
 
 /**
  * Two register entries that are probably one vehicle: the same plate, or the same owner, kind, make and model (Noëlle's
- * "zwart Volkswagen Up" and "donker Volkswagen Up", Johan's Corolla twice). The colour is not compared: the AI calls the
+ * "zwart Volkswagen Up" and "donker Volkswagen Up", Johan's Corolla twice), or make only when one has no model. The colour is not compared: the AI calls the
  * same car black or dark depending on the light.
  */
 export function sameVehicles(vehicles: Vehicle[]): [Vehicle, Vehicle][] {
   const type = (v: Vehicle) => (v.make ? makeModel(`${v.make} ${v.model}`) : null);
+  const brand = (v: Vehicle) => (v.make ? makeModel(v.make) : null);
+  // Since 0.38.0 also the same make when one has no model: Johan's "donker Toyota" next to his Corolla was never asked.
+  const sameType = (a: Vehicle, b: Vehicle) =>
+    (type(a) !== null && type(a) === type(b)) || (brand(a) !== null && brand(a) === brand(b) && (!a.model || !b.model));
   const pairs: [Vehicle, Vehicle][] = [];
   for (const [i, a] of vehicles.entries()) {
     for (const b of vehicles.slice(i + 1)) {
       const plate = a.plate && b.plate && plateKey(a.plate) === plateKey(b.plate);
-      const owner = a.ownerId !== null && a.ownerId === b.ownerId && a.kind === b.kind && type(a) !== null && type(a) === type(b) && (!a.plate || !b.plate);
+      const owner = a.ownerId !== null && a.ownerId === b.ownerId && a.kind === b.kind && sameType(a, b) && (!a.plate || !b.plate);
       if (plate || owner) pairs.push([a, b]);
     }
   }

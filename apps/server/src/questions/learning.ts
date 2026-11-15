@@ -1,6 +1,7 @@
 import type { StoredCandidate } from '../highlights/store.ts';
 import type { Person } from '../household/store.ts';
 import type { Question } from './store.ts';
+import { vagueCar } from '../ai/knowledge.ts';
 
 /** One period of the learning meter (Beheer → AI, since 0.30.0). */
 export interface LearningPeriod {
@@ -78,8 +79,11 @@ export function learningStats(candidates: StoredCandidate[], questions: Question
     for (const p of periods(c.startTime)) {
       if (highlight) {
         p.highlights++;
-        p.vehicles.total += c.aiVehicles.length;
-        p.vehicles.known += c.aiVehicles.filter((v) => v.known).length;
+        // Only vehicles the AI saw clearly: a car it calls unrecognisable (dark, under the carport) can never be known
+        // and made 2026-11-14 look like a drop to 21 % (since 0.38.0).
+        const clear = c.aiVehicles.filter((v) => !vagueCar(v.description));
+        p.vehicles.total += clear.length;
+        p.vehicles.known += clear.filter((v) => v.known).length;
       }
       if (!person) continue;
       p.persons.total++;

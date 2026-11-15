@@ -334,3 +334,31 @@ export function webpSize(b: Uint8Array): { width: number; height: number } | und
   if (chunk === 'VP8X') return { width: u24(24) + 1, height: u24(27) + 1 };
   return undefined;
 }
+
+/** Wrong names count over this window (since 0.38.0). */
+export const REJECTION_WINDOW_S = 14 * 86400;
+/** A library photo is suspect after this many wrong names for its person while it was in the library. */
+export const SUSPECT_AFTER = 2;
+
+/**
+ * Marks library photos that were there when Frigate named the wrong person (an administrator chose "Niet <naam>")
+ * at least twice. Frigate does not say which photo matched, so every photo older than those highlights is suspect.
+ * On 2026-11-13/14 two blurry photos of a man under a dark cap made Frigate call anyone with such a cap "Roel".
+ */
+export function markSuspects(
+  people: { name: string; images: { file: string; time: number | null }[] }[],
+  rejections: { name: string; at: number }[],
+): { name: string; rejected: number; images: { file: string; time: number | null; suspect: boolean }[] }[] {
+  return people.map((p) => {
+    const times = rejections.filter((r) => r.name === p.name).map((r) => r.at);
+    return {
+      ...p,
+      rejected: times.length,
+      images: p.images.map((i) => ({ ...i, suspect: times.filter((t) => i.time === null || t > i.time).length >= SUSPECT_AFTER })),
+    };
+  });
+}
+
+/** The wrong names of highlights, from the stored candidates. */
+export const rejectionsOf = (candidates: { startTime: number; rejectedNames: string[]; deleted: boolean }[]) =>
+  candidates.filter((c) => !c.deleted).flatMap((c) => c.rejectedNames.map((name) => ({ name, at: c.startTime })));

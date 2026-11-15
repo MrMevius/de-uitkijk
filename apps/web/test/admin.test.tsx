@@ -74,7 +74,7 @@ function stubApi(role: 'admin' | 'viewer') {
           ],
           history: [],
           facts: [{ id: 7, text: 'Zwarte compacte hatchback is van Noëlle Snippe', createdBy: 'mark (vraag 24)', processed: true }],
-          schedule: { frequency: 'weekly', weekday: 7, time: '05:00', next: Date.UTC(2026, 10, 15, 4) / 1000 },
+          schedule: { frequency: 'weekly', weekday: 7, time: '05:00', next: Date.UTC(2030, 0, 6, 4) / 1000 },
         });
       if (url === '/api/admin/questions/3/answer') return json({ answer: 'Een Focus: Gideon Snippe heeft een witte Ford Focus.', fact: 'Gideon Snippe heeft een witte Ford Focus.' });
       if (url === '/api/admin/questions/1/answer') return json({ answer: 'Tineke Mevius (bewoner)', fact: 'pending', face: 'pending', also: 1 });
@@ -258,7 +258,7 @@ describe('face library tab', () => {
     expect(screen.getByText('van Noëlle Snippe')).toBeTruthy();
     expect(screen.getByText(/2 voorstellen/)).toBeTruthy();
     // Automatic bundling at a chosen moment (0.28.0).
-    expect(screen.getByText(/Volgende keer: .*15 nov/)).toBeTruthy();
+    expect(screen.getByText(/Volgende keer: .*6 jan/)).toBeTruthy();
     fireEvent.change(screen.getByLabelText('Hoe vaak'), { target: { value: 'daily' } });
     expect(screen.queryByLabelText('Dag')).toBeNull();
     fireEvent.change(screen.getByLabelText('Tijd'), { target: { value: '06:30' } });

@@ -88,6 +88,16 @@ describe('the register asks about duplicates (0.32.0)', () => {
     expect(store.vehicle(c1.id) && store.vehicle(c2.id)).toBeTruthy();
     expect(store.lastChange()).toBe(NOW + 10);
   });
+
+  it('also asks when one entry of the same make has no model (0.38.0)', () => {
+    const { store, noelle, johan } = register();
+    const corolla = store.addVehicle({ make: 'Toyota', model: 'Corolla', colour: 'donkerblauw', plate: 'N-890-KP', ownerId: johan.id }, [], [], NOW);
+    const toyota = store.addVehicle({ make: 'Toyota', colour: 'donker', ownerId: johan.id }, [], [], NOW);
+    // Two models of one make with the same owner stay apart, and so does the same make of another owner.
+    store.addVehicle({ make: 'Toyota', model: 'Yaris', ownerId: johan.id }, [], [], NOW);
+    store.addVehicle({ make: 'Toyota', ownerId: noelle.id }, [], [], NOW);
+    expect(sameVehicles(store.vehicles()).map(([a, b]) => [a.id, b.id])).toEqual([[corolla.id, toyota.id], [toyota.id, toyota.id + 1]]);
+  });
 });
 
 describe('roles from answers (0.32.0)', () => {

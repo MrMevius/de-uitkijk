@@ -53,7 +53,7 @@ An analysis of 2026-11-12 found that answers made the system better at vehicles 
 Beheer → AI → *Leert het systeem?* shows per day (last 14) or per week (last 8), over highlights that are shown or answered about and not noise:
 
 - **Personen zelf / via jou / onbekend.** Highlights with a person, plus events in which Frigate recognised a face (they count low and are usually no highlight; before 0.30.1 they were left out, so the meter showed 1 of 18 recognised faces in a week): named without an answer (Frigate recognised the face, or the AI named someone from the register), named by an administrator's answer, or neither. An answer without a name ("onbekend", "bezoeker", "onbekende fiets") counts as *onbekend*.
-- **Voertuigen herkend.** Vehicles the AI saw clearly that are known (after the server's checks).
+- **Voertuigen herkend.** Vehicles the AI saw clearly that are known (after the server's checks). Since 0.38.0 cars the AI calls unrecognisable or describes too vaguely (the server's *vague car* rule) are left out of the count: on 2026-11-14 they made up most of the 39 vehicles and the meter showed 21 % instead of the usual 50–60 %.
 - **Vragen (beantwoord).** Questions about people, vehicles and the register asked in the period. *Vragen per highlight* above the table is for the last seven days.
 
 Rising "zelf" and falling questions per highlight mean the answers pay off. Route: `GET /api/admin/learning` (administrators).

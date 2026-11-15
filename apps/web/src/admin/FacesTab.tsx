@@ -5,7 +5,9 @@ import { Card, Empty, Notice, PageHeader } from './ui.tsx';
 
 interface Person {
   name: string;
-  images: { file: string; time: number | null }[];
+  /** Highlights of the last two weeks where an administrator said Frigate named the wrong person (since 0.38.0). */
+  rejected?: number;
+  images: { file: string; time: number | null; suspect?: boolean }[];
 }
 
 const imageUrl = (name: string, file: string) => `/api/admin/faces/library/${encodeURIComponent(name)}/${encodeURIComponent(file)}`;
@@ -69,10 +71,12 @@ export function FacesTab() {
           people.map((p) => {
             const isOpen = open === p.name;
             const count = isOpen ? p.images.filter((i) => picked.has(i.file)).length : 0;
+            const suspects = p.images.filter((i) => i.suspect);
+            const first = p.name.split(' ')[0];
             return (
               <Card
                 key={p.name}
-                title={`${p.name} (${p.images.length})`}
+                title={`${p.name} (${p.images.length})${p.rejected ? ` · ${p.rejected}× niet ${first}` : ''}`}
                 icon="users"
                 actions={
                   <button
@@ -85,15 +89,22 @@ export function FacesTab() {
               >
                 {isOpen && (
                   <>
-                    <p className="ui-muted">Nieuwste eerst. Klik op foto's die niet van {p.name.split(' ')[0]} zijn of te onscherp zijn.</p>
+                    <p className="ui-muted">Nieuwste eerst. Klik op foto's die niet van {first} zijn of te onscherp zijn.</p>
+                    {suspects.length > 0 && (
+                      <Notice>
+                        Frigate noemde de afgelopen twee weken {p.rejected} keer ten onrechte {first}. De {suspects.length}{' '}
+                        {suspects.length === 1 ? 'foto met een gestippelde rand stond' : "foto's met een gestippelde rand stonden"} toen al in de
+                        bibliotheek; daar zit waarschijnlijk de oorzaak tussen.
+                      </Notice>
+                    )}
                     <div className="ui-faces ui-faces--pick">
                       {p.images.map((i) => (
                         <button
                           key={i.file}
                           type="button"
-                          className={picked.has(i.file) ? 'ui-face ui-face--picked' : 'ui-face'}
+                          className={`ui-face${i.suspect ? ' ui-face--suspect' : ''}${picked.has(i.file) ? ' ui-face--picked' : ''}`}
                           aria-pressed={picked.has(i.file)}
-                          title={i.time ? highlightTime(i.time) : i.file}
+                          title={`${i.time ? highlightTime(i.time) : i.file}${i.suspect ? ' · verdacht' : ''}`}
                           onClick={() => toggle(i.file)}
                         >
                           <img src={imageUrl(p.name, i.file)} alt={`Gezicht van ${p.name}`} loading="lazy" />
@@ -101,6 +112,11 @@ export function FacesTab() {
                       ))}
                     </div>
                     <div className="ui-actions">
+                      {suspects.length > 0 && (
+                        <button className="ui-btn" onClick={() => setPicked(new Set(suspects.map((i) => i.file)))}>
+                          Verdachte foto's kiezen
+                        </button>
+                      )}
                       <button className="ui-btn ui-btn--danger" disabled={!count || busy} onClick={() => void remove(p.name)}>
                         {count ? `${count} ${count === 1 ? 'foto' : "foto's"} verwijderen` : "Kies foto's om te verwijderen"}
                       </button>
