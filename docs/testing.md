@@ -30,6 +30,10 @@ CI (`.github/workflows/ci.yml`) runs typecheck, tests, the web build and the Doc
 | Dashboard | `apps/web/test/dashboard.test.tsx` | Four and nine tiles; names in shared order; no interactive controls; muted video; **focus change keeps the same `<video>` element**; health messages; offline tile; video hidden until live. |
 | MSE player | `apps/web/test/mse-player.test.ts` | Offers only supported video codecs; no retry loop when MSE is unsupported; reconnect delays exactly 1, 2, 4, 8, 16, 30, 30, 30 s; stop halts retries; start timeout clears the video; go2rtc codec errors trigger a retry. |
 
+## AI evaluation (since 0.41.0)
+
+Prompt and model changes are measured against administrators' answers with `eval-cli.ts` in the running container; see [ai.md](ai.md#evaluation-since-0410). Run it before and after such a change.
+
 ## Fixtures
 
 Camera sets: `config/cameras.json` (four locations) and `config/cameras-9.mock.json` (nine; the first four match).

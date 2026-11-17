@@ -3,7 +3,7 @@ import type { Camera } from '@uitkijk/shared';
 import { RESELECT_S } from '../highlights/importer.ts';
 import type { HighlightStore, StoredCandidate } from '../highlights/store.ts';
 import { realPlates } from '../questions/vehicles.ts';
-import { detailRegion, personPlace, type Describer } from './codex.ts';
+import { detailRegion, personPlace, type AiVerdict, type Describer } from './codex.ts';
 import { checkVerdict, knownPlates, plateCertainties, plateMatches, type Register } from './knowledge.ts';
 
 export interface AiWorkerOptions {
@@ -144,6 +144,53 @@ export class AiWorker {
     };
   }
 
+  /**
+   * The AI's checked verdict on one highlight, without storing it: the same still, enlargement, knowledge, prompt
+   * and server checks as a real description. Used by the worker and by the evaluation (since 0.41.0), which leaves the
+   * administrator's answer out (`withAnswer: false`) so it can be compared with it.
+   */
+  async verdictFor(c: StoredCandidate, { withAnswer = true }: { withAnswer?: boolean } = {}): Promise<{ raw: AiVerdict; verdict: AiVerdict }> {
+    const webp = this.store.thumbnail(c.id);
+    const still = await this.opts.still(c).catch(() => undefined);
+    if (!still && !webp) throw new Error('no image');
+    const register = this.opts.register();
+    const facts = this.opts.facts();
+    const plates = realPlates(c.plates);
+    const matches = plateMatches(plates, register);
+    const objects = c.labels.map((l) => l.replace(/-verified$/, ''));
+    const annotation = withAnswer ? c.annotation : null;
+    const image = still ?? (await this.opts.toJpeg(webp!));
+    // A small person: an enlargement of where Frigate saw them, so the AI can tell a person from things (2026-11-17).
+    const region = c.personBox && objects.includes('person') ? detailRegion(c.personBox) : null;
+    const detail = region ? await this.opts.crop(image, region).catch(() => undefined) : undefined;
+    const answer = await this.describe(
+      image,
+      {
+        cameraName: this.names.get(c.camera) ?? c.camera,
+        time: timeFormat.format(c.startTime * 1000),
+        objects,
+        recognized: c.subLabels,
+        facts,
+        ...(annotation ? { annotation } : {}),
+        ...(plates.length ? { plates } : {}),
+        ...(matches.length ? { certain: plateCertainties(matches, register) } : {}),
+        ...(c.personBox && objects.includes('person') ? { personPlace: personPlace(c.personBox) } : {}),
+      },
+      detail?.length ? detail : undefined,
+    );
+    // An administrator's answer outranks face recognition: no name is put in for it then.
+    const verdict = checkVerdict(answer, {
+      recognized: annotation ? [] : c.subLabels,
+      // Older highlights were not counted: one person when Frigate reported one, as before 0.34.0.
+      persons: c.personCount ?? (objects.includes('person') ? 1 : 0),
+      matches,
+      knownPlates: knownPlates(register, facts),
+      vehicles: register.vehicles,
+      objects,
+    });
+    return { raw: answer, verdict };
+  }
+
   /** Describes at most one highlight. Returns true when one was attempted. */
   async runOnce(): Promise<boolean> {
     const now = this.opts.now();
@@ -156,41 +203,10 @@ export class AiWorker {
     if (this.callsToday >= this.opts.dailyCap) return false;
     const next = this.store.aiPending(now - RESELECT_S, this.opts.maxAttempts)[0];
     if (!next) return false;
-    const webp = this.store.thumbnail(next.id);
-    if (!webp) return false;
+    if (!this.store.thumbnail(next.id)) return false;
     this.callsToday++;
     try {
-      const still = await this.opts.still(next).catch(() => undefined);
-      const register = this.opts.register();
-      const facts = this.opts.facts();
-      const plates = realPlates(next.plates);
-      const matches = plateMatches(plates, register);
-      const objects = next.labels.map((l) => l.replace(/-verified$/, ''));
-      const image = still ?? (await this.opts.toJpeg(webp));
-      // A small person: an enlargement of where Frigate saw them, so the AI can tell a person from things (2026-11-17).
-      const region = next.personBox && objects.includes('person') ? detailRegion(next.personBox) : null;
-      const detail = region ? await this.opts.crop(image, region).catch(() => undefined) : undefined;
-      const answer = await this.describe(image, {
-        cameraName: this.names.get(next.camera) ?? next.camera,
-        time: timeFormat.format(next.startTime * 1000),
-        objects,
-        recognized: next.subLabels,
-        facts,
-        ...(next.annotation ? { annotation: next.annotation } : {}),
-        ...(plates.length ? { plates } : {}),
-        ...(matches.length ? { certain: plateCertainties(matches, register) } : {}),
-        ...(next.personBox && objects.includes('person') ? { personPlace: personPlace(next.personBox) } : {}),
-      }, detail?.length ? detail : undefined);
-      // An administrator's answer outranks face recognition: no name is put in for it then.
-      const verdict = checkVerdict(answer, {
-        recognized: next.annotation ? [] : next.subLabels,
-        // Older highlights were not counted: one person when Frigate reported one, as before 0.34.0.
-        persons: next.personCount ?? (objects.includes('person') ? 1 : 0),
-        matches,
-        knownPlates: knownPlates(register, facts),
-        vehicles: register.vehicles,
-        objects,
-      });
+      const { verdict } = await this.verdictFor(next);
       this.store.setAiResult(
         next.id,
         verdict.description,

@@ -58,6 +58,25 @@ Beheer → AI → *Leert het systeem?* shows per day (last 14) or per week (last
 
 Rising "zelf" and falling questions per highlight mean the answers pay off. Route: `GET /api/admin/learning` (administrators).
 
+## Evaluation (since 0.41.0)
+
+Before a prompt or model change, run the description AI on cases whose truth an administrator gave, and compare with the previous run:
+
+```sh
+docker exec de-uitkijk-server-1 node apps/server/src/eval-cli.ts [per-soort]
+```
+
+| Kind | Case | Good when |
+| --- | --- | --- |
+| persoon | Answered "Wie is dit?" with a name or role (not *onbekend*, *voorbijganger* or a "Zelfde bezoek" copy) | `person_seen` is not `nee` |
+| niemand | Person question withdrawn by the system because the AI saw nobody | `person_seen` is `nee` |
+| voertuig | Answered "Van wie is deze …?" with an owner | a vehicle counts as known, or the owner is named |
+| goed | Highlight with 👍 | real event |
+
+The newest cases of each kind are used (default 10, at most 50). Each goes through the production pipeline (`AiWorker.verdictFor`: the 4K still, the enlargement, the household knowledge, the prompt and the server checks) **without the administrator's answer**; the household knowledge does include facts that came from those answers, so vehicle cases test the loop from answer to recognition. The report also counts contradictions in the AI's own answer before the server checks ("niemand te zien" with `person_seen` `ja`). Each run is stored in `/data/eval/<time>.json`; the report shows the previous run next to it. Nothing else is written; the calls are not in the AI log and do not count towards the daily cap, but they do use the ChatGPT plan (about 40 calls at the default).
+
+Why: on 2026-11-17 a manual test with Codex's default model showed `nee` for the carport case while the production model answered `ja`; it took three releases to see that.
+
 ## AI log (since 0.23.0)
 
 Beheer → **AI-log** (named *AI-gesprekken* in 0.23.0) shows every AI call of the last 14 days, newest first, filterable by purpose: *beschrijving* (highlight descriptions), *feit* (facts written from answers about people) and *huishouden* (the weekly household bundling). Each call shows the image the AI got (stored as a 640-px WebP, about 30 KB), the exact prompt, the raw answer (or the error), the required JSON schema, model, reasoning effort and duration. All calls go through one wrapper (`loggedCall` in `apps/server/src/ai/log.ts`) around the Codex call, so nothing is missed and logging never changes or breaks a call. The log lives in table `ai_calls` of the application database and is pruned to 14 days at every new call (about 60 calls a day, a few MB in total). Prompts contain household facts and names, so the routes are under `/api/admin/` (administrators only).

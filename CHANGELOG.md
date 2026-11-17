@@ -3,6 +3,10 @@
 Op hoofdlijnen, nieuwste eerst. Wordt getoond op Beheer → Change log. Elke release krijgt hier een kopje
 `## <versie> — <datum>` met een paar bullets; een test controleert dat de bovenste versie gelijk is aan `VERSION`.
 
+## 0.41.0 — 2026-11-18
+
+- Nieuw: een evaluatie van de AI met jouw antwoorden als ijkpunt. Voor een aanpassing aan de AI kijkt die opnieuw naar beelden waarvan je al hebt verteld wie of wat het was: ziet hij de persoon, herkent hij de auto, vindt hij een 👍-highlight echt? Zo is vooraf te zien of een verandering beter of slechter uitpakt. Het is een beheercommando; op het scherm verandert niets.
+
 ## 0.40.0 — 2026-11-18
 
 - Geparkeerde auto's op een vaste plek worden minder vaak een highlight. Staat een auto stil op een plek waar de AI eerder minstens twee keer "alleen geparkeerde auto's" zag, dan telt hij laag ("auto op vaste parkeerplek"). Vooral Achter het huis 1 had hier veel last van.

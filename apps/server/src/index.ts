@@ -8,6 +8,7 @@ import { codexFactWriter } from './ai/fact-writer.ts';
 import { AiLog, loggedCall, type AiPurpose } from './ai/log.ts';
 import { FactStore } from './ai/facts.ts';
 import { knownPlates, looseObjectFact, plateMatches, promptKnowledge, vehicleKnown, type Register } from './ai/knowledge.ts';
+import { recordingStill } from './ai/still.ts';
 import { AiWorker, ffmpegToJpeg } from './ai/worker.ts';
 import { FaceLibrary } from './faces/library.ts';
 import { Bundler, type PersonAnswer } from './household/bundle.ts';
@@ -20,7 +21,7 @@ import { RecordingFaces } from './faces/recording.ts';
 import { ClipCache, ffmpegThumbnail } from './highlights/clips.ts';
 import { HighlightImporter, PARKING_DAYS, RESELECT_S } from './highlights/importer.ts';
 import { selectHighlights } from './highlights/selection.ts';
-import { HighlightStore, type StoredCandidate } from './highlights/store.ts';
+import { HighlightStore } from './highlights/store.ts';
 import { FactWorker } from './questions/fact-worker.ts';
 import { QuestionGenerator } from './questions/generator.ts';
 import { applyPersonAnswer, parsePersonAnswer, VEHICLE_ANNOTATION, vehicleIsSubject } from './questions/routes.ts';
@@ -55,18 +56,8 @@ const highlightStore = config.frigate && store ? new HighlightStore(join(config.
 const clips = highlightStore ? new ClipCache(join(config.dataDir, 'clip-cache'), config.clipCacheBytes, undefined, frigateHttp) : undefined;
 // Codex keeps its ChatGPT login here; created up front so an administrator can sign in before enabling AI.
 if (highlightStore) mkdirSync(join(config.dataDir, 'codex'), { recursive: true, mode: 0o700 });
-// Full-resolution (4K) frame from Frigate's recording (operator decision) for the AI: plates and vehicles are far
-// more legible than in the 640x360 detection snapshot.
-const highlightStill = async (c: StoredCandidate): Promise<Uint8Array | undefined> => {
-  if (!frigateHttp || !config.frigate || !c.frameTime) return undefined;
-  const res = await frigateHttp(
-    `${config.frigate.url}/api/${encodeURIComponent(c.frigateCamera)}/recordings/${c.frameTime.toFixed(2)}/snapshot.jpg`,
-    { signal: AbortSignal.timeout(30_000) },
-  );
-  if (!res.ok) return undefined;
-  const jpeg = new Uint8Array(await res.arrayBuffer());
-  return jpeg[0] === 0xff && jpeg[1] === 0xd8 ? jpeg : undefined;
-};
+// Full-resolution (4K) frame from Frigate's recording for the AI (see ai/still.ts).
+const highlightStill = frigateHttp && config.frigate ? recordingStill(config.frigate.url, frigateHttp) : async () => undefined;
 const facts = highlightStore ? new FactStore(join(config.dataDir, 'uitkijk.db')) : undefined;
 const questionStore = highlightStore ? new QuestionStore(join(config.dataDir, 'uitkijk.db')) : undefined;
 // Household register (since 0.22.0): bundles facts and answers into who is who and whose vehicle is which.
