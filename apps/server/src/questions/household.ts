@@ -21,7 +21,7 @@ export type HouseholdQuestionData =
   | { type: 'doubt'; summary: string; options: DoubtOption[]; facts: { id: number; text: string }[] }
   | { type: 'vehicle'; vehicleId: number; fields: ('make' | 'model' | 'plate')[]; make: string; model: string; plate: string }
   | { type: 'role'; personId: number }
-  | { type: 'same'; vehicleIds: [number, number]; labels: [string, string] };
+  | { type: 'same'; vehicleIds: [number, number]; labels: [string, string]; plates?: [string, string] };
 
 interface NewQuestion {
   key: string;
@@ -38,14 +38,8 @@ const PLATED = new Set(['auto', 'bestelbus', 'motor', 'scooter']);
 const ownerOf = (register: Register, v: Vehicle) => register.people().find((p) => p.id === v.ownerId)?.name ?? '';
 const the = (v: Vehicle, owner: string) => `de ${vehicleLabel(v)}${owner ? ` van ${owner}` : ''}`;
 
-/**
- * Which of two entries of one vehicle stays: the one with a plate, else the oldest. With two plates (since 0.43.0) the
- * one an administrator set, else the one with more sources.
- */
-const mergeOrder = (a: Vehicle, b: Vehicle): [Vehicle, Vehicle] => {
-  const weight = (v: Vehicle) => (v.plate ? 100 : 0) + (v.locked.includes('plate') ? 10 : 0) + Math.min(9, v.sources.length);
-  return weight(b) > weight(a) ? [b, a] : [a, b];
-};
+/** Which of two entries of one vehicle stays when at most one has a plate: the one with a plate, else the oldest. */
+const mergeOrder = (a: Vehicle, b: Vehicle): [Vehicle, Vehicle] => (!a.plate && b.plate ? [b, a] : [a, b]);
 
 /**
  * Two register entries that are probably one vehicle: the same plate, or the same owner, kind, make and model (Noëlle's
@@ -97,8 +91,9 @@ export function householdQuestions(register: Register, facts: Pick<FactStore, 'l
     out.push({
       key: `household:same:${a.id}:${b.id}`,
       title: `Zijn dit dezelfde ${a.kind === 'auto' ? 'auto' : a.kind}${owner ? ` van ${owner}` : ''}?`,
-      body: `Het register heeft ${the(a, ownerOf(register, a))} en ${the(b, ownerOf(register, b))}. Ja: ze worden samengevoegd${a.plate && b.plate ? ` met kenteken ${mergeOrder(a, b)[0].plate}` : ''}. Nee: ze blijven apart en dit wordt niet meer gevraagd.`,
-      data: { type: 'same', vehicleIds: [a.id, b.id], labels: [vehicleLabel(a), vehicleLabel(b)] },
+      body: `Het register heeft ${the(a, ownerOf(register, a))} en ${the(b, ownerOf(register, b))}. Ja: ze worden samengevoegd${a.plate && b.plate ? '; kies welk kenteken klopt' : ''}. Nee: ze blijven apart en dit wordt niet meer gevraagd.`,
+      // Two plates (since 0.43.1): the administrator says which one is right; both came from answers for Roel's van.
+      data: { type: 'same', vehicleIds: [a.id, b.id], labels: [vehicleLabel(a), vehicleLabel(b)], ...(a.plate && b.plate ? { plates: [a.plate, b.plate] as [string, string] } : {}) },
     });
   }
   for (const v of vehicles) {
@@ -204,7 +199,9 @@ export function answerHousehold(q: Question, body: Record<string, unknown>, ctx:
       register.log(`Niet hetzelfde voertuig: ${vehicleLabel(a)} en ${vehicleLabel(b)} (vraag ${q.id})`, by, now);
       return { answer: 'Nee, twee voertuigen', fact: null };
     }
-    const [keep, other] = mergeOrder(a, b);
+    // With two plates the administrator chose the right one (`keep`: the id of that entry).
+    if (d.plates && body.keep !== a.id && body.keep !== b.id) return { error: 'Kies welk kenteken klopt' };
+    const [keep, other] = d.plates ? (body.keep === b.id ? [b, a] : [a, b]) : mergeOrder(a, b);
     const merged = register.mergeVehicles(keep.id, other.id, now)!;
     register.updateVehicle(merged.id, {}, { sources: [`vraag ${q.id}`], at: now });
     register.log(`Samengevoegd: ${vehicleLabel(other)} in ${vehicleLabel(merged)} (vraag ${q.id})`, by, now);

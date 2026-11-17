@@ -184,8 +184,8 @@ export class QuestionStore {
   }
 
   /** Replaces the data of an open question (an open household doubt gets the answer options of a newer bundling). */
-  refresh(id: number, title: string, data: Record<string, unknown>): void {
-    this.db.prepare("UPDATE questions SET title = ?, data = ? WHERE id = ? AND status = 'open'").run(title, JSON.stringify(data), id);
+  refresh(id: number, title: string, data: Record<string, unknown>, body?: string): void {
+    this.db.prepare("UPDATE questions SET title = ?, data = ?, body = COALESCE(?, body) WHERE id = ? AND status = 'open'").run(title, JSON.stringify(data), body ?? null, id);
   }
 
   getByKey(key: string): Question | undefined {

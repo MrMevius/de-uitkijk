@@ -3,6 +3,10 @@
 Op hoofdlijnen, nieuwste eerst. Wordt getoond op Beheer → Change log. Elke release krijgt hier een kopje
 `## <versie> — <datum>` met een paar bullets; een test controleert dat de bovenste versie gelijk is aan `VERSION`.
 
+## 0.43.1 — 2026-11-18
+
+- "Zijn dit dezelfde?" bij twee voertuigen met elk een kenteken: je kiest nu zelf welk kenteken klopt ("Ja, kenteken V-363-LN"). Eerder koos het systeem, en voor Roels bus koos het het verkeerde.
+
 ## 0.43.0 — 2026-11-18
 
 - Vermoedt het systeem wie het is, dan vraagt het "Is dit Johan?" met één knop: "Ja, dit is Johan (bewoner)". Is het iemand anders, dan kies je zoals altijd hieronder.

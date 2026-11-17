@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AdminPage } from '../src/admin/AdminPage.tsx';
 import { FacesTab } from '../src/admin/FacesTab.tsx';
@@ -59,6 +59,10 @@ function stubApi(role: 'admin' | 'viewer') {
               ],
             },
           },
+          {
+            id: 4, kind: 'household', title: 'Zijn dit dezelfde bestelbus van Roel Snippe?', body: 'Het register heeft twee.', status: 'open', answer: null, answeredBy: null, createdAt: Date.now() / 1000, answeredAt: null, highlight: null,
+            data: { type: 'same', vehicleIds: [8, 12], labels: ['wit Hyundai H-1, kenteken V-636-LN', 'wit Hyundai H-1, kenteken V-363-LN'], plates: ['V-636-LN', 'V-363-LN'] },
+          },
           { id: 2, kind: 'vehicle', title: 'Van wie is deze auto?', body: 'De AI ziet: zwarte Volkswagen up!.', data: { vehicle: 'zwarte Volkswagen up!' }, status: 'open', answer: null, answeredBy: null, createdAt: Date.now() / 1000, answeredAt: null, highlight: { id: 'h2', hasThumbnail: true } },
         ]);
       if (url === '/api/admin/household')
@@ -76,6 +80,7 @@ function stubApi(role: 'admin' | 'viewer') {
           facts: [{ id: 7, text: 'Zwarte compacte hatchback is van Noëlle Snippe', createdBy: 'mark (vraag 24)', processed: true }],
           schedule: { frequency: 'weekly', weekday: 7, time: '05:00', next: Date.UTC(2030, 0, 6, 4) / 1000 },
         });
+      if (url === '/api/admin/questions/4/answer') return json({ answer: 'Ja, samengevoegd tot wit Hyundai H-1, kenteken V-363-LN', fact: null });
       if (url === '/api/admin/questions/3/answer') return json({ answer: 'Een Focus: Gideon Snippe heeft een witte Ford Focus.', fact: 'Gideon Snippe heeft een witte Ford Focus.' });
       if (url === '/api/admin/questions/1/answer') return json({ answer: 'Tineke Mevius (bewoner)', fact: 'pending', face: 'pending', also: 1 });
       if (url === '/api/admin/highlights/h1/feedback') return new Response(null, { status: 204 });
@@ -186,6 +191,17 @@ describe('admin page', () => {
     expect(screen.queryByText(/Beantwoord:/)).toBeNull();
   });
 
+  it('lets the administrator choose the plate when two entries are one vehicle (0.43.1)', async () => {
+    stubApi('admin');
+    location.hash = '#vragen';
+    render(<AdminPage />);
+    expect(screen.queryByRole('button', { name: 'Ja, samenvoegen' })).toBeNull();
+    fireEvent.click(await screen.findByRole('button', { name: 'Ja, kenteken V-363-LN' }));
+    const calls = (fetch as unknown as { mock: { calls: [string, RequestInit?][] } }).mock.calls;
+    await waitFor(() => expect(calls.some(([url]) => url === '/api/admin/questions/4/answer')).toBe(true));
+    expect(JSON.parse(String(calls.find(([u]) => u === '/api/admin/questions/4/answer')![1]!.body))).toEqual({ same: true, keep: 12 });
+  });
+
   it('answers the strongest suggestion with one tap (0.43.0)', async () => {
     stubApi('admin');
     location.hash = '#vragen';
@@ -220,7 +236,8 @@ describe('admin page', () => {
     render(<AdminPage />);
     expect(await screen.findByText('Heeft Gideon een Fiesta of een Focus?')).toBeTruthy();
     expect(screen.getByText('Witte Ford Focus hatchback is van Gideon Snippe')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Weet ik niet' })).toBeTruthy();
+    const card = screen.getByText('Heeft Gideon een Fiesta of een Focus?').closest('section')!;
+    expect(within(card).getByRole('button', { name: 'Weet ik niet' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Een Focus' }));
     expect(await screen.findByText('Beantwoord: Een Focus: Gideon Snippe heeft een witte Ford Focus.')).toBeTruthy();
     const calls = (fetch as unknown as { mock: { calls: [string, RequestInit?][] } }).mock.calls;

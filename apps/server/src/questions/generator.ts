@@ -248,7 +248,9 @@ export class QuestionGenerator {
         // answer options when that bundling is done.
         const existing = this.questions.getByKey(q.key);
         if (existing?.status === 'open') {
-          if (JSON.stringify(existing.data) !== JSON.stringify(q.data)) this.questions.refresh(existing.id, q.title, q.data as unknown as Record<string, unknown>);
+          if (JSON.stringify(existing.data) !== JSON.stringify(q.data) || existing.body !== q.body) {
+            this.questions.refresh(existing.id, q.title, q.data as unknown as Record<string, unknown>, q.body);
+          }
           continue;
         }
         if (room('household') <= 0) break;

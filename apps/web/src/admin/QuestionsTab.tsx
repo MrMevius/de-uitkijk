@@ -17,6 +17,8 @@ interface Question {
     type?: 'doubt' | 'vehicle' | 'role' | 'same';
     /** Two register entries that may be one vehicle (since 0.32.0). */
     labels?: [string, string];
+    plates?: [string, string];
+    vehicleIds?: [number, number];
     options?: { label: string; fact: string; retire: number[] }[];
     facts?: { id: number; text: string }[];
     fields?: ('make' | 'model' | 'plate')[];
@@ -121,9 +123,17 @@ function HouseholdAnswer({ q, send }: { q: Question; send: (body: object) => voi
           </ul>
         )}
         <div className="ui-segment" role="group" aria-label="Hetzelfde voertuig?">
-          <button className="ui-btn" onClick={() => send({ same: true })}>
-            Ja, samenvoegen
-          </button>
+          {q.data.plates && q.data.vehicleIds ? (
+            q.data.plates.map((plate, i) => (
+              <button key={plate} className="ui-btn" onClick={() => send({ same: true, keep: q.data.vehicleIds![i] })}>
+                Ja, kenteken {plate}
+              </button>
+            ))
+          ) : (
+            <button className="ui-btn" onClick={() => send({ same: true })}>
+              Ja, samenvoegen
+            </button>
+          )}
           <button className="ui-btn" onClick={() => send({ same: false })}>
             Nee, twee voertuigen
           </button>
