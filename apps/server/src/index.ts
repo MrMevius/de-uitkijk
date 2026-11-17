@@ -179,6 +179,14 @@ if (highlightStore && ai && !highlightStore.getMeta('person_noise_recheck')) {
   }
   highlightStore.setMeta('person_noise_recheck', '1');
 }
+// Since 0.39.0 the AI says whether it really sees a person; highlights with an open "Wie is dit?" question are
+// described once more, so a question about nobody (a Frigate false positive) is withdrawn.
+if (questionStore && highlightStore && ai && !highlightStore.getMeta('person_seen_recheck')) {
+  for (const q of questionStore.list('open', 1000)) {
+    if (q.kind === 'person' && q.highlightId) highlightStore.requestRedescribe(q.highlightId);
+  }
+  highlightStore.setMeta('person_seen_recheck', '1');
+}
 // Since 0.30.0 the server decides vehicle matches it can be sure of (plates) and vague cars are never known. The
 // vehicles of the last two weeks are checked once with those rules, without new AI calls.
 if (highlightStore && !highlightStore.getMeta('vehicle_known_recheck')) {

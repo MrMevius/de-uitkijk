@@ -141,6 +141,8 @@ export class QuestionGenerator {
         }
       }
       if (q.kind === 'person' && typeof h?.personSize === 'number' && h.personSize < MIN_PERSON_SIZE) this.questions.withdraw(q.id, now);
+      // The AI clearly sees nobody where Frigate saw a person (since 0.39.0).
+      if (q.kind === 'person' && h?.aiPersonSeen === 'nee') this.questions.withdraw(q.id, now);
       // The AI judged it noise after the question was asked: it is not on the TV, there is nothing to rate (0.34.1).
       if (q.kind === 'highlight' && h?.aiRealEvent === false) this.questions.withdraw(q.id, now);
     }
@@ -155,6 +157,9 @@ export class QuestionGenerator {
       .filter((c) => !c.aiRedo)
       // Not about a speck in the distance or a highlight whose camera saw no person at all (unknown size: asked as before).
       .filter((c) => c.personSize === null || c.personSize === undefined || c.personSize >= MIN_PERSON_SIZE)
+      // Not when the AI clearly sees nobody: Frigate took something for a person (2026-11-17: the things under the
+      // carport of Achter het huis 1). Too dark or too small to say ("onduidelijk") is still asked.
+      .filter((c) => c.aiPersonSeen !== 'nee')
       .filter((c) => !this.questions.hasForHighlight(c.id, 'person') && !this.questions.hasOpenForHighlight(c.id))
       // Best visible first, then the most relevant.
       .sort((a, b) => visibility(b) - visibility(a) || b.score - a.score);

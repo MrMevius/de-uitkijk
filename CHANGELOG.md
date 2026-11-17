@@ -3,6 +3,11 @@
 Op hoofdlijnen, nieuwste eerst. Wordt getoond op Beheer → Change log. Elke release krijgt hier een kopje
 `## <versie> — <datum>` met een paar bullets; een test controleert dat de bovenste versie gelijk is aan `VERSION`.
 
+## 0.39.0 — 2026-11-17
+
+- Geen "Wie is dit?" meer als er niemand te zien is. Ziet Frigate een persoon die er niet is (zoals op 17 november in de spullen onder de carport bij Achter het huis 1), dan zegt de AI dat nu en komt er geen vraag. Zo'n open vraag wordt ingetrokken.
+- De AI hoort van Frigate waar in het beeld de persoon stond, zodat hij daar goed kijkt en een kleine of half verborgen persoon minder snel mist. Bij twijfel, bijvoorbeeld in het donker, blijft de vraag gewoon komen.
+
 ## 0.38.2 — 2026-11-15
 
 - Beheer → Overzicht is compacter en past op een laptop op één scherm: kleinere tegels, diensten en camera's op één regel, Schermen en "Highlights op de tv" naast elkaar, kortere uitleg.

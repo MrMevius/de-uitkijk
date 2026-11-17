@@ -9,7 +9,7 @@ import { buildApp } from '../src/app.ts';
 import { AuthStore } from '../src/auth/store.ts';
 import { hashPassword } from '../src/auth/passwords.ts';
 import { ClipCache } from '../src/highlights/clips.ts';
-import { describe as describeGroup, clipStartFor, HighlightImporter, hourInAmsterdam, personMoment, personSize, platesOf } from '../src/highlights/importer.ts';
+import { describe as describeGroup, clipStartFor, HighlightImporter, hourInAmsterdam, personBox, personMoment, personSize, platesOf } from '../src/highlights/importer.ts';
 import { buildBaseline, groupItems, scoreGroup, selectHighlights, type ReviewItem } from '../src/highlights/selection.ts';
 import { searchWords } from '../src/highlights/routes.ts';
 import { HighlightStore, toSummary } from '../src/highlights/store.ts';
@@ -84,6 +84,9 @@ describe('selection', () => {
     // Size of the person on the camera of the clip (0.27.0): the largest box height, 0 without a person there.
     expect(personSize([car, person], cam)).toBe(0.451);
     expect(personSize([car, person], 'Vriezenveen_voordeur')).toBe(0);
+    // Where that person was seen best, for the AI prompt (0.39.0).
+    expect(personBox([car, person], cam)).toEqual([0.734, 0.531, 0.126, 0.451]);
+    expect(personBox([car], cam)).toBeNull();
     expect(personMoment([car], cam)).toBeUndefined();
   });
 

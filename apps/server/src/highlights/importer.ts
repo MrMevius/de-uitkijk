@@ -97,6 +97,15 @@ export function personSize(events: FrigateEvent[], camera: string): number {
 }
 
 /**
+ * Box of the person seen best on this camera ([x, y, width, height], fractions of the frame), the one the AI still is
+ * taken for (since 0.39.0): the AI is told where to look, so it can say whether somebody really stands there.
+ */
+export function personBox(events: FrigateEvent[], camera: string): number[] | null {
+  const box = bestPerson(events, camera)?.data?.box;
+  return box?.length === 4 ? box.map((v) => Math.round(v * 1000) / 1000) : null;
+}
+
+/**
  * How many people Frigate tracked at most on one camera of the group (since 0.34.0). A name from face recognition is
  * only put in the description when there was one; the labels say "person" once however many there were.
  */
@@ -355,6 +364,7 @@ export class HighlightImporter {
       subLabels: [...new Set(items.flatMap((i) => i.subLabels))],
       plates: platesOf(events),
       personSize: personSize(events, rep.camera),
+      personBox: personBox(events, rep.camera),
       personCount: personCount(events),
       score: scored.score,
       reasons: scored.reasons,

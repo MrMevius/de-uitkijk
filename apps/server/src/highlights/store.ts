@@ -1,5 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
 import type { HighlightSummary } from '@uitkijk/shared';
+import type { PersonSeen } from '../ai/codex.ts';
 import { KNOWN_FACTOR, REPLAY_MINUTES, SELECTION, THRESHOLD_RANGE } from './selection.ts';
 
 /** A scored group of Frigate alerts. Highlights are the selected candidates. */
@@ -32,6 +33,8 @@ export interface CandidateRecord {
   personSize?: number | null;
   /** Most people Frigate tracked on one camera of the group (since 0.34.0); null = not counted (older highlights). */
   personCount?: number | null;
+  /** Box of the best seen person on the representative camera, [x, y, w, h] as fractions (since 0.39.0). */
+  personBox?: number[] | null;
   score: number;
   reasons: string[];
   description: string;
@@ -79,6 +82,8 @@ interface Row {
   person_size: number | null;
   person_count: number | null;
   rejected_names: string | null;
+  person_box: string | null;
+  ai_person_seen: string | null;
 }
 
 export interface StoredCandidate extends CandidateRecord {
@@ -115,10 +120,12 @@ export interface StoredCandidate extends CandidateRecord {
   plates: string[];
   /** Names Frigate's face recognition gave that an administrator said are wrong (since 0.36.0). */
   rejectedNames: string[];
+  /** AI: does it really see a person (since 0.39.0); null for older descriptions. */
+  aiPersonSeen: PersonSeen | null;
 }
 
 const COLUMNS =
-  'id, start_time, end_time, cameras, camera, frigate_camera, rep_event, clip_start, clip_end, event_start, event_end, labels, sub_labels, score, reasons, description, selected, feedback, deleted, thumbnail IS NOT NULL AS has_thumbnail, ai_description, ai_real, ai_status, ai_attempts, ai_updated, base_score, feedback_adj, frame_time, ai_vehicle, ai_vehicle_known, annotation, detections, annotation_known, known_factor, ai_person_marker, ai_redo, ai_vehicles, plates, person_size, person_count, rejected_names';
+  'id, start_time, end_time, cameras, camera, frigate_camera, rep_event, clip_start, clip_end, event_start, event_end, labels, sub_labels, score, reasons, description, selected, feedback, deleted, thumbnail IS NOT NULL AS has_thumbnail, ai_description, ai_real, ai_status, ai_attempts, ai_updated, base_score, feedback_adj, frame_time, ai_vehicle, ai_vehicle_known, annotation, detections, annotation_known, known_factor, ai_person_marker, ai_redo, ai_vehicles, plates, person_size, person_count, rejected_names, person_box, ai_person_seen';
 
 const fromRow = (r: Row): StoredCandidate => ({
   id: r.id,
@@ -162,6 +169,8 @@ const fromRow = (r: Row): StoredCandidate => ({
   personSize: r.person_size,
   personCount: r.person_count,
   rejectedNames: r.rejected_names ? (JSON.parse(r.rejected_names) as string[]) : [],
+  personBox: r.person_box ? (JSON.parse(r.person_box) as number[]) : null,
+  aiPersonSeen: r.ai_person_seen === 'ja' || r.ai_person_seen === 'nee' || r.ai_person_seen === 'onduidelijk' ? r.ai_person_seen : null,
 });
 
 export const toSummary = (c: StoredCandidate): HighlightSummary => ({
@@ -283,6 +292,9 @@ export class HighlightStore {
       ['person_count', 'INTEGER'],
       // Added in 0.36.0 (an administrator can say a name Frigate recognised is wrong).
       ['rejected_names', 'TEXT'],
+      // Added in 0.39.0 (where Frigate saw the person; whether the AI really sees one).
+      ['person_box', 'TEXT'],
+      ['ai_person_seen', 'TEXT'],
     ] as const) {
       if (!columns.has(name)) this.db.exec(`ALTER TABLE candidates ADD COLUMN ${name} ${type}`);
     }
@@ -333,14 +345,15 @@ export class HighlightStore {
         .prepare(
           `INSERT INTO candidates (id, start_time, end_time, cameras, camera, frigate_camera, rep_event, clip_start, clip_end,
              event_start, event_end, labels, sub_labels, score, reasons, description, base_score, frame_time, detections, plates, person_size,
-             person_count)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             person_count, person_box)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           c.id, c.startTime, c.endTime, JSON.stringify(c.cameras), c.camera, c.frigateCamera, c.repEvent, c.clipStart,
           c.clipEnd, c.eventStart, c.eventEnd, JSON.stringify(c.labels), JSON.stringify(c.subLabels), c.score,
           JSON.stringify(c.reasons), c.description, c.score, c.frameTime ?? null, c.detections ? JSON.stringify(c.detections) : null,
           c.plates?.length ? JSON.stringify(c.plates) : null, c.personSize ?? null, c.personCount ?? null,
+          c.personBox ? JSON.stringify(c.personBox) : null,
         );
       const mark = this.db.prepare('INSERT OR IGNORE INTO processed_reviews (review_id, candidate_id) VALUES (?, ?)');
       for (const id of reviewIds) mark.run(id, c.id);
@@ -436,15 +449,16 @@ export class HighlightStore {
     vehicleKnown = false,
     personMarker: boolean | null = null,
     vehicles: { description: string; known: boolean }[] = [],
+    personSeen: PersonSeen | null = null,
   ): void {
     this.db
       .prepare(
         `UPDATE candidates SET ai_description = ?, ai_real = ?, ai_status = 'done', ai_updated = ?, ai_vehicle = ?, ai_vehicle_known = ?,
-           ai_person_marker = ?, ai_vehicles = ?, ai_redo = 0 WHERE id = ?`,
+           ai_person_marker = ?, ai_vehicles = ?, ai_person_seen = ?, ai_redo = 0 WHERE id = ?`,
       )
       .run(
         description, realEvent ? 1 : 0, at, vehicle, vehicleKnown ? 1 : 0, personMarker === null ? null : personMarker ? 1 : 0,
-        vehicles.length ? JSON.stringify(vehicles) : null, id,
+        vehicles.length ? JSON.stringify(vehicles) : null, personSeen, id,
       );
   }
 

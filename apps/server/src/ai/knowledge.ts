@@ -150,9 +150,12 @@ export function checkVerdict(
   const persons = ctx.persons;
   const named = names.some((n) => new RegExp(`(?<![\\p{L}])${n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}])`, 'iu').test(description));
   if (names.length === 1 && persons === 1 && !named && PERSON_START.test(description)) description = description.replace(PERSON_START, names[0]!);
+  // Frigate recognised a face: somebody was there, even if the AI does not see them on its still (since 0.39.0).
+  const faceSeen = names.length > 0 && verdict.personSeen === 'nee';
   return {
     ...verdict,
     description,
+    ...(faceSeen ? { personSeen: 'onduidelijk' as const, realEvent: true } : {}),
     ...(verdict.vehicle ? { vehicleKnown: known(verdict.vehicle, verdict.vehicleKnown ?? false) } : {}),
     ...(verdict.vehicles ? { vehicles: verdict.vehicles.map((v) => ({ ...v, known: known(v.description, v.known) })) } : {}),
   };

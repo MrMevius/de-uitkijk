@@ -17,7 +17,14 @@ export interface AiVerdict {
   personMarker?: boolean;
   /** Every vehicle clearly in view, also parked ones, each with whether it matches a household fact. */
   vehicles?: { description: string; known: boolean }[];
+  /**
+   * Whether the AI really sees a person (since 0.39.0): "nee" when what Frigate called a person is clearly something
+   * else or nobody is there, "onduidelijk" when it is too dark, small or blurred to say.
+   */
+  personSeen?: PersonSeen;
 }
+
+export type PersonSeen = 'ja' | 'nee' | 'onduidelijk';
 
 export interface AiContext {
   cameraName: string;
@@ -35,6 +42,22 @@ export interface AiContext {
   plates?: string[];
   /** Register vehicles the server knows are in view, from a plate Frigate read (since 0.30.0). */
   certain?: string[];
+  /** Where Frigate saw the person on the image, e.g. "boven in het midden, klein (8% van de beeldhoogte)" (since 0.39.0). */
+  personPlace?: string;
+}
+
+/**
+ * Where a box ([x, y, w, h], fractions of the frame) is on the image, in words for the prompt: "in het bovenste derde,
+ * in het midden, klein (8% van de beeldhoogte)". On 2026-11-17 Frigate saw a person in the things under the carport
+ * of Achter het huis 1 (8% of the height); the AI should look there and say whether somebody really stands there.
+ */
+export function personPlace(box: number[]): string {
+  const [x, y, w, h] = box as [number, number, number, number];
+  const third = (v: number) => Math.min(2, Math.max(0, Math.floor(v * 3)));
+  const row = ['bovenste', 'middelste', 'onderste'][third(y + h / 2)]!;
+  const col = ['links', 'in het midden', 'rechts'][third(x + w / 2)]!;
+  const pct = Math.max(1, Math.round(h * 100));
+  return `in het ${row} derde, ${col}, ${h < 0.15 ? 'klein ' : ''}(${pct}% van de beeldhoogte)`;
 }
 
 /** Runs one description; implementations must never throw for "no answer", only for real errors. */
@@ -43,7 +66,7 @@ export type Describer = (jpeg: Uint8Array, context: AiContext) => Promise<AiVerd
 const SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['description', 'real_event', 'vehicle', 'vehicle_known', 'person_marker', 'vehicles'],
+  required: ['description', 'real_event', 'vehicle', 'vehicle_known', 'person_marker', 'vehicles', 'person_seen'],
   properties: {
     description: { type: 'string', maxLength: 120 },
     real_event: { type: 'boolean' },
@@ -60,6 +83,7 @@ const SCHEMA = {
         properties: { description: { type: 'string', maxLength: 100 }, known: { type: 'boolean' } },
       },
     },
+    person_seen: { type: 'string', enum: ['ja', 'nee', 'onduidelijk'] },
   },
 };
 
@@ -68,6 +92,7 @@ export function buildPrompt(context: AiContext): string {
     'Je bekijkt één stilstaand beeld van een beveiligingscamera bij een woonhuis.',
     `Camera: ${context.cameraName}. Tijd: ${context.time}. Frigate detecteerde: ${context.objects.join(', ') || 'beweging'}.`,
   ];
+  if (context.personPlace) lines.push(`Frigate zag de persoon op het beeld ${context.personPlace}. Kijk daar goed.`);
   if (context.recognized?.length) {
     const first = context.recognized.map((n) => n.trim().split(/\s+/)[0]).join(', ');
     lines.push(
@@ -104,10 +129,11 @@ export function buildPrompt(context: AiContext): string {
     'Gebruik bij namen alleen de voornaam. Klopt een voertuig met een feit, noem dan de eigenaar: rijdt of fietst iemand op een bekende fiets of scooter, dan "Jasper fietst weg"; bij een bekende auto "De auto van Mark rijdt de oprit op". Herkent de gezichtsherkenning iemand anders dan de eigenaar, volg dan de gezichtsherkenning.',
     'Geef:',
     '- description: één korte, feitelijke Nederlandse zin (maximaal 90 tekens) over wat er gebeurt, zonder de camera of de tijd te noemen.',
-    '- real_event: true als er echt iets gebeurt: een persoon, een dier, of een voertuig dat rijdt, net aankomt of vertrekt, of waar iemand bij is. false als het ruis lijkt (schaduw, licht, regen, insect, leeg beeld), en ook als er alleen geparkeerde voertuigen staan zonder dat er iemand bij is of iets gebeurt. Meldt Frigate een persoon, dan is het nooit ruis, ook als je die persoon op dit ene beeld niet goed ziet.',
+    '- real_event: true als er echt iets gebeurt: een persoon, een dier, of een voertuig dat rijdt, net aankomt of vertrekt, of waar iemand bij is. false als het ruis lijkt (schaduw, licht, regen, insect, leeg beeld), en ook als er alleen geparkeerde voertuigen staan zonder dat er iemand bij is of iets gebeurt. Meldt Frigate een persoon, dan is het geen ruis, ook als je die persoon op dit ene beeld niet goed ziet; alleen als person_seen "nee" is, mag het ruis zijn.',
     '- vehicle: als er een voertuig (auto, bestelbus, vrachtwagen, motor, scooter of fiets) duidelijk en dichtbij in beeld is en de gebeurtenis erom draait (iemand rijdt of fietst erop, stapt in of uit, of zet hem neer): een exacte omschrijving waaraan het later te herkennen is. Bij een motorvoertuig kleur, merk, model en het kenteken alleen als het volledig leesbaar is, bijvoorbeeld "zwarte Volkswagen up!, kenteken XX-123-Y". Bij een fiets of scooter het soort (fiets, e-bike, bakfiets, mountainbike, scooter), de kleur, het merk als het leesbaar is en opvallende vaste onderdelen (kinderzitje, fietstassen, krat), bijvoorbeeld "zwarte Gazelle e-bike met fietstassen". Alleen "een fiets" is te vaag: geef dan een lege tekst. Steps, skateboards en andere dingen op wielen die geen voertuig zijn (rolcontainers, kliko\'s, kruiwagens, kinderwagens) tellen niet mee. Anders een lege tekst. Bij meerdere voertuigen het voertuig waar de gebeurtenis om draait.',
     '- vehicle_known: true als dat voertuig overeenkomt met een van de bekende feiten; anders false.',
     '- vehicles: alle voertuigen (auto, bestelbus, motor, scooter, fiets) die duidelijk genoeg in beeld zijn om later te herkennen, ook geparkeerde, maximaal 4 (rolcontainers, kliko\'s, kruiwagens en kinderwagens zijn geen voertuigen): elk met description (exacte omschrijving zoals bij vehicle) en known (true als het overeenkomt met een bekend feit). Te ver weg, half verborgen of te vaag om te herkennen: weglaten. Geen voertuigen: een lege lijst.',
+    '- person_seen: "ja" als je een persoon ziet (ook klein, deels verborgen of alleen een silhouet); "nee" als je duidelijk ziet dat er niemand is en dat wat Frigate voor een persoon hield iets anders is (een voorwerp, paal, plant, kliko, schaduw of geparkeerde auto); "onduidelijk" als het beeld te donker, te wazig of de plek te klein is om het te zeggen. Twijfel je, kies dan "onduidelijk", niet "nee". Meldt Frigate geen persoon en zie je niemand: "nee".',
     '- person_marker: true als een persoon in beeld te herkennen is aan een vast kenmerk anders dan het gezicht: bedrijfskleding of een logo, of een voertuig waar die persoon duidelijk bij hoort (in- of uitstappen, erin of erop rijden, fietsen); anders false.',
   );
   return lines.join('\n');
@@ -122,6 +148,7 @@ export function parseVerdict(text: string): AiVerdict {
     vehicle_known?: unknown;
     person_marker?: unknown;
     vehicles?: unknown;
+    person_seen?: unknown;
   };
   if (typeof json.description !== 'string' || typeof json.real_event !== 'boolean') throw new Error('unexpected AI answer');
   // Plain single line; drop anything that looks like markup.
@@ -142,6 +169,7 @@ export function parseVerdict(text: string): AiVerdict {
     vehicleKnown: json.vehicle_known === true,
     personMarker: json.person_marker === true,
     vehicles,
+    ...(json.person_seen === 'ja' || json.person_seen === 'nee' || json.person_seen === 'onduidelijk' ? { personSeen: json.person_seen } : {}),
   };
 }
 

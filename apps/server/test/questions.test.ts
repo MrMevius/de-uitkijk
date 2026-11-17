@@ -32,7 +32,10 @@ function setup() {
   cleanup.push(() => highlights.close(), () => questions.close());
   let n = 0;
   const add = (
-    over: Partial<CandidateRecord> & { ai?: { real: boolean; vehicle?: string; known?: boolean; marker?: boolean }; selected?: boolean } = {},
+    over: Partial<CandidateRecord> & {
+      ai?: { real: boolean; vehicle?: string; known?: boolean; marker?: boolean; seen?: 'ja' | 'nee' | 'onduidelijk' };
+      selected?: boolean;
+    } = {},
   ) => {
     const id = `h${++n}`;
     const start = over.startTime ?? NOW - n * 3600;
@@ -44,7 +47,9 @@ function setup() {
     highlights.insert(rec, [id]);
     if (over.selected !== false) highlights.setSelected(id, true);
     highlights.setThumbnail(id, new Uint8Array([1]));
-    if (over.ai) highlights.setAiResult(id, 'Iemand bij de deur.', over.ai.real, start + 60, over.ai.vehicle ?? null, over.ai.known ?? false, over.ai.marker ?? null);
+    if (over.ai) {
+      highlights.setAiResult(id, 'Iemand bij de deur.', over.ai.real, start + 60, over.ai.vehicle ?? null, over.ai.known ?? false, over.ai.marker ?? null, [], over.ai.seen ?? null);
+    }
     return id;
   };
   /** Face library stand-in: `attempts` lists unrecognised faces per Frigate event id. */
@@ -259,6 +264,31 @@ describe('fewer and better questions (0.27.0)', () => {
     expect(asked).not.toContain(none);
     // Unknown size (imported before 0.27.0) is asked as before; the clearly visible ones first.
     expect(new Set(asked)).toEqual(new Set([big, legacy, small]));
+  });
+});
+
+describe('person seen by the AI (0.39.0)', () => {
+  it('asks nobody about a Frigate person the AI clearly does not see, and withdraws such an open question', () => {
+    const t = setup();
+    // 2026-11-17 15:24, Achter het huis 1: "Er staan drie auto's geparkeerd; er is geen persoon zichtbaar."
+    const nobody = t.add({ ai: { real: true, seen: 'nee' }, personSize: 0.075, score: 9 });
+    const dark = t.add({ ai: { real: true, seen: 'onduidelijk' }, personSize: 0.2, score: 5 });
+    const seen = t.add({ ai: { real: true, seen: 'ja' }, personSize: 0.4, score: 4 });
+    const g = t.generator({ faces: t.faceStub({}, false) });
+    g.runOnce();
+    const asked = () => t.questions.list('open').filter((q) => q.kind === 'person').map((q) => q.highlightId);
+    expect(new Set(asked())).toEqual(new Set([dark, seen]));
+    expect(asked()).not.toContain(nobody);
+    // Described again (as at the first start of 0.39.0): an open question about nobody is withdrawn.
+    t.highlights.setAiResult(seen, 'Er staan auto\'s geparkeerd.', true, NOW, null, false, null, [], 'nee');
+    g.runOnce();
+    expect(t.questions.getByKey(`person:${seen}`)).toMatchObject({ status: 'dismissed', answeredBy: 'systeem' });
+  });
+
+  it('keeps where Frigate saw the person seen best', () => {
+    const t = setup();
+    const id = t.add({ personBox: [0.415, 0.157, 0.025, 0.075] });
+    expect(t.highlights.get(id)).toMatchObject({ personBox: [0.415, 0.157, 0.025, 0.075], aiPersonSeen: null });
   });
 });
 

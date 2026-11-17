@@ -140,6 +140,10 @@ describe('household knowledge for the AI (0.30.0)', () => {
     expect(checkVerdict(named, { ...base, recognized: ['Tineke Mevius'], persons: 1 }).description).toBe(named.description);
     const other = { description: 'Frigate detecteerde een persoon; die is niet te zien.', realEvent: true };
     expect(checkVerdict(other, { ...base, recognized: ['Jasper Mevius'], persons: 1 }).description).toBe(other.description);
+    // A recognised face means somebody was there, whatever the AI sees on its still (0.39.0).
+    const nobody = { description: 'Er staan geparkeerde auto\'s.', realEvent: false, personSeen: 'nee' as const };
+    expect(checkVerdict(nobody, { ...base, recognized: ['Jasper Mevius'], persons: 1 })).toMatchObject({ personSeen: 'onduidelijk', realEvent: true });
+    expect(checkVerdict(nobody, { ...base, recognized: [], persons: 1 })).toMatchObject({ personSeen: 'nee', realEvent: false });
     // The prompt asks for the name.
     expect(buildPrompt({ cameraName: 'x', time: 't', objects: ['person'], recognized: ['Roel Snippe'] })).toContain('Noem die persoon bij de voornaam (Roel)');
   });

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parseCameraConfig } from '@uitkijk/shared';
-import { buildPrompt, codexDescriber, parseVerdict, type Describer } from '../src/ai/codex.ts';
+import { buildPrompt, codexDescriber, parseVerdict, personPlace, type Describer } from '../src/ai/codex.ts';
 import { AiLog, loggedCall } from '../src/ai/log.ts';
 import { AiWorker } from '../src/ai/worker.ts';
 import { buildApp } from '../src/app.ts';
@@ -36,6 +36,19 @@ describe('AI answer handling', () => {
     );
     expect(buildPrompt({ cameraName: 'Voordeur', time: 't', objects: ['person'], annotation: 'Tineke Mevius (bewoner)' })).toContain('noem de voornaam');
     expect(parseVerdict('{"description":"x","real_event":true,"person_marker":true}').personMarker).toBe(true);
+  });
+
+  it('tells where Frigate saw the person and asks whether somebody really stands there (0.39.0)', () => {
+    // 2026-11-17 15:24, Achter het huis 1: Frigate's "person" in the things under the carport.
+    expect(personPlace([0.415, 0.157, 0.025, 0.075])).toBe('in het bovenste derde, in het midden, klein (8% van de beeldhoogte)');
+    expect(personPlace([0.7, 0.5, 0.2, 0.5])).toBe('in het onderste derde, rechts, (50% van de beeldhoogte)');
+    const prompt = buildPrompt({ cameraName: 'Achter', time: 't', objects: ['person'], personPlace: 'in het bovenste derde, links, klein (5% van de beeldhoogte)' });
+    expect(prompt).toContain('Frigate zag de persoon op het beeld in het bovenste derde, links');
+    expect(prompt).toContain('- person_seen:');
+    expect(prompt).toContain('alleen als person_seen "nee" is, mag het ruis zijn');
+    expect(buildPrompt({ cameraName: 'Achter', time: 't', objects: ['car'] })).not.toContain('Frigate zag de persoon');
+    expect(parseVerdict('{"description":"x","real_event":false,"person_seen":"nee"}').personSeen).toBe('nee');
+    expect(parseVerdict('{"description":"x","real_event":true,"person_seen":"misschien"}').personSeen).toBeUndefined();
   });
 
   it('treats parked vehicles without activity as noise and passes plates Frigate read (0.20.0)', () => {

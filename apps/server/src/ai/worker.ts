@@ -3,7 +3,7 @@ import type { Camera } from '@uitkijk/shared';
 import { RESELECT_S } from '../highlights/importer.ts';
 import type { HighlightStore, StoredCandidate } from '../highlights/store.ts';
 import { realPlates } from '../questions/vehicles.ts';
-import type { Describer } from './codex.ts';
+import { personPlace, type Describer } from './codex.ts';
 import { checkVerdict, knownPlates, plateCertainties, plateMatches, type Register } from './knowledge.ts';
 
 export interface AiWorkerOptions {
@@ -159,6 +159,7 @@ export class AiWorker {
         ...(next.annotation ? { annotation: next.annotation } : {}),
         ...(plates.length ? { plates } : {}),
         ...(matches.length ? { certain: plateCertainties(matches, register) } : {}),
+        ...(next.personBox && objects.includes('person') ? { personPlace: personPlace(next.personBox) } : {}),
       });
       // An administrator's answer outranks face recognition: no name is put in for it then.
       const verdict = checkVerdict(answer, {
@@ -178,6 +179,7 @@ export class AiWorker {
         verdict.vehicleKnown ?? false,
         verdict.personMarker ?? null,
         verdict.vehicles ?? [],
+        verdict.personSeen ?? null,
       );
       this.lastSuccessAt = now;
       this.lastError = null;
