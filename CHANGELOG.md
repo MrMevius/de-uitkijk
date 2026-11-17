@@ -3,6 +3,13 @@
 Op hoofdlijnen, nieuwste eerst. Wordt getoond op Beheer → Change log. Elke release krijgt hier een kopje
 `## <versie> — <datum>` met een paar bullets; een test controleert dat de bovenste versie gelijk is aan `VERSION`.
 
+## 0.40.0 — 2026-11-18
+
+- Geparkeerde auto's op een vaste plek worden minder vaak een highlight. Staat een auto stil op een plek waar de AI eerder minstens twee keer "alleen geparkeerde auto's" zag, dan telt hij laag ("auto op vaste parkeerplek"). Vooral Achter het huis 1 had hier veel last van.
+- Na een antwoord als "Tineke (bewoner)" staat de naam meteen in de beschrijving ("Tineke loopt naar de voordeur"), zonder nieuwe AI-beschrijving. Alleen als de zin anders moet, kijkt de AI opnieuw.
+- De AI schrijft na een antwoord over een persoon alleen nog een feit als er iets vast te leggen is: bedrijfskleding, een logo of het eigen voertuig. Eerder leverde dat bijna alleen "Tineke is bewoner" op.
+- Samen ongeveer een derde minder AI-aanroepen per dag.
+
 ## 0.39.3 — 2026-11-17
 
 - Schrijft de AI zelf dat er niemand te zien is, dan geldt dat nu ook: geen "Wie is dit?" en, als Frigate alleen een persoon meldde, geen highlight. De AI sprak zichzelf soms tegen ("niemand te zien", maar toch "persoon gezien").

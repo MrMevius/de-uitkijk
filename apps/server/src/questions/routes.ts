@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { FactStore } from '../ai/facts.ts';
 import { ATTEMPT_FILE, markSuspects, matchFaceName, REJECTION_WINDOW_S, rejectionsOf, type FaceLibrary } from '../faces/library.ts';
 import type { HighlightStore, StoredCandidate } from '../highlights/store.ts';
-import { plateMatches } from '../ai/knowledge.ts';
+import { firstName, plateMatches } from '../ai/knowledge.ts';
 import { findPerson, plateKey, vehicleLabel, type HouseholdStore, type Person, type Vehicle } from '../household/store.ts';
 import { MIN_PERSON_SIZE } from './generator.ts';
 import { answerHousehold, registerVehicleAnswer } from './household.ts';
@@ -52,6 +52,29 @@ const KNOWN_CATEGORIES = new Set(['bewoner', 'familie', 'bezoeker', 'buren', 'va
 /** Answers without a name that tell the AI nothing to write a fact from. */
 const NO_FACT_CATEGORIES = new Set(['onbekend', 'voorbijganger']);
 
+/** A description that only needs the answered name: "Een persoon loopt …" → "Tineke loopt …" (since 0.40.0). */
+const NAMEABLE = /^een (persoon|man|vrouw)(?![\p{L}])/iu;
+
+/** The AI description with the answered name in it, without an AI call; null when the AI must rewrite it. */
+export function namedDescription(h: Pick<StoredCandidate, 'aiDescription' | 'personCount'>, name: string): string | null {
+  const text = h.aiDescription;
+  if (!text || !NAMEABLE.test(text) || (h.personCount ?? 1) > 1) return null;
+  return text.replace(NAMEABLE, firstName(name));
+}
+
+/**
+ * After an answer about a person: put the name in the description when that is all that changes, else describe the
+ * highlight again (since 0.40.0). Until then every answer cost an AI call, 10–24 a day; most only swapped "Een persoon"
+ * for the name. "Onbekend" and a passer-by without a name change nothing.
+ */
+export function redescribeAfterAnswer(h: StoredCandidate, answer: string, highlights: HighlightStore): void {
+  const { name, category } = parsePersonAnswer(answer);
+  if (!name && NO_FACT_CATEGORIES.has(category)) return;
+  const named = name ? namedDescription(h, name) : null;
+  if (named) highlights.setAiDescriptionText(h.id, named);
+  else highlights.requestRedescribe(h.id);
+}
+
 /** Splits a stored person answer "Tineke (bewoner)" into name and category. */
 export function parsePersonAnswer(answer: string): { name: string; category: string } {
   const m = /^(.*) \(([^()]+)\)$/.exec(answer);
@@ -85,10 +108,13 @@ export function applyPersonAnswer(
   const known = Boolean(name) && KNOWN_CATEGORIES.has(category);
   if (h) {
     highlights.setAnnotation(h.id, answer, known);
-    if (autoFacts) highlights.requestRedescribe(h.id);
+    if (autoFacts) redescribeAfterAnswer(h, answer, highlights);
   }
-  // The AI writes a fact from the still and this answer (nothing to learn from "onbekend" or a passer-by without a name).
-  const fact = autoFacts && h && (name || !NO_FACT_CATEGORIES.has(category)) ? 'pending' : 'none';
+  // The AI writes a fact from the still and this answer (nothing to learn from "onbekend" or a passer-by without a
+  // name). Since 0.40.0 only when there is something to write about: work clothes or a logo, or a vehicle the event is
+  // about (or the AI did not look yet). Before, 129 answers gave five facts, four of them "Tineke is bewoner" or a suitcase.
+  const learnable = h && (h.aiPersonMarker !== false || Boolean(h.aiVehicle) || h.aiStatus !== 'done');
+  const fact = autoFacts && learnable && (name || !NO_FACT_CATEGORIES.has(category)) ? 'pending' : 'none';
   questions.setFact(q.id, fact);
   const face = faces && h && known ? 'pending' : 'none';
   questions.setFace(q.id, face, face === 'pending' ? name : null);
@@ -316,7 +342,8 @@ export function registerQuestions(app: FastifyInstance, options: QuestionRouteOp
         if (!other) continue;
         questions.resolve(other.id, 'answered', label, by, now());
         const extra = applyPersonAnswer(other, label, { ...options, autoFacts: false });
-        if (options.autoFacts) highlights.requestRedescribe(id);
+        const otherH = highlights.get(id);
+        if (options.autoFacts && otherH) redescribeAfterAnswer(otherH, label, highlights);
         if (extra.face === 'pending') result.face = 'pending';
         applied++;
       }

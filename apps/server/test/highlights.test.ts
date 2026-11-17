@@ -9,7 +9,7 @@ import { buildApp } from '../src/app.ts';
 import { AuthStore } from '../src/auth/store.ts';
 import { hashPassword } from '../src/auth/passwords.ts';
 import { ClipCache } from '../src/highlights/clips.ts';
-import { describe as describeGroup, clipStartFor, HighlightImporter, hourInAmsterdam, personBox, personMoment, personSize, platesOf } from '../src/highlights/importer.ts';
+import { describe as describeGroup, clipStartFor, HighlightImporter, carSpots, hourInAmsterdam, onParkingPlace, personBox, personMoment, personSize, platesOf } from '../src/highlights/importer.ts';
 import { buildBaseline, groupItems, scoreGroup, selectHighlights, type ReviewItem } from '../src/highlights/selection.ts';
 import { searchWords } from '../src/highlights/routes.ts';
 import { HighlightStore, toSummary } from '../src/highlights/store.ts';
@@ -88,6 +88,22 @@ describe('selection', () => {
     expect(personBox([car, person], cam)).toEqual([0.734, 0.531, 0.126, 0.451]);
     expect(personBox([car], cam)).toBeNull();
     expect(personMoment([car], cam)).toBeUndefined();
+  });
+
+  it('counts a car standing still on a parking place low (0.40.0)', () => {
+    const cam = 'Vriezenveen_achter_thuis_1';
+    const still = (box: number[]) => ({ id: 'c', label: 'car', camera: cam, data: { box, path_data: [[[0.85, 0.5], 1], [[0.86, 0.52], 2]] as [[number, number], number][] } });
+    const parked = carSpots([still([0.8, 0.12, 0.19, 0.47])]);
+    expect(parked.still).toBe(true);
+    const noise = [{ camera: cam, box: [0.8, 0.12, 0.19, 0.46] }, { camera: cam, box: [0.79, 0.12, 0.2, 0.47] }];
+    expect(onParkingPlace(parked.spots, noise)).toBe(true);
+    // Once is no parking place yet; another camera or another spot does not count.
+    expect(onParkingPlace(parked.spots, noise.slice(0, 1))).toBe(false);
+    expect(onParkingPlace(parked.spots, noise.map((n) => ({ ...n, camera: 'Vriezenveen_oprit' })))).toBe(false);
+    expect(onParkingPlace(carSpots([still([0.1, 0.3, 0.2, 0.3])]).spots, noise)).toBe(false);
+    // A car driving off its place moved: not still.
+    const driving = { ...still([0.8, 0.12, 0.19, 0.47]), data: { box: [0.8, 0.12, 0.19, 0.47], path_data: [[[0.85, 0.5], 1], [[0.3, 0.6], 5]] as [[number, number], number][] } };
+    expect(carSpots([driving]).still).toBe(false);
   });
 
   it('starts the clip where the person appears, not where a parked car opened the alert (2026-11-11)', () => {

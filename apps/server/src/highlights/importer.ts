@@ -105,6 +105,55 @@ export function personBox(events: FrigateEvent[], camera: string): number[] | nu
   return box?.length === 4 ? box.map((v) => Math.round(v * 1000) / 1000) : null;
 }
 
+/** How far the bottom centre of a detection moved, as the larger of its horizontal and vertical extent (fractions). */
+const pathSpan = (e: FrigateEvent) => {
+  const p = e.data?.path_data ?? [];
+  if (!p.length) return 1;
+  const xs = p.map((q) => q[0][0]);
+  const ys = p.map((q) => q[0][1]);
+  return Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+};
+
+/** Box of a car that hardly moved, per Frigate camera (since 0.40.0). */
+export type CarSpot = { camera: string; box: number[] };
+
+/** Below this path span a car stood still (fraction of the frame); cars driving on or off moved more (0.43–0.84). */
+const STILL_SPAN = 0.4;
+/** A spot is a parking place when a car stood there in at least this many events the AI called noise. */
+const PARKING_HITS = 2;
+const PARKING_IOU = 0.7;
+export const PARKING_DAYS = 7;
+/** Score penalty for a car standing on a parking place, without a person (since 0.40.0). */
+export const PARKING_PENALTY = 2;
+
+/** Cars of the group with their boxes; `still` is false when any of them moved. */
+export function carSpots(events: FrigateEvent[]): { spots: CarSpot[]; still: boolean } {
+  const cars = events.filter((e) => e.label === 'car' && e.camera && e.data?.box?.length === 4);
+  return {
+    spots: cars.map((e) => ({ camera: e.camera!, box: e.data!.box!.map((v) => Math.round(v * 1000) / 1000) })),
+    still: cars.length > 0 && cars.every((e) => pathSpan(e) < STILL_SPAN),
+  };
+}
+
+const iou = (a: number[], b: number[]) => {
+  const [ax, ay, aw, ah] = a as [number, number, number, number];
+  const [bx, by, bw, bh] = b as [number, number, number, number];
+  const ix = Math.max(0, Math.min(ax + aw, bx + bw) - Math.max(ax, bx));
+  const iy = Math.max(0, Math.min(ay + ah, by + bh) - Math.max(ay, by));
+  const inter = ix * iy;
+  const union = aw * ah + bw * bh - inter;
+  return union > 0 ? inter / union : 0;
+};
+
+/**
+ * A car that stood still where cars stood in at least two earlier events the AI called noise (a parking place).
+ * Measured on 2026-11-04..17 (147 car-only events the AI judged): 39 of 92 noise events, 1 of 55 real ones, no 👍.
+ * The path span alone did not separate them: far-away moving cars hardly move in the picture.
+ */
+export function onParkingPlace(spots: CarSpot[], noiseSpots: CarSpot[]): boolean {
+  return spots.some((s) => noiseSpots.filter((n) => n.camera === s.camera && iou(n.box, s.box) >= PARKING_IOU).length >= PARKING_HITS);
+}
+
 /**
  * How many people Frigate tracked at most on one camera of the group (since 0.34.0). A name from face recognition is
  * only put in the description when there was one; the labels say "person" once however many there were.
@@ -320,6 +369,15 @@ export class HighlightImporter {
     const vehicles = vehicleNames(events);
     const items = vehicles.size ? group.map((i) => ({ ...i, subLabels: i.subLabels.filter((n) => !vehicles.has(n)) })) : group;
     const scored = scoreGroup(items, this.baseline, hourInAmsterdam);
+    // Parked cars that keep becoming alerts (since 0.40.0): a car-only group on a known parking place counts low.
+    const cars = carSpots(events);
+    if (cars.still && !events.some((e) => e.label === 'person' || e.label === 'bicycle' || e.label === 'motorcycle')) {
+      const since = Math.min(...group.map((i) => i.startTime)) - PARKING_DAYS * 86400;
+      if (onParkingPlace(cars.spots, this.store.noiseCarSpots(since))) {
+        scored.score = Math.round((scored.score - PARKING_PENALTY) * 100) / 100;
+        scored.reasons.push('auto op vaste parkeerplek');
+      }
+    }
     // Representative: the alert with the most confident detection, a person before anything else (since 0.34.0: a
     // parked car at 0.9 won from a person at 0.8 on another camera); on a tie the longer one.
     const hasPerson = events.some((e) => e.label === 'person');
@@ -365,6 +423,7 @@ export class HighlightImporter {
       plates: platesOf(events),
       personSize: personSize(events, rep.camera),
       personBox: personBox(events, rep.camera),
+      carSpots: cars.spots,
       personCount: personCount(events),
       score: scored.score,
       reasons: scored.reasons,
@@ -388,6 +447,21 @@ export class HighlightImporter {
       measured++;
     }
     return measured;
+  }
+
+  /** Car boxes of recent events the AI called noise, imported before 0.40.0, so parking places are known at once. */
+  async backfillCarSpots(since: number): Promise<number> {
+    let found = 0;
+    for (const c of this.store.carSpotsMissing(since)) {
+      const events = (
+        await Promise.all(c.detections.map((id) => this.get<FrigateEvent>(`/api/events/${encodeURIComponent(id)}`).catch(() => undefined)))
+      ).filter((e): e is FrigateEvent => e !== undefined);
+      const { spots } = carSpots(events);
+      if (!spots.length) continue;
+      this.store.setCarSpots(c.id, spots);
+      found++;
+    }
+    return found;
   }
 
   /** Where the person was seen best, for highlights imported before 0.39.0 (Frigate keeps the detections). */

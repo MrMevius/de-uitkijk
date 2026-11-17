@@ -18,7 +18,7 @@ import { DbBackup } from './backup.ts';
 import { FaceWorker } from './faces/worker.ts';
 import { RecordingFaces } from './faces/recording.ts';
 import { ClipCache, ffmpegThumbnail } from './highlights/clips.ts';
-import { HighlightImporter, RESELECT_S } from './highlights/importer.ts';
+import { HighlightImporter, PARKING_DAYS, RESELECT_S } from './highlights/importer.ts';
 import { selectHighlights } from './highlights/selection.ts';
 import { HighlightStore, type StoredCandidate } from './highlights/store.ts';
 import { FactWorker } from './questions/fact-worker.ts';
@@ -287,6 +287,16 @@ if (importer && highlightStore && !highlightStore.getMeta('person_size_backfill'
       app.log.info(`highlights: measured person size of ${n} older highlights`);
     },
     (err: Error) => app.log.warn(`highlights: person size backfill: ${err.message}`),
+  );
+}
+// Since 0.40.0 a parked car on a parking place counts low; the car boxes of last week's noise events are read once.
+if (importer && highlightStore && !highlightStore.getMeta('car_spots_backfill')) {
+  importer.backfillCarSpots(Date.now() / 1000 - PARKING_DAYS * 86400).then(
+    (n) => {
+      highlightStore.setMeta('car_spots_backfill', '1');
+      app.log.info(`highlights: stored car spots of ${n} older noise events`);
+    },
+    (err: Error) => app.log.warn(`highlights: car spots backfill: ${err.message}`),
   );
 }
 // Since 0.39.0 the AI says whether it really sees a person, told where Frigate saw one. Highlights with an open

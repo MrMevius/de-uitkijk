@@ -11,7 +11,7 @@ import { moments, personRect, RecordingFaces, singlePeople, type PersonTrack } f
 import { HighlightStore, type CandidateRecord } from '../src/highlights/store.ts';
 import { StateHub } from '../src/hub.ts';
 import { OPEN_LIMITS, QuestionGenerator } from '../src/questions/generator.ts';
-import { answeredName, applyPersonAnswer, parsePersonAnswer, vehicleIsSubject } from '../src/questions/routes.ts';
+import { answeredName, applyPersonAnswer, namedDescription, parsePersonAnswer, vehicleIsSubject } from '../src/questions/routes.ts';
 import { askableVehicle, knownVehicle, makeModel, platesClose } from '../src/questions/vehicles.ts';
 import type { Person } from '../src/household/store.ts';
 import { QuestionStore } from '../src/questions/store.ts';
@@ -617,6 +617,30 @@ describe('learning from answers (0.13)', () => {
     expect(applyPersonAnswer(t.questions.get(qid(5))!, 'Jan (voorbijganger)', opts)).toEqual({ fact: 'pending', face: 'none' });
     expect(t.highlights.get(id)!.annotationKnown).toBe(false);
     expect(parsePersonAnswer('Oma (Tini) (bezoeker)')).toEqual({ name: 'Oma (Tini)', category: 'bezoeker' });
+  });
+
+  it('puts the name in without an AI call and writes facts only when there is something to learn (0.40.0)', () => {
+    const t = setup();
+    const opts = { questions: t.questions, highlights: t.highlights, autoFacts: true };
+    const ask = (id: string) => (t.questions.add({ kind: 'person', key: `person:${id}`, highlightId: id, title: 'Wie is dit?', body: 'x' }, NOW), t.questions.getByKey(`person:${id}`)!);
+    // "Een persoon loopt …" with one person, no marker or vehicle: name in, no AI call, no fact.
+    const plain = t.add({ ai: { real: true, marker: false }, personCount: 1 });
+    t.highlights.setAiResult(plain, 'Een persoon loopt naar de voordeur.', true, NOW, null, false, false);
+    expect(applyPersonAnswer(ask(plain), 'Tineke Mevius (bewoner)', opts).fact).toBe('none');
+    expect(t.highlights.get(plain)).toMatchObject({ aiDescription: 'Tineke loopt naar de voordeur.', aiRedo: false, aiStatus: 'done' });
+    // Two people, or a sentence that does not start with the person: the AI rewrites it.
+    const two = t.add({ ai: { real: true, marker: false }, personCount: 2 });
+    t.highlights.setAiResult(two, 'Een persoon en een kind lopen naar de deur.', true, NOW, null, false, false);
+    applyPersonAnswer(ask(two), 'Johan Mevius (bewoner)', opts);
+    expect(t.highlights.get(two)).toMatchObject({ aiRedo: true });
+    // A vehicle the event is about, or work clothes: a fact can be learned.
+    const van = t.add({ ai: { real: true, marker: false, vehicle: 'witte Mercedes-Benz Sprinter' } });
+    expect(applyPersonAnswer(ask(van), 'Bert Hemmer (buren)', opts).fact).toBe('pending');
+    // "Onbekend" changes nothing in the description.
+    const unknown = t.add({ ai: { real: true, marker: false } });
+    applyPersonAnswer(ask(unknown), 'onbekend', opts);
+    expect(t.highlights.get(unknown)).toMatchObject({ aiRedo: false, aiStatus: 'done' });
+    expect(namedDescription({ aiDescription: 'Een vrouw zet de kliko buiten.', personCount: null }, 'Vera Snippe')).toBe('Vera zet de kliko buiten.');
   });
 
   it('stores the kept face crops under the matching library name in Frigate', async () => {

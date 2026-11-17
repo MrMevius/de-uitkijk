@@ -35,6 +35,8 @@ export interface CandidateRecord {
   personCount?: number | null;
   /** Box of the best seen person on the representative camera, [x, y, w, h] as fractions (since 0.39.0). */
   personBox?: number[] | null;
+  /** Boxes of the group's cars per Frigate camera, to recognise parking places (since 0.40.0). */
+  carSpots?: { camera: string; box: number[] }[];
   score: number;
   reasons: string[];
   description: string;
@@ -295,6 +297,8 @@ export class HighlightStore {
       // Added in 0.39.0 (where Frigate saw the person; whether the AI really sees one).
       ['person_box', 'TEXT'],
       ['ai_person_seen', 'TEXT'],
+      // Added in 0.40.0 (parking places).
+      ['car_spots', 'TEXT'],
     ] as const) {
       if (!columns.has(name)) this.db.exec(`ALTER TABLE candidates ADD COLUMN ${name} ${type}`);
     }
@@ -345,15 +349,15 @@ export class HighlightStore {
         .prepare(
           `INSERT INTO candidates (id, start_time, end_time, cameras, camera, frigate_camera, rep_event, clip_start, clip_end,
              event_start, event_end, labels, sub_labels, score, reasons, description, base_score, frame_time, detections, plates, person_size,
-             person_count, person_box)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             person_count, person_box, car_spots)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           c.id, c.startTime, c.endTime, JSON.stringify(c.cameras), c.camera, c.frigateCamera, c.repEvent, c.clipStart,
           c.clipEnd, c.eventStart, c.eventEnd, JSON.stringify(c.labels), JSON.stringify(c.subLabels), c.score,
           JSON.stringify(c.reasons), c.description, c.score, c.frameTime ?? null, c.detections ? JSON.stringify(c.detections) : null,
           c.plates?.length ? JSON.stringify(c.plates) : null, c.personSize ?? null, c.personCount ?? null,
-          c.personBox ? JSON.stringify(c.personBox) : null,
+          c.personBox ? JSON.stringify(c.personBox) : null, c.carSpots?.length ? JSON.stringify(c.carSpots) : null,
         );
       const mark = this.db.prepare('INSERT OR IGNORE INTO processed_reviews (review_id, candidate_id) VALUES (?, ?)');
       for (const id of reviewIds) mark.run(id, c.id);
@@ -517,6 +521,34 @@ export class HighlightStore {
       )
       .run(JSON.stringify(rest), JSON.stringify([...c.rejectedNames, name]), base, JSON.stringify(reasons), known, base, known, description, id);
     return this.get(id);
+  }
+
+  /** Car boxes of events the AI called noise, with no person, since `since` (parking places, since 0.40.0). */
+  noiseCarSpots(since: number): { camera: string; box: number[] }[] {
+    const rows = this.db
+      .prepare(`SELECT car_spots FROM candidates WHERE ai_real = 0 AND car_spots IS NOT NULL AND labels NOT LIKE '%person%' AND start_time >= ?`)
+      .all(since) as { car_spots: string }[];
+    return rows.flatMap((r) => JSON.parse(r.car_spots) as { camera: string; box: number[] }[]);
+  }
+
+  /** Events the AI called noise with a car and no person, whose car boxes were never stored (before 0.40.0). */
+  carSpotsMissing(since: number): StoredCandidate[] {
+    return (
+      this.db
+        .prepare(
+          `SELECT ${COLUMNS} FROM candidates WHERE ai_real = 0 AND car_spots IS NULL AND labels LIKE '%car%' AND labels NOT LIKE '%person%' AND start_time >= ?`,
+        )
+        .all(since) as unknown as Row[]
+    ).map(fromRow);
+  }
+
+  setCarSpots(id: string, spots: { camera: string; box: number[] }[]): void {
+    this.db.prepare('UPDATE candidates SET car_spots = ? WHERE id = ?').run(JSON.stringify(spots), id);
+  }
+
+  /** Replaces the AI description text only (a name put in after an answer, since 0.40.0). */
+  setAiDescriptionText(id: string, text: string): void {
+    this.db.prepare('UPDATE candidates SET ai_description = ?, ai_redo = 0 WHERE id = ?').run(text, id);
   }
 
   setPersonBox(id: string, box: number[] | null): void {
