@@ -3,7 +3,7 @@ import type { Camera } from '@uitkijk/shared';
 import { RESELECT_S } from '../highlights/importer.ts';
 import type { HighlightStore, StoredCandidate } from '../highlights/store.ts';
 import { realPlates } from '../questions/vehicles.ts';
-import { personPlace, type Describer } from './codex.ts';
+import { detailRegion, personPlace, type Describer } from './codex.ts';
 import { checkVerdict, knownPlates, plateCertainties, plateMatches, type Register } from './knowledge.ts';
 
 export interface AiWorkerOptions {
@@ -25,6 +25,8 @@ export interface AiWorkerOptions {
   still?: (c: StoredCandidate) => Promise<Uint8Array | undefined>;
   /** Converts the stored WebP thumbnail to JPEG; override in tests. */
   toJpeg?: (webp: Uint8Array) => Promise<Uint8Array>;
+  /** Crops the enlarged detail around a small person; override in tests (since 0.39.2). */
+  crop?: (jpeg: Uint8Array, region: number[]) => Promise<Uint8Array>;
   /** AI calls logged today per purpose (the AI log), so the cap survives a restart (since 0.31.0). */
   callsToday?: () => Record<'beschrijving' | 'feit' | 'huishouden', number>;
 }
@@ -41,6 +43,19 @@ export interface AiStatus {
   /** Other AI calls today, outside the description cap: facts from answers and household bundling. */
   otherCallsToday?: { feit: number; huishouden: number };
 }
+
+/** Crops a region ([x, y, w, h] fractions) out of a JPEG and scales it to at most 1024 px wide, with ffmpeg. */
+export const ffmpegCrop = (jpeg: Uint8Array, region: number[]): Promise<Uint8Array> =>
+  new Promise((resolve, reject) => {
+    const [x, y, w, h] = region as [number, number, number, number];
+    const vf = `crop=iw*${w}:ih*${h}:iw*${x}:ih*${y},scale='min(1024,iw)':-2`;
+    const proc = spawn('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-i', 'pipe:0', '-vf', vf, '-f', 'mjpeg', '-q:v', '3', 'pipe:1']);
+    const out: Buffer[] = [];
+    proc.stdout.on('data', (d: Buffer) => out.push(d));
+    proc.on('error', reject);
+    proc.on('close', (code) => (code === 0 ? resolve(Buffer.concat(out)) : reject(new Error(`ffmpeg exited ${code}`))));
+    proc.stdin.end(Buffer.from(jpeg));
+  });
 
 /** WebP → JPEG with ffmpeg through pipes (no files). */
 export const ffmpegToJpeg = (webp: Uint8Array): Promise<Uint8Array> =>
@@ -94,6 +109,7 @@ export class AiWorker {
       register: () => ({ people: [], vehicles: [] }),
       still: async () => undefined,
       toJpeg: ffmpegToJpeg,
+      crop: ffmpegCrop,
       callsToday: () => ({ beschrijving: 0, feit: 0, huishouden: 0 }),
       ...options,
     };
@@ -150,7 +166,11 @@ export class AiWorker {
       const plates = realPlates(next.plates);
       const matches = plateMatches(plates, register);
       const objects = next.labels.map((l) => l.replace(/-verified$/, ''));
-      const answer = await this.describe(still ?? (await this.opts.toJpeg(webp)), {
+      const image = still ?? (await this.opts.toJpeg(webp));
+      // A small person: an enlargement of where Frigate saw them, so the AI can tell a person from things (2026-11-17).
+      const region = next.personBox && objects.includes('person') ? detailRegion(next.personBox) : null;
+      const detail = region ? await this.opts.crop(image, region).catch(() => undefined) : undefined;
+      const answer = await this.describe(image, {
         cameraName: this.names.get(next.camera) ?? next.camera,
         time: timeFormat.format(next.startTime * 1000),
         objects,
@@ -160,7 +180,7 @@ export class AiWorker {
         ...(plates.length ? { plates } : {}),
         ...(matches.length ? { certain: plateCertainties(matches, register) } : {}),
         ...(next.personBox && objects.includes('person') ? { personPlace: personPlace(next.personBox) } : {}),
-      });
+      }, detail?.length ? detail : undefined);
       // An administrator's answer outranks face recognition: no name is put in for it then.
       const verdict = checkVerdict(answer, {
         recognized: next.annotation ? [] : next.subLabels,

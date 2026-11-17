@@ -147,7 +147,7 @@ export class AiLog {
 /** Wraps a Codex call so every request and answer (or error) is logged; the call itself behaves exactly as before. */
 export function loggedCall(call: CodexImageCall, log: AiLog | undefined, purpose: AiPurpose, model: string | null, onLogError: (err: Error) => void = () => {}): CodexImageCall {
   if (!log) return call;
-  return async (jpeg, prompt, schema, effort = 'low') => {
+  return async (jpeg, prompt, schema, effort = 'low', detail) => {
     const at = log.now();
     const started = performance.now();
     const record = (answer: string | null, error: string | null) =>
@@ -155,7 +155,7 @@ export function loggedCall(call: CodexImageCall, log: AiLog | undefined, purpose
         .add({ at, purpose, model, effort, prompt, schema: JSON.stringify(schema), answer, error, durationMs: performance.now() - started, jpeg })
         .catch(onLogError);
     try {
-      const answer = await call(jpeg, prompt, schema, effort);
+      const answer = await call(jpeg, prompt, schema, effort, detail);
       record(answer, null);
       return answer;
     } catch (err) {

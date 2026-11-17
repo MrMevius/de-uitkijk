@@ -292,11 +292,12 @@ if (importer && highlightStore && !highlightStore.getMeta('person_size_backfill'
 // Since 0.39.0 the AI says whether it really sees a person, told where Frigate saw one. Highlights with an open
 // "Wie is dit?" question get that place and are described once more, so a question about nobody is withdrawn.
 // Again in 0.39.1: in 0.39.0 they had no place and the AI chose "onduidelijk" while writing that nobody was there.
-if (importer && questionStore && highlightStore && ai && highlightStore.getMeta('person_seen_recheck') !== '2') {
+// Again in 0.39.2, with the enlarged detail: in 0.39.1 the AI still could not tell on the whole 4K still.
+if (importer && questionStore && highlightStore && ai && highlightStore.getMeta('person_seen_recheck') !== '3') {
   const ids = questionStore.list('open', 1000).filter((q) => q.kind === 'person' && q.highlightId).map((q) => q.highlightId!);
   const redescribe = () => {
     for (const id of ids) highlightStore.requestRedescribe(id);
-    highlightStore.setMeta('person_seen_recheck', '2');
+    highlightStore.setMeta('person_seen_recheck', '3');
   };
   importer.backfillPersonBoxes(ids).then(redescribe, (err: Error) => {
     app.log.warn(`highlights: person box backfill: ${err.message}`);

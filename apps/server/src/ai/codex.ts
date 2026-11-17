@@ -44,6 +44,23 @@ export interface AiContext {
   certain?: string[];
   /** Where Frigate saw the person on the image, e.g. "boven in het midden, klein (8% van de beeldhoogte)" (since 0.39.0). */
   personPlace?: string;
+  /** A second image enlarges that place (since 0.39.2). */
+  detail?: boolean;
+}
+
+/**
+ * The part of the frame to enlarge around a person box ([x, y, w, h] fractions): three times the box, at least a
+ * quarter of the frame height, about 4:3 on a 16:9 frame, kept inside the frame. Null for a big person (a quarter of
+ * the height or more): the whole still shows them well enough.
+ */
+export function detailRegion(box: number[]): number[] | null {
+  const [x, y, w, h] = box as [number, number, number, number];
+  if (h >= 0.25) return null;
+  const ch = Math.min(1, Math.max(3 * h, 0.25));
+  const cw = Math.min(1, Math.max(3 * w, ch * 0.75));
+  const clamp = (v: number, size: number) => Math.min(1 - size, Math.max(0, v));
+  const r = (v: number) => Math.round(v * 1000) / 1000;
+  return [r(clamp(x + w / 2 - cw / 2, cw)), r(clamp(y + h / 2 - ch / 2, ch)), r(cw), r(ch)];
 }
 
 /**
@@ -60,8 +77,11 @@ export function personPlace(box: number[]): string {
   return `in het ${row} derde, ${col}, ${h < 0.15 ? 'klein ' : ''}(${pct}% van de beeldhoogte)`;
 }
 
-/** Runs one description; implementations must never throw for "no answer", only for real errors. */
-export type Describer = (jpeg: Uint8Array, context: AiContext) => Promise<AiVerdict>;
+/**
+ * Runs one description; implementations must never throw for "no answer", only for real errors. `detail` is an
+ * enlarged part of the still around where Frigate saw the person (since 0.39.2).
+ */
+export type Describer = (jpeg: Uint8Array, context: AiContext, detail?: Uint8Array) => Promise<AiVerdict>;
 
 const SCHEMA = {
   type: 'object',
@@ -89,10 +109,17 @@ const SCHEMA = {
 
 export function buildPrompt(context: AiContext): string {
   const lines = [
-    'Je bekijkt één stilstaand beeld van een beveiligingscamera bij een woonhuis.',
+    context.detail
+      ? 'Je bekijkt een stilstaand beeld van een beveiligingscamera bij een woonhuis, met een uitvergroting van een deel ervan.'
+      : 'Je bekijkt één stilstaand beeld van een beveiligingscamera bij een woonhuis.',
     `Camera: ${context.cameraName}. Tijd: ${context.time}. Frigate detecteerde: ${context.objects.join(', ') || 'beweging'}.`,
   ];
-  if (context.personPlace) lines.push(`Frigate zag de persoon op het beeld ${context.personPlace}. Kijk daar goed.`);
+  if (context.personPlace) {
+    lines.push(
+      `Frigate zag de persoon op het beeld ${context.personPlace}. Kijk daar goed.` +
+        (context.detail ? ' Het tweede beeld is een uitvergroting van die plek uit hetzelfde moment; gebruik het voor person_seen.' : ''),
+    );
+  }
   if (context.recognized?.length) {
     const first = context.recognized.map((n) => n.trim().split(/\s+/)[0]).join(', ');
     lines.push(
@@ -206,7 +233,8 @@ function run(command: string, args: string[], env: NodeJS.ProcessEnv, cwd: strin
  * One confined Codex run with an optional image, a prompt and a JSON schema; returns the final JSON text.
  * `effort` overrides the default low reasoning effort (the weekly household bundling uses medium).
  */
-export type CodexImageCall = (jpeg: Uint8Array | null, prompt: string, schema: object, effort?: 'low' | 'medium') => Promise<string>;
+/** `detail`: a second image, an enlarged part of the first (since 0.39.2). */
+export type CodexImageCall = (jpeg: Uint8Array | null, prompt: string, schema: object, effort?: 'low' | 'medium', detail?: Uint8Array) => Promise<string>;
 
 /**
  * Runs the official Codex CLI, signed in with the owner's ChatGPT account (operator decision 2026-11-08;
@@ -217,20 +245,23 @@ export type CodexImageCall = (jpeg: Uint8Array | null, prompt: string, schema: o
  * config, extra tool features off, and a strict JSON output schema.
  */
 export function codexImageCall({ codexHome, timeoutMs = 180_000, model, command = 'codex' }: CodexOptions): CodexImageCall {
-  return async (jpeg, prompt, outputSchema, effort = 'low') => {
+  return async (jpeg, prompt, outputSchema, effort = 'low', detail) => {
     const dir = await mkdtemp(join(tmpdir(), 'uitkijk-ai-'));
     try {
       const image = join(dir, 'frame.jpg');
       const schema = join(dir, 'schema.json');
       const answer = join(dir, 'answer.json');
+      const zoom = join(dir, 'detail.jpg');
       if (jpeg) await writeFile(image, jpeg);
+      if (jpeg && detail) await writeFile(zoom, detail);
       await writeFile(schema, JSON.stringify(outputSchema));
       const args = ['exec', '--skip-git-repo-check', '--ephemeral', '--ignore-user-config', '--ignore-rules'];
       args.push('--sandbox', 'read-only', '--cd', dir, '--color', 'never');
       for (const f of DISABLED_FEATURES) args.push('--disable', f);
       if (model) args.push('--model', model);
       args.push('-c', `model_reasoning_effort="${effort}"`);
-      if (jpeg) args.push('--image', image);
+      // One flag with both files: `--image` takes several values.
+      if (jpeg) args.push('--image', detail ? `${image},${zoom}` : image);
       args.push('--output-schema', schema, '--output-last-message', answer, prompt);
       // Only what Codex needs: no application environment.
       const env = { PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin', HOME: dir, CODEX_HOME: codexHome, LANG: 'C.UTF-8' };
@@ -245,7 +276,7 @@ export function codexImageCall({ codexHome, timeoutMs = 180_000, model, command 
 
 /** Describes a highlight still. */
 export function codexDescriber(options: CodexOptions, call: CodexImageCall = codexImageCall(options)): Describer {
-  return async (jpeg, context) => parseVerdict(await call(jpeg, buildPrompt(context), SCHEMA));
+  return async (jpeg, context, detail) => parseVerdict(await call(jpeg, buildPrompt({ ...context, ...(detail ? { detail: true } : {}) }), SCHEMA, 'low', detail));
 }
 
 /** True when Codex has a stored login. */

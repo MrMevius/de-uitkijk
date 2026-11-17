@@ -3,6 +3,10 @@
 Op hoofdlijnen, nieuwste eerst. Wordt getoond op Beheer → Change log. Elke release krijgt hier een kopje
 `## <versie> — <datum>` met een paar bullets; een test controleert dat de bovenste versie gelijk is aan `VERSION`.
 
+## 0.39.2 — 2026-11-17
+
+- Staat de persoon die Frigate zag klein in beeld, dan krijgt de AI die plek ook uitvergroot te zien. Op het hele beeld kon hij de spullen onder de carport niet van een persoon onderscheiden; op de uitvergroting zag hij dat er niemand stond.
+
 ## 0.39.1 — 2026-11-17
 
 - De AI was te voorzichtig: hij schreef "geen persoon zichtbaar" maar twijfelde toch, waardoor de vraag over de carport bleef staan. Ziet hij de plek goed en staat er niemand, dan zegt hij nu "nee". Alleen als het te donker of te wazig is blijft het twijfel.

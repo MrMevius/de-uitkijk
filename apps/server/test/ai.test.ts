@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parseCameraConfig } from '@uitkijk/shared';
-import { buildPrompt, codexDescriber, parseVerdict, personPlace, type Describer } from '../src/ai/codex.ts';
+import { buildPrompt, codexDescriber, detailRegion, parseVerdict, personPlace, type Describer } from '../src/ai/codex.ts';
 import { AiLog, loggedCall } from '../src/ai/log.ts';
 import { AiWorker } from '../src/ai/worker.ts';
 import { buildApp } from '../src/app.ts';
@@ -212,6 +212,42 @@ describe('household facts', () => {
     expect(facts.list()).toHaveLength(82);
     expect(facts.remove(1)).toBe(true);
     expect(facts.remove(1)).toBe(false);
+  });
+
+  it('enlarges the place of a small person as a second image (0.39.2)', async () => {
+    // 2026-11-17 15:24: on the whole 4K still the AI could not tell; on the enlargement it saw tables and tubs.
+    expect(detailRegion([0.415, 0.157, 0.025, 0.075])).toEqual([0.334, 0.07, 0.188, 0.25]);
+    expect(detailRegion([0.95, 0.9, 0.04, 0.1])).toEqual([0.775, 0.7, 0.225, 0.3]);
+    expect(detailRegion([0.4, 0.3, 0.1, 0.5])).toBeNull();
+    expect(buildPrompt({ cameraName: 'x', time: 't', objects: ['person'], personPlace: 'p', detail: true })).toContain('Het tweede beeld is een uitvergroting');
+    const store = new HighlightStore(':memory:');
+    cleanup.push(() => store.close());
+    const now = 1_794_160_000;
+    const base = {
+      endTime: now - 3580, cameras: ['achter_1'], camera: 'achter_1', frigateCamera: 'Vriezenveen_achter_thuis_1', repEvent: 'e',
+      clipStart: 0, clipEnd: 10, frameTime: now - 3590, eventStart: 0, eventEnd: 10, labels: ['person'], subLabels: [],
+      score: 3, reasons: [], description: 'Persoon',
+    };
+    store.insert({ ...base, id: 'small', startTime: now - 3600, personBox: [0.415, 0.157, 0.025, 0.075] }, ['small']);
+    store.insert({ ...base, id: 'big', startTime: now - 1800, personBox: [0.4, 0.3, 0.1, 0.5] }, ['big']);
+    for (const id of ['small', 'big']) {
+      store.setSelected(id, true);
+      store.setThumbnail(id, new Uint8Array([1]));
+    }
+    const calls: { place?: string; detail?: number[] }[] = [];
+    const worker = new AiWorker(
+      store,
+      async (_img, ctx, detail) => {
+        calls.push({ ...(ctx.personPlace ? { place: ctx.personPlace } : {}), ...(detail ? { detail: [...detail] } : {}) });
+        return { description: 'Niemand te zien.', realEvent: false, personSeen: 'nee' };
+      },
+      { cameras, now: () => now, toJpeg: async (b) => b, crop: async (_j, region) => Uint8Array.from(region.map((v) => Math.round(v * 100))) },
+    );
+    await worker.runOnce();
+    await worker.runOnce();
+    expect(calls[0]).toEqual({ place: 'in het bovenste derde, in het midden, klein (8% van de beeldhoogte)', detail: [33, 7, 19, 25] });
+    expect(calls[1]).toEqual({ place: 'in het middelste derde, in het midden, (50% van de beeldhoogte)' });
+    expect(store.get('small')).toMatchObject({ aiPersonSeen: 'nee', aiRealEvent: false });
   });
 
   it('gives the AI the full-resolution still and the facts, falling back to the thumbnail', async () => {
