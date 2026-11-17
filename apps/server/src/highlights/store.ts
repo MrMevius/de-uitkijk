@@ -519,6 +519,10 @@ export class HighlightStore {
     return this.get(id);
   }
 
+  setPersonBox(id: string, box: number[] | null): void {
+    this.db.prepare('UPDATE candidates SET person_box = ? WHERE id = ?').run(box ? JSON.stringify(box) : null, id);
+  }
+
   setPersonSize(id: string, size: number): void {
     this.db.prepare('UPDATE candidates SET person_size = ? WHERE id = ?').run(size, id);
   }

@@ -179,14 +179,7 @@ if (highlightStore && ai && !highlightStore.getMeta('person_noise_recheck')) {
   }
   highlightStore.setMeta('person_noise_recheck', '1');
 }
-// Since 0.39.0 the AI says whether it really sees a person; highlights with an open "Wie is dit?" question are
-// described once more, so a question about nobody (a Frigate false positive) is withdrawn.
-if (questionStore && highlightStore && ai && !highlightStore.getMeta('person_seen_recheck')) {
-  for (const q of questionStore.list('open', 1000)) {
-    if (q.kind === 'person' && q.highlightId) highlightStore.requestRedescribe(q.highlightId);
-  }
-  highlightStore.setMeta('person_seen_recheck', '1');
-}
+
 // Since 0.30.0 the server decides vehicle matches it can be sure of (plates) and vague cars are never known. The
 // vehicles of the last two weeks are checked once with those rules, without new AI calls.
 if (highlightStore && !highlightStore.getMeta('vehicle_known_recheck')) {
@@ -295,6 +288,20 @@ if (importer && highlightStore && !highlightStore.getMeta('person_size_backfill'
     },
     (err: Error) => app.log.warn(`highlights: person size backfill: ${err.message}`),
   );
+}
+// Since 0.39.0 the AI says whether it really sees a person, told where Frigate saw one. Highlights with an open
+// "Wie is dit?" question get that place and are described once more, so a question about nobody is withdrawn.
+// Again in 0.39.1: in 0.39.0 they had no place and the AI chose "onduidelijk" while writing that nobody was there.
+if (importer && questionStore && highlightStore && ai && highlightStore.getMeta('person_seen_recheck') !== '2') {
+  const ids = questionStore.list('open', 1000).filter((q) => q.kind === 'person' && q.highlightId).map((q) => q.highlightId!);
+  const redescribe = () => {
+    for (const id of ids) highlightStore.requestRedescribe(id);
+    highlightStore.setMeta('person_seen_recheck', '2');
+  };
+  importer.backfillPersonBoxes(ids).then(redescribe, (err: Error) => {
+    app.log.warn(`highlights: person box backfill: ${err.message}`);
+    redescribe();
+  });
 }
 const questionGenerator =
   questionStore && highlightStore

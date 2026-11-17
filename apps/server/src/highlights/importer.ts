@@ -390,6 +390,21 @@ export class HighlightImporter {
     return measured;
   }
 
+  /** Where the person was seen best, for highlights imported before 0.39.0 (Frigate keeps the detections). */
+  async backfillPersonBoxes(ids: string[]): Promise<number> {
+    let found = 0;
+    for (const c of ids.map((id) => this.store.get(id)).filter((c): c is StoredCandidate => c !== undefined && !c.personBox)) {
+      const events = (
+        await Promise.all(c.detections.map((id) => this.get<FrigateEvent>(`/api/events/${encodeURIComponent(id)}`).catch(() => undefined)))
+      ).filter((e): e is FrigateEvent => e !== undefined);
+      const box = personBox(events, c.frigateCamera);
+      if (!box) continue;
+      this.store.setPersonBox(c.id, box);
+      found++;
+    }
+    return found;
+  }
+
   /** Frigate's snapshot of the best detection, else of another one, else a frame from the recording. Retried next cycle. */
   private async thumbnail(c: StoredCandidate): Promise<Uint8Array | undefined> {
     for (const id of [c.repEvent, ...c.detections.filter((d) => d !== c.repEvent)]) {

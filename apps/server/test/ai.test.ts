@@ -45,6 +45,8 @@ describe('AI answer handling', () => {
     const prompt = buildPrompt({ cameraName: 'Achter', time: 't', objects: ['person'], personPlace: 'in het bovenste derde, links, klein (5% van de beeldhoogte)' });
     expect(prompt).toContain('Frigate zag de persoon op het beeld in het bovenste derde, links');
     expect(prompt).toContain('- person_seen:');
+    // 0.39.1: the AI wrote "geen persoon zichtbaar" and still chose "onduidelijk".
+    expect(prompt).toContain('schrijf je in description dat er niemand te zien is, dan is het "nee"');
     expect(prompt).toContain('alleen als person_seen "nee" is, mag het ruis zijn');
     expect(buildPrompt({ cameraName: 'Achter', time: 't', objects: ['car'] })).not.toContain('Frigate zag de persoon');
     expect(parseVerdict('{"description":"x","real_event":false,"person_seen":"nee"}').personSeen).toBe('nee');

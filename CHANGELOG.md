@@ -3,6 +3,11 @@
 Op hoofdlijnen, nieuwste eerst. Wordt getoond op Beheer → Change log. Elke release krijgt hier een kopje
 `## <versie> — <datum>` met een paar bullets; een test controleert dat de bovenste versie gelijk is aan `VERSION`.
 
+## 0.39.1 — 2026-11-17
+
+- De AI was te voorzichtig: hij schreef "geen persoon zichtbaar" maar twijfelde toch, waardoor de vraag over de carport bleef staan. Ziet hij de plek goed en staat er niemand, dan zegt hij nu "nee". Alleen als het te donker of te wazig is blijft het twijfel.
+- Open "Wie is dit?"-vragen krijgen alsnog de plek waar Frigate de persoon zag en worden opnieuw bekeken.
+
 ## 0.39.0 — 2026-11-17
 
 - Geen "Wie is dit?" meer als er niemand te zien is. Ziet Frigate een persoon die er niet is (zoals op 17 november in de spullen onder de carport bij Achter het huis 1), dan zegt de AI dat nu en komt er geen vraag. Zo'n open vraag wordt ingetrokken.
