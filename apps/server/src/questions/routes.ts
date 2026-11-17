@@ -5,6 +5,7 @@ import type { HighlightStore, StoredCandidate } from '../highlights/store.ts';
 import { firstName, plateMatches } from '../ai/knowledge.ts';
 import { findPerson, plateKey, vehicleLabel, type HouseholdStore, type Person, type Vehicle } from '../household/store.ts';
 import { MIN_PERSON_SIZE } from './generator.ts';
+import { KNOWN_CATEGORIES, parsePersonAnswer } from './visit.ts';
 import { answerHousehold, registerVehicleAnswer } from './household.ts';
 import { learningStats } from './learning.ts';
 import type { QuestionStore } from './store.ts';
@@ -47,7 +48,6 @@ export const PERSON_CATEGORIES = {
  * People who come back count as known with a name and their faces are learned; couriers are not (different people,
  * same company), nor are passers-by.
  */
-const KNOWN_CATEGORIES = new Set(['bewoner', 'familie', 'bezoeker', 'buren', 'vaste hulp']);
 
 /** Answers without a name that tell the AI nothing to write a fact from. */
 const NO_FACT_CATEGORIES = new Set(['onbekend', 'voorbijganger']);
@@ -75,12 +75,7 @@ export function redescribeAfterAnswer(h: StoredCandidate, answer: string, highli
   else highlights.requestRedescribe(h.id);
 }
 
-/** Splits a stored person answer "Tineke (bewoner)" into name and category. */
-export function parsePersonAnswer(answer: string): { name: string; category: string } {
-  const m = /^(.*) \(([^()]+)\)$/.exec(answer);
-  if (m) return { name: m[1]!, category: m[2]! };
-  return { name: '', category: answer };
-}
+export { parsePersonAnswer };
 
 /** The person an answered question names: someone who comes back ("Roel Snippe (buren)") or a vehicle owner. */
 export function answeredName(q: { kind: string; answer: string | null }): string | null {

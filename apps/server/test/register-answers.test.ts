@@ -100,6 +100,27 @@ describe('the register asks about duplicates (0.32.0)', () => {
   });
 });
 
+describe('look-alike plates (0.43.0)', () => {
+  it('asks about two plates of one owner with the same make and model, and keeps the plate an administrator set', () => {
+    const { store, johan } = register();
+    // Roel's Hyundai H-1 as V-363-LN (from an answer, locked) and V-636-LN.
+    const set = store.addVehicle({ kind: 'bestelbus', make: 'Hyundai', model: 'H-1', plate: 'V-363-LN', ownerId: johan.id }, ['vraag 1'], ['plate'], NOW);
+    const read = store.addVehicle({ kind: 'bestelbus', make: 'Hyundai', model: 'H-1', plate: 'V-636-LN', ownerId: johan.id }, ['feit 2', 'feit 3'], [], NOW);
+    // Another model, or the make only: not asked.
+    store.addVehicle({ kind: 'bestelbus', make: 'Hyundai', model: 'Staria', plate: 'X-111-YZ', ownerId: johan.id }, [], [], NOW);
+    store.addVehicle({ kind: 'bestelbus', make: 'Hyundai', plate: 'X-222-YZ', ownerId: johan.id }, [], [], NOW);
+    expect(sameVehicles(store.vehicles()).map(([a, b]) => [a.id, b.id])).toEqual([[set.id, read.id]]);
+    const facts = new FactStore(':memory:');
+    const questions = new QuestionStore(':memory:');
+    cleanup.push(() => questions.close(), () => facts.close());
+    const [asked] = householdQuestions(store, facts).filter((q) => q.data.type === 'same');
+    expect(asked!.body).toContain('Ja: ze worden samengevoegd met kenteken V-363-LN.');
+    answerHousehold({ id: 60, kind: 'household', data: asked!.data } as unknown as Question, { same: true }, { register: store, facts, questions, by: 'mevius', now: NOW });
+    expect(store.vehicle(read.id)).toBeUndefined();
+    expect(store.vehicle(set.id)).toMatchObject({ plate: 'V-363-LN' });
+  });
+});
+
 describe('roles from answers (0.32.0)', () => {
   it('takes the role given most often, not the newest answer', () => {
     const johan = { name: 'Johan Mevius', at: 0 };

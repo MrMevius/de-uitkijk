@@ -244,6 +244,23 @@ function Faces({ files }: { files: string[] }) {
   );
 }
 
+/**
+ * The strongest suggestion as a yes/no question (since 0.43.0): one tap answers it with that name and role, the rest
+ * of the card stays for "iemand anders". Only when the suggestion has a role.
+ */
+function Confirm({ suggestion, onYes }: { suggestion: NonNullable<Question['suggestions']>[number]; onYes: () => void }) {
+  const label = PERSON_BUTTONS.find(([key]) => key === suggestion.category)?.[1];
+  if (!label) return null;
+  return (
+    <div className="ui-confirm">
+      <button type="button" className="ui-btn ui-btn--primary" onClick={onYes}>
+        Ja, dit is {suggestion.name.split(' ')[0]} ({label.toLowerCase()})
+      </button>
+      <span className="ui-muted">{suggestion.text} Niet goed? Kies hieronder wie het wel is.</span>
+    </div>
+  );
+}
+
 /** Who it probably is and why; a click fills in the name and marks the answer button, the administrator confirms. */
 function Suggestions({ items, value, onPick }: { items: NonNullable<Question['suggestions']>; value: string; onPick: (s: NonNullable<Question['suggestions']>[number]) => void }) {
   if (!items.length) return null;
@@ -324,6 +341,7 @@ function QuestionCard({ q, names, onDone }: { q: Question; names: string[]; onDo
   const [vehicle, setVehicle] = useState(q.data.vehicle ?? '');
   const [error, setError] = useState<string | null>(null);
   const [also, setAlso] = useState(() => new Set((q.sameVisit ?? []).map((h) => h.id)));
+  const top = q.kind === 'person' ? q.suggestions?.[0] : undefined;
   const toggle = (id: string) =>
     setAlso((cur) => {
       const next = new Set(cur);
@@ -371,13 +389,14 @@ function QuestionCard({ q, names, onDone }: { q: Question; names: string[]; onDo
           <Pill level={KIND_LEVEL[q.kind]}>{KIND_LABEL[q.kind]}</Pill>
           <span className="ui-muted">{highlightTime(q.createdAt)}</span>
         </div>
-        <h3>{q.title}</h3>
+        <h3>{top?.category && PERSON_BUTTONS.some(([key]) => key === top.category) ? `Is dit ${top.name.split(' ')[0]}?` : q.title}</h3>
         <p className="ui-question__text">{q.body}</p>
 
         {q.kind === 'person' && (
           <>
             <Faces files={q.data.faces ?? []} />
             <SameVisit items={q.sameVisit ?? []} chosen={also} onToggle={toggle} />
+            {top && <Confirm suggestion={top} onYes={() => void send('answer', { category: top.category, name: top.name, also: [...also] })} />}
             <Suggestions
               items={q.suggestions ?? []}
               value={name}

@@ -3,6 +3,13 @@
 Op hoofdlijnen, nieuwste eerst. Wordt getoond op Beheer → Change log. Elke release krijgt hier een kopje
 `## <versie> — <datum>` met een paar bullets; een test controleert dat de bovenste versie gelijk is aan `VERSION`.
 
+## 0.43.0 — 2026-11-18
+
+- Vermoedt het systeem wie het is, dan vraagt het "Is dit Johan?" met één knop: "Ja, dit is Johan (bewoner)". Is het iemand anders, dan kies je zoals altijd hieronder.
+- Heb je net iemand een naam gegeven en loopt binnen twee minuten op dezelfde camera weer één persoon, dan vult het systeem die naam zelf in (zichtbaar als beantwoord door "systeem"). Frigate leert daar geen gezicht van, voor de zekerheid.
+- Een bewoner die je net hebt genoemd en die binnen twee minuten op een andere camera opduikt, telt als bekend. Zo wordt dezelfde wandeling van auto naar voordeur minder vaak een tweede highlight met een tweede vraag.
+- Huishouden: twee voertuigen van dezelfde eigenaar met hetzelfde merk en model maar een ander kenteken (zoals Roels Hyundai H-1 als V-363-LN en V-636-LN) geven nu de vraag "Zijn dit dezelfde?". Bij ja blijft het kenteken dat jij hebt ingevuld.
+
 ## 0.42.0 — 2026-11-18
 
 - De AI geeft van elk voertuig nu apart door wat hij ziet: soort, kleur, merk, model, kenteken, of het herkenbaar is en of het om dat voertuig draait. Het systeem hoeft dat niet meer uit een zin te halen, zodat een kenteken of merk niet meer gemist wordt omdat de AI het anders opschreef. Vooraf gemeten: even goed als voorheen.

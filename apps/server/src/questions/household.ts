@@ -39,6 +39,15 @@ const ownerOf = (register: Register, v: Vehicle) => register.people().find((p) =
 const the = (v: Vehicle, owner: string) => `de ${vehicleLabel(v)}${owner ? ` van ${owner}` : ''}`;
 
 /**
+ * Which of two entries of one vehicle stays: the one with a plate, else the oldest. With two plates (since 0.43.0) the
+ * one an administrator set, else the one with more sources.
+ */
+const mergeOrder = (a: Vehicle, b: Vehicle): [Vehicle, Vehicle] => {
+  const weight = (v: Vehicle) => (v.plate ? 100 : 0) + (v.locked.includes('plate') ? 10 : 0) + Math.min(9, v.sources.length);
+  return weight(b) > weight(a) ? [b, a] : [a, b];
+};
+
+/**
  * Two register entries that are probably one vehicle: the same plate, or the same owner, kind, make and model (Noëlle's
  * "zwart Volkswagen Up" and "donker Volkswagen Up", Johan's Corolla twice), or make only when one has no model. The colour is not compared: the AI calls the
  * same car black or dark depending on the light.
@@ -53,7 +62,10 @@ export function sameVehicles(vehicles: Vehicle[]): [Vehicle, Vehicle][] {
   for (const [i, a] of vehicles.entries()) {
     for (const b of vehicles.slice(i + 1)) {
       const plate = a.plate && b.plate && plateKey(a.plate) === plateKey(b.plate);
-      const owner = a.ownerId !== null && a.ownerId === b.ownerId && a.kind === b.kind && sameType(a, b) && (!a.plate || !b.plate);
+      // Since 0.43.0 also with two plates when make and model are the same: Roel's Hyundai H-1 was in the register as
+      // V-363-LN and V-636-LN. Only the administrator can say whether that is one van; "Nee" is remembered.
+      const alike = !a.plate || !b.plate || (Boolean(a.model && b.model) && type(a) !== null && type(a) === type(b));
+      const owner = a.ownerId !== null && a.ownerId === b.ownerId && a.kind === b.kind && sameType(a, b) && alike;
       if (plate || owner) pairs.push([a, b]);
     }
   }
@@ -85,7 +97,7 @@ export function householdQuestions(register: Register, facts: Pick<FactStore, 'l
     out.push({
       key: `household:same:${a.id}:${b.id}`,
       title: `Zijn dit dezelfde ${a.kind === 'auto' ? 'auto' : a.kind}${owner ? ` van ${owner}` : ''}?`,
-      body: `Het register heeft ${the(a, ownerOf(register, a))} en ${the(b, ownerOf(register, b))}. Ja: ze worden samengevoegd. Nee: ze blijven apart en dit wordt niet meer gevraagd.`,
+      body: `Het register heeft ${the(a, ownerOf(register, a))} en ${the(b, ownerOf(register, b))}. Ja: ze worden samengevoegd${a.plate && b.plate ? ` met kenteken ${mergeOrder(a, b)[0].plate}` : ''}. Nee: ze blijven apart en dit wordt niet meer gevraagd.`,
       data: { type: 'same', vehicleIds: [a.id, b.id], labels: [vehicleLabel(a), vehicleLabel(b)] },
     });
   }
@@ -192,8 +204,7 @@ export function answerHousehold(q: Question, body: Record<string, unknown>, ctx:
       register.log(`Niet hetzelfde voertuig: ${vehicleLabel(a)} en ${vehicleLabel(b)} (vraag ${q.id})`, by, now);
       return { answer: 'Nee, twee voertuigen', fact: null };
     }
-    // The one with a plate, else the oldest entry, stays.
-    const [keep, other] = !a.plate && b.plate ? [b, a] : [a, b];
+    const [keep, other] = mergeOrder(a, b);
     const merged = register.mergeVehicles(keep.id, other.id, now)!;
     register.updateVehicle(merged.id, {}, { sources: [`vraag ${q.id}`], at: now });
     register.log(`Samengevoegd: ${vehicleLabel(other)} in ${vehicleLabel(merged)} (vraag ${q.id})`, by, now);

@@ -15,6 +15,7 @@ import { answeredName, applyPersonAnswer, namedDescription, parsePersonAnswer, v
 import { askableVehicle, knownVehicle, makeModel, platesClose } from '../src/questions/vehicles.ts';
 import type { Person } from '../src/household/store.ts';
 import { QuestionStore } from '../src/questions/store.ts';
+import { visitIdentity } from '../src/questions/visit.ts';
 
 const cameras = parseCameraConfig(
   JSON.parse(readFileSync(new URL('../../../config/cameras.json', import.meta.url), 'utf8')),
@@ -264,6 +265,46 @@ describe('fewer and better questions (0.27.0)', () => {
     expect(asked).not.toContain(none);
     // Unknown size (imported before 0.27.0) is asked as before; the clearly visible ones first.
     expect(new Set(asked)).toEqual(new Set([big, legacy, small]));
+  });
+});
+
+describe('the same visit (0.43.0)', () => {
+  it('names a person from an answer or a face nearby, only when it is clear', () => {
+    const t = setup();
+    const at = NOW - 3600;
+    const answered = t.add({ startTime: at, personCount: 1, camera: 'voordeur' });
+    t.highlights.setAnnotation(answered, 'Johan Mevius (bewoner)', true);
+    const here = t.add({ startTime: at + 60, personCount: 1, camera: 'voordeur' });
+    const elsewhere = t.add({ startTime: at + 90, personCount: 1, camera: 'oprit' });
+    const later = t.add({ startTime: at + 600, personCount: 1 });
+    const two = t.add({ startTime: at + 30, personCount: 2 });
+    const all = t.highlights.candidatesSince(0);
+    expect(visitIdentity(t.highlights.get(here)!, all)).toMatchObject({ name: 'Johan Mevius', category: 'bewoner', source: 'antwoord' });
+    expect(visitIdentity(t.highlights.get(elsewhere)!, all, { sameCamera: true })).toBeNull();
+    expect(visitIdentity(t.highlights.get(elsewhere)!, all)).toMatchObject({ name: 'Johan Mevius' });
+    expect(visitIdentity(t.highlights.get(later)!, all)).toBeNull();
+    expect(visitIdentity(t.highlights.get(two)!, all)).toBeNull();
+    // Two different people nearby: not clear.
+    const face = t.add({ startTime: at + 120, personCount: 1, subLabels: ['Tineke Mevius'] });
+    expect(visitIdentity(t.highlights.get(elsewhere)!, t.highlights.candidatesSince(0))).toBeNull();
+    // Answers only: Frigate's face does not count, Johan's answer stands.
+    expect(visitIdentity(t.highlights.get(elsewhere)!, t.highlights.candidatesSince(0), { answersOnly: true })).toMatchObject({ name: 'Johan Mevius' });
+    expect(face).toBeTruthy();
+  });
+
+  it('answers a person question itself when the administrator named the same person on this camera just before', () => {
+    const t = setup();
+    const at = NOW - 3600;
+    const answered = t.add({ ai: { real: true }, startTime: at, personCount: 1 });
+    t.highlights.setAnnotation(answered, 'Tineke Mevius (bewoner)', true);
+    const next = t.add({ ai: { real: true }, startTime: at + 45, personCount: 1 });
+    const other = t.add({ ai: { real: true }, startTime: at + 4000, personCount: 1 });
+    const auto: [string, string][] = [];
+    t.generator({ faces: t.faceStub({}, false), autoAnswer: (c, answer) => (auto.push([c.id, answer]), true) }).runOnce();
+    expect(auto).toEqual([[next, 'Tineke Mevius (bewoner)']]);
+    const asked = t.questions.list('open').filter((q) => q.kind === 'person').map((q) => q.highlightId);
+    expect(asked).toContain(other);
+    expect(asked).not.toContain(next);
   });
 });
 

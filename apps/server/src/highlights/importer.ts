@@ -16,6 +16,7 @@ import {
 } from './selection.ts';
 import { realPlates } from '../questions/vehicles.ts';
 import type { CandidateRecord, HighlightStore, StoredCandidate } from './store.ts';
+import { NEAR_S, visitIdentity } from '../questions/visit.ts';
 
 export interface ImporterOptions {
   frigateUrl: string;
@@ -500,11 +501,14 @@ export class HighlightImporter {
       const key = feedbackKey(f.camera, hourInAmsterdam(f.startTime), f.labels);
       sums.set(key, (sums.get(key) ?? 0) + f.value);
     }
-    for (const c of this.store.candidatesSince(now - RESELECT_S)) {
+    const window = this.store.candidatesSince(now - RESELECT_S - NEAR_S);
+    for (const c of window.filter((x) => x.startTime >= now - RESELECT_S)) {
       const adjustment = feedbackAdjustment(sums.get(feedbackKey(c.camera, hourInAmsterdam(c.startTime), c.labels)) ?? 0);
       // Known from answers or facts counts low, like a recognised face (already part of the base score). A known
-      // vehicle only when nobody unidentified is with it.
-      const known = c.subLabels.length === 0 && (c.annotationKnown || (c.aiVehicleKnown && !unknownPerson(c))) ? KNOWN_FACTOR : 1;
+      // vehicle only when nobody unidentified is with it. Since 0.43.0 also a person the administrator named in another
+      // highlight within two minutes: a resident walking from the car to the door is no news on the second camera.
+      const visit = unknownPerson(c) && visitIdentity(c, window, { answersOnly: true }) !== null;
+      const known = c.subLabels.length === 0 && (c.annotationKnown || (c.aiVehicleKnown && !unknownPerson(c)) || visit) ? KNOWN_FACTOR : 1;
       if (adjustment !== c.feedbackAdj || known !== c.knownFactor) this.store.setScoreParts(c.id, adjustment, known);
     }
     const since = now - RESELECT_S;

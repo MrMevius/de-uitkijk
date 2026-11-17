@@ -1446,6 +1446,15 @@ body,
   margin-right: auto;
 }
 
+/* "Ja, dit is …": the strongest suggestion as a one-tap answer (since 0.43.0). */
+.ui-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin: 0.5rem 0 0.75rem;
+}
+
 /* Who a person question is probably about (since 0.33.0). */
 .ui-suggest ul {
   list-style: none;

@@ -75,6 +75,16 @@ Since 0.34.0 points 3 (plate) and 4 only count the vehicle the event is about (t
 
 A click on a suggestion fills in the name and marks the answer button of the person's role; nothing is answered until the administrator presses a button. Suggestions never come from appearance or clothing. Example: on 2026-11-09 the question about "Een persoon staat achteraan op het pad" at 23:26 had Johan's answered highlight at the front door one minute before; before 0.33.0 "Zelfde bezoek" only listed highlights without a name.
 
+## Fewer questions about the household (since 0.43.0)
+
+Up to 2026-11-17, 75 of 129 answers about people (58%) named a resident, at the Voordeur 38 of 43: Frigate rarely learns their faces (side views, night), so the same people were asked about every day.
+
+- **"Is dit Johan?"** When a person question has a suggestion with a role (see *Suggestions*), the card asks about that person and has one button, "Ja, dit is Johan (bewoner)", which answers with the name, the role and the ticked highlights of the same visit. The rest of the card stays for someone else.
+- **Answered by the system.** When the administrator named the one person of another highlight on the same camera within two minutes (both with one person, `person_count`), the question is answered by "systeem" with that answer: label and description as for an answer, a fact only as usual, but no face is taught to Frigate (it trusts every library photo). Never from another automatic answer. Checked against the earlier answers: 2 of 2 right.
+- **Counts low.** A person the administrator named in another highlight within two minutes (any camera, one person each, nobody else named there) makes the highlight count as known (× 0.4), so a resident walking from the car to the door rarely becomes a second highlight and question. Faces Frigate recognised there do not count for this: with them 9 of 14 were right (four of the five wrong ones were Frigate's Roel/Jasper mix-ups); with answers only 7 of 8. The shared rule is `visitIdentity` in `apps/server/src/questions/visit.ts`.
+
+Coverage is modest: of the 129 answers, 8 had such an answer nearby. Most of the gain is the one-tap answer.
+
 ## Rating from the questions tab (0.27.0–0.33.0)
 
 From 0.27.0 every question with a highlight had 👍/👎, and from 0.28.1 an answered card stayed with them until *Sluiten*. Since 0.33.1 only the highlight question ("Was dit een goede highlight?") asks for a rating (operator decision 2026-11-13: not with every question); the archive keeps 👍/👎 for every highlight. An answered or skipped card leaves a short confirmation in its place that disappears after eight seconds.

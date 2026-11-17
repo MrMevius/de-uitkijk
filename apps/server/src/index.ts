@@ -322,6 +322,20 @@ const questionGenerator =
             }
           : {}),
         ...(household ? { household } : {}),
+        // The administrator just named the same one person on this camera (since 0.43.0): answered by the system,
+        // with the label and description as for an answer, but without teaching Frigate a face from a guess.
+        autoAnswer: (c, answer, from) => {
+          // Only from an administrator's own answer, never from another automatic one (no chains along a camera).
+          if (questionStore.getByKey(`person:${from.id}`)?.answeredBy === 'systeem') return false;
+          const key = `person:${c.id}`;
+          const at = Date.now() / 1000;
+          const body = `Automatisch beantwoord: dezelfde persoon als ${Math.round(Math.abs(c.startTime - from.startTime))} s eerder of later bij deze camera.`;
+          if (!questionStore.add({ kind: 'person', key, highlightId: c.id, title: 'Wie is dit?', body }, at)) return false;
+          const q = questionStore.getByKey(key)!;
+          questionStore.resolve(q.id, 'answered', answer, 'systeem', at);
+          applyPersonAnswer(q, answer, { questions: questionStore, highlights: highlightStore, autoFacts: Boolean(ai) });
+          return true;
+        },
       })
     : undefined;
 questionGenerator?.start();

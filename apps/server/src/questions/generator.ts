@@ -10,6 +10,7 @@ import type { HouseholdStore } from '../household/store.ts';
 import { householdQuestionApplies, householdQuestions } from './household.ts';
 import type { QuestionStore } from './store.ts';
 import { askableVehicle, knownVehicle, normalizeVehicle, realPlates, vehicleNoun } from './vehicles.ts';
+import { NEAR_S, visitIdentity } from './visit.ts';
 
 export interface GeneratorOptions {
   cameras: Camera[];
@@ -24,6 +25,12 @@ export interface GeneratorOptions {
   /** Household register and facts: doubts and gaps become questions (since 0.29.0). */
   household?: Pick<HouseholdStore, 'people' | 'vehicles' | 'proposals'>;
   facts?: Pick<FactStore, 'list'>;
+  /**
+   * Answers a person question the system can answer itself (since 0.43.0): the administrator named the one person in
+   * another highlight on the same camera within two minutes. The answer is recorded as "systeem"; no face is learned.
+   * Returns false when it did not answer (then the question is asked as usual).
+   */
+  autoAnswer?: (c: StoredCandidate, answer: string, from: StoredCandidate) => boolean;
   intervalMs?: number;
   /** Epoch seconds. */
   now?: () => number;
@@ -67,7 +74,7 @@ const sentence = (text: string) => `${text.trim().replace(/[.!?…]+$/, '')}.`;
 export class QuestionGenerator {
   private readonly highlights: HighlightStore;
   private readonly questions: QuestionStore;
-  private readonly opts: Required<Omit<GeneratorOptions, 'household' | 'facts'>> & Pick<GeneratorOptions, 'household' | 'facts'>;
+  private readonly opts: Required<Omit<GeneratorOptions, 'household' | 'facts' | 'autoAnswer'>> & Pick<GeneratorOptions, 'household' | 'facts' | 'autoAnswer'>;
   private readonly names: Map<string, string>;
   private readonly cameraFailedSince = new Map<string, number>();
   private timer: ReturnType<typeof setTimeout> | undefined;
@@ -163,7 +170,13 @@ export class QuestionGenerator {
       .filter((c) => !this.questions.hasForHighlight(c.id, 'person') && !this.questions.hasOpenForHighlight(c.id))
       // Best visible first, then the most relevant.
       .sort((a, b) => visibility(b) - visibility(a) || b.score - a.score);
-    for (const c of people.slice(0, Math.max(0, room('person')))) {
+    // Answered by the system itself when the administrator just named the same one person on this camera.
+    const toAsk: StoredCandidate[] = [];
+    for (const c of people) {
+      const same = this.opts.autoAnswer ? visitIdentity(c, this.highlights.candidatesSince(c.startTime - NEAR_S), { sameCamera: true, answersOnly: true }) : null;
+      if (!(same?.source === 'antwoord' && this.opts.autoAnswer!(c, `${same.name} (${same.category})`, same.from))) toAsk.push(c);
+    }
+    for (const c of toAsk.slice(0, Math.max(0, room('person')))) {
       const attempts = faces.ready ? faces.attemptsFor(c.detections) : [];
       const guess = attempts.find((a) => a.guess && a.score >= 0.5);
       add({

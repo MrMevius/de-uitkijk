@@ -153,7 +153,8 @@ describe('admin page', () => {
     stubApi('admin');
     location.hash = '#vragen';
     render(<AdminPage />);
-    expect(await screen.findByText('Wie is dit?')).toBeTruthy();
+    // With a suggestion the question asks about that person (0.43.0).
+    expect(await screen.findByText('Is dit Johan?')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Bezorger / dienst' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Voorbijganger' })).toBeTruthy();
     expect((screen.getByDisplayValue('zwarte Volkswagen up!') as HTMLInputElement).value).toBe('zwarte Volkswagen up!');
@@ -183,6 +184,17 @@ describe('admin page', () => {
     expect(screen.queryAllByTitle('Goede highlight')).toEqual([]);
     fireEvent.click(screen.getByRole('button', { name: 'Sluiten' }));
     expect(screen.queryByText(/Beantwoord:/)).toBeNull();
+  });
+
+  it('answers the strongest suggestion with one tap (0.43.0)', async () => {
+    stubApi('admin');
+    location.hash = '#vragen';
+    render(<AdminPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Ja, dit is Johan (bewoner)' }));
+    const calls = (fetch as unknown as { mock: { calls: [string, RequestInit?][] } }).mock.calls;
+    await waitFor(() => expect(calls.some(([url]) => url === '/api/admin/questions/1/answer')).toBe(true));
+    const sent = JSON.parse(String(calls.find(([u]) => u === '/api/admin/questions/1/answer')![1]!.body));
+    expect(sent).toEqual({ category: 'bewoner', name: 'Johan Mevius', also: ['h3', 'h4'] });
   });
 
   it('suggests who it is from the same visit; a click fills in the name and marks the answer (0.33.0)', async () => {
