@@ -1,6 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
 import type { HighlightSummary } from '@uitkijk/shared';
-import type { PersonSeen } from '../ai/codex.ts';
+import type { PersonSeen, SeenVehicle } from '../ai/codex.ts';
 import { KNOWN_FACTOR, REPLAY_MINUTES, SELECTION, THRESHOLD_RANGE } from './selection.ts';
 
 /** A scored group of Frigate alerts. Highlights are the selected candidates. */
@@ -107,7 +107,7 @@ export interface StoredCandidate extends CandidateRecord {
   aiVehicle: string | null;
   aiVehicleKnown: boolean;
   /** Every vehicle the AI saw clearly, also parked ones (since 0.18.0); empty for older descriptions. */
-  aiVehicles: { description: string; known: boolean }[];
+  aiVehicles: SeenVehicle[];
   /** Administrator's answer about who or what is shown. */
   annotation: string | null;
   detections: string[];
@@ -160,7 +160,7 @@ const fromRow = (r: Row): StoredCandidate => ({
   feedbackAdj: Number(r.feedback_adj ?? 0),
   aiVehicle: r.ai_vehicle,
   aiVehicleKnown: r.ai_vehicle_known === 1,
-  aiVehicles: r.ai_vehicles ? (JSON.parse(r.ai_vehicles) as { description: string; known: boolean }[]) : [],
+  aiVehicles: r.ai_vehicles ? (JSON.parse(r.ai_vehicles) as SeenVehicle[]) : [],
   annotation: r.annotation,
   detections: r.detections ? (JSON.parse(r.detections) as string[]) : [r.rep_event],
   annotationKnown: r.annotation_known === 1,
@@ -452,7 +452,7 @@ export class HighlightStore {
     vehicle: string | null = null,
     vehicleKnown = false,
     personMarker: boolean | null = null,
-    vehicles: { description: string; known: boolean }[] = [],
+    vehicles: SeenVehicle[] = [],
     personSeen: PersonSeen | null = null,
   ): void {
     this.db
@@ -467,7 +467,7 @@ export class HighlightStore {
   }
 
   /** Corrects the known flags of the vehicles the AI saw, without describing the highlight again. */
-  setAiVehicles(id: string, vehicleKnown: boolean, vehicles: { description: string; known: boolean }[]): void {
+  setAiVehicles(id: string, vehicleKnown: boolean, vehicles: SeenVehicle[]): void {
     this.db
       .prepare('UPDATE candidates SET ai_vehicle_known = ?, ai_vehicles = ? WHERE id = ?')
       .run(vehicleKnown ? 1 : 0, vehicles.length ? JSON.stringify(vehicles) : null, id);

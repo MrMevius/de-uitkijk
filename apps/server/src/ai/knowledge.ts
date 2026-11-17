@@ -1,7 +1,7 @@
 import type { Fact } from './facts.ts';
-import type { AiVerdict } from './codex.ts';
+import type { AiVerdict, SeenVehicle } from './codex.ts';
 import { plateKey, vehicleLabel, type Person, type Vehicle } from '../household/store.ts';
-import { DISTINCT_BODY, makeModel, platesClose, platesIn, realPlates, vehicleNoun } from '../questions/vehicles.ts';
+import { DISTINCT_BODY, makeModel, normalizeVehicle, platesClose, platesIn, realPlates, vehicleNoun } from '../questions/vehicles.ts';
 
 /** What the AI may rely on: the household register plus raw facts the register does not hold yet (since 0.30.0). */
 export interface Register {
@@ -146,6 +146,29 @@ const HEDGE = /(?<![\p{L}])(duidelijk|goed|zeker)(?![\p{L}])/iu;
 export const saysNobody = (description: string): boolean => NOBODY.test(description) && !SOMEBODY_ELSE.test(description) && !HEDGE.test(description);
 
 /**
+ * The AI's separate vehicle fields (since 0.42.0) completed into the sentence the rest of the server reads: a plate or
+ * make the sentence leaves out is added, and a vehicle the AI calls not recognisable gets "niet herkenbaar", so it is
+ * never asked about or matched (the same rule as "merk en model niet herkenbaar" in its own words).
+ */
+export function completeVehicle(v: SeenVehicle): string {
+  let text = v.description;
+  if (v.make && !makeModel(text)) text += `, ${[v.make, v.model].filter(Boolean).join(' ')}`;
+  if (v.plate && /\d/.test(v.plate) && !platesIn(text).length) text += `, kenteken ${v.plate}`;
+  if (v.recognisable === false && !/niet (goed |duidelijk )?herkenbaar/i.test(text)) text += ', niet herkenbaar';
+  return text.slice(0, 160);
+}
+
+/** Completes every vehicle; the event's vehicle follows its list entry, or the entry the AI marked as the subject. */
+function completeVehicles(verdict: AiVerdict): Pick<AiVerdict, 'vehicle' | 'vehicles'> {
+  const list = verdict.vehicles ?? [];
+  const done = list.map((v) => ({ ...v, description: completeVehicle(v) }));
+  const own = verdict.vehicle ? list.findIndex((v) => normalizeVehicle(v.description) === normalizeVehicle(verdict.vehicle!)) : -1;
+  const subject = list.findIndex((v) => v.subject);
+  const vehicle = own >= 0 ? done[own]!.description : verdict.vehicle || (subject >= 0 ? done[subject]!.description : null);
+  return { vehicle: vehicle ?? null, vehicles: done };
+}
+
+/**
  * Applies what the server knows for sure to the AI's answer: the known flags of vehicles (see `vehicleKnown`), and the
  * name face recognition gave. On 2026-11-10/11 Frigate recognised a face in 12 events, but four of the six
  * descriptions still said "Een persoon …". When Frigate saw one person, recognised one name and the description
@@ -156,6 +179,7 @@ export function checkVerdict(
   ctx: { recognized: string[]; persons: number; matches: Vehicle[]; knownPlates: string[]; vehicles: Vehicle[]; objects?: string[] },
 ): AiVerdict {
   const known = (d: string, k: boolean) => vehicleKnown(d, k, ctx);
+  verdict = { ...verdict, ...completeVehicles(verdict) };
   let description = verdict.description;
   const names = [...new Set(ctx.recognized.map(firstName))];
   // Counted from Frigate's tracked objects (since 0.34.0); the labels say "person" once however many there were.
@@ -165,7 +189,13 @@ export function checkVerdict(
   // The description says nobody is there: that is "nee", whatever the field says (since 0.39.2). With only a person
   // reported by Frigate there is then nothing going on.
   const nobody = verdict.personSeen !== 'nee' && persons > 0 && saysNobody(verdict.description);
-  const seen = nobody ? { personSeen: 'nee' as const, ...(ctx.objects?.every((o) => o === 'person') ? { realEvent: false } : {}) } : {};
+  // "Ja" with nobody counted (since 0.42.0): the answer contradicts itself; a question is still asked.
+  const uncounted = !nobody && verdict.personSeen === 'ja' && verdict.personsVisible === 0;
+  const seen = nobody
+    ? { personSeen: 'nee' as const, ...(ctx.objects?.every((o) => o === 'person') ? { realEvent: false } : {}) }
+    : uncounted
+      ? { personSeen: 'onduidelijk' as const }
+      : {};
   // Frigate recognised a face: somebody was there, even if the AI does not see them on its still (since 0.39.0).
   const faceSeen = names.length > 0 && (verdict.personSeen === 'nee' || nobody);
   return {

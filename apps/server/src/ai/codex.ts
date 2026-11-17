@@ -16,7 +16,9 @@ export interface AiVerdict {
   /** A person is recognisable by a stable feature other than the face: work clothes or logo, or the vehicle they use. */
   personMarker?: boolean;
   /** Every vehicle clearly in view, also parked ones, each with whether it matches a household fact. */
-  vehicles?: { description: string; known: boolean }[];
+  vehicles?: SeenVehicle[];
+  /** How many people the AI sees (since 0.42.0). */
+  personsVisible?: number;
   /**
    * Whether the AI really sees a person (since 0.39.0): "nee" when what Frigate called a person is clearly something
    * else or nobody is there, "onduidelijk" when it is too dark, small or blurred to say.
@@ -25,6 +27,27 @@ export interface AiVerdict {
 }
 
 export type PersonSeen = 'ja' | 'nee' | 'onduidelijk';
+
+export const VEHICLE_KINDS = ['auto', 'bestelbus', 'vrachtwagen', 'motor', 'scooter', 'fiets', 'anders'] as const;
+
+/**
+ * A vehicle the AI saw. Since 0.42.0 also in separate fields, so the server no longer has to read make, plate or
+ * "half verborgen" out of the sentence; empty strings where the AI cannot see it. Older descriptions have only
+ * `description` and `known`.
+ */
+export interface SeenVehicle {
+  description: string;
+  known: boolean;
+  kind?: (typeof VEHICLE_KINDS)[number];
+  colour?: string;
+  make?: string;
+  model?: string;
+  plate?: string;
+  /** Clear enough to recognise it next time (not mostly hidden, not too far, not too dark). */
+  recognisable?: boolean;
+  /** The event is about this vehicle: someone drives it, gets in or out, or it arrives or leaves. */
+  subject?: boolean;
+}
 
 export interface AiContext {
   cameraName: string;
@@ -86,7 +109,7 @@ export type Describer = (jpeg: Uint8Array, context: AiContext, detail?: Uint8Arr
 const SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['description', 'real_event', 'vehicle', 'vehicle_known', 'person_marker', 'vehicles', 'person_seen'],
+  required: ['description', 'real_event', 'vehicle', 'vehicle_known', 'person_marker', 'vehicles', 'person_seen', 'persons_visible'],
   properties: {
     description: { type: 'string', maxLength: 120 },
     real_event: { type: 'boolean' },
@@ -99,11 +122,22 @@ const SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['description', 'known'],
-        properties: { description: { type: 'string', maxLength: 100 }, known: { type: 'boolean' } },
+        required: ['description', 'known', 'kind', 'colour', 'make', 'model', 'plate', 'recognisable', 'subject'],
+        properties: {
+          description: { type: 'string', maxLength: 100 },
+          known: { type: 'boolean' },
+          kind: { type: 'string', enum: [...VEHICLE_KINDS] },
+          colour: { type: 'string', maxLength: 30 },
+          make: { type: 'string', maxLength: 30 },
+          model: { type: 'string', maxLength: 30 },
+          plate: { type: 'string', maxLength: 12 },
+          recognisable: { type: 'boolean' },
+          subject: { type: 'boolean' },
+        },
       },
     },
     person_seen: { type: 'string', enum: ['ja', 'nee', 'onduidelijk'] },
+    persons_visible: { type: 'integer', minimum: 0, maximum: 20 },
   },
 };
 
@@ -159,7 +193,8 @@ export function buildPrompt(context: AiContext): string {
     '- real_event: true als er echt iets gebeurt: een persoon, een dier, of een voertuig dat rijdt, net aankomt of vertrekt, of waar iemand bij is. false als het ruis lijkt (schaduw, licht, regen, insect, leeg beeld), en ook als er alleen geparkeerde voertuigen staan zonder dat er iemand bij is of iets gebeurt. Meldt Frigate een persoon, dan is het geen ruis, ook als je die persoon op dit ene beeld niet goed ziet; alleen als person_seen "nee" is, mag het ruis zijn.',
     '- vehicle: als er een voertuig (auto, bestelbus, vrachtwagen, motor, scooter of fiets) duidelijk en dichtbij in beeld is en de gebeurtenis erom draait (iemand rijdt of fietst erop, stapt in of uit, of zet hem neer): een exacte omschrijving waaraan het later te herkennen is. Bij een motorvoertuig kleur, merk, model en het kenteken alleen als het volledig leesbaar is, bijvoorbeeld "zwarte Volkswagen up!, kenteken XX-123-Y". Bij een fiets of scooter het soort (fiets, e-bike, bakfiets, mountainbike, scooter), de kleur, het merk als het leesbaar is en opvallende vaste onderdelen (kinderzitje, fietstassen, krat), bijvoorbeeld "zwarte Gazelle e-bike met fietstassen". Alleen "een fiets" is te vaag: geef dan een lege tekst. Steps, skateboards en andere dingen op wielen die geen voertuig zijn (rolcontainers, kliko\'s, kruiwagens, kinderwagens) tellen niet mee. Anders een lege tekst. Bij meerdere voertuigen het voertuig waar de gebeurtenis om draait.',
     '- vehicle_known: true als dat voertuig overeenkomt met een van de bekende feiten; anders false.',
-    '- vehicles: alle voertuigen (auto, bestelbus, motor, scooter, fiets) die duidelijk genoeg in beeld zijn om later te herkennen, ook geparkeerde, maximaal 4 (rolcontainers, kliko\'s, kruiwagens en kinderwagens zijn geen voertuigen): elk met description (exacte omschrijving zoals bij vehicle) en known (true als het overeenkomt met een bekend feit). Te ver weg, half verborgen of te vaag om te herkennen: weglaten. Geen voertuigen: een lege lijst.',
+    '- vehicles: alle voertuigen (auto, bestelbus, motor, scooter, fiets) die duidelijk genoeg in beeld zijn om later te herkennen, ook geparkeerde, maximaal 4 (rolcontainers, kliko\'s, kruiwagens en kinderwagens zijn geen voertuigen): elk met description (exacte omschrijving zoals bij vehicle) en known (true als het overeenkomt met een bekend feit). Te ver weg, half verborgen of te vaag om te herkennen: weglaten. Geen voertuigen: een lege lijst. Vul per voertuig ook los in: kind (auto, bestelbus, vrachtwagen, motor, scooter, fiets of anders), colour, make en model (leeg als je het niet zeker ziet; niet raden), plate (alleen als elk teken leesbaar is, met streepjes, anders leeg), recognisable (true als het duidelijk genoeg in beeld is om het later terug te herkennen) en subject (true als de gebeurtenis om dit voertuig draait: iemand rijdt erin of erop, stapt in of uit, of het komt aan of vertrekt).',
+    '- persons_visible: hoeveel personen je op het beeld ziet (0 als niemand).',
     '- person_seen: "ja" als je een persoon ziet (ook klein, deels verborgen of alleen een silhouet). "nee" als de plek goed te zien is en daar niemand staat: wat Frigate voor een persoon hield is dan iets anders (een voorwerp, paal, plant, kliko, schaduw of geparkeerde auto); schrijf je in description dat er niemand te zien is, dan is het "nee". "onduidelijk" alleen als die plek te donker, te wazig of afgedekt is om het te zeggen, zoals vaak op een zwart-wit nachtbeeld; schrijf dan in description ook niet dat er niemand is. Meldt Frigate geen persoon en zie je niemand: "nee".',
     '- person_marker: true als een persoon in beeld te herkennen is aan een vast kenmerk anders dan het gezicht: bedrijfskleding of een logo, of een voertuig waar die persoon duidelijk bij hoort (in- of uitstappen, erin of erop rijden, fietsen); anders false.',
   );
@@ -176,16 +211,23 @@ export function parseVerdict(text: string): AiVerdict {
     person_marker?: unknown;
     vehicles?: unknown;
     person_seen?: unknown;
+    persons_visible?: unknown;
   };
   if (typeof json.description !== 'string' || typeof json.real_event !== 'boolean') throw new Error('unexpected AI answer');
   // Plain single line; drop anything that looks like markup.
   const description = json.description.replace(/[\r\n\t<>]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120);
   if (!description) throw new Error('empty AI description');
   const vehicle = typeof json.vehicle === 'string' ? json.vehicle.replace(/[\r\n\t<>]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 100) : '';
-  const vehicles = (Array.isArray(json.vehicles) ? json.vehicles : [])
-    .map((v: { description?: unknown; known?: unknown }) => ({
-      description: typeof v?.description === 'string' ? v.description.replace(/[\r\n\t<>]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 100) : '',
+  const line = (v: unknown, max: number) => (typeof v === 'string' ? v.replace(/[\r\n\t<>]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max) : '');
+  const vehicles: SeenVehicle[] = (Array.isArray(json.vehicles) ? json.vehicles : [])
+    .map((v: Record<string, unknown>) => ({
+      description: line(v?.description, 100),
       known: v?.known === true,
+      // The fields of 0.42.0, only when the AI gave them.
+      ...(typeof v?.kind === 'string' && (VEHICLE_KINDS as readonly string[]).includes(v.kind) ? { kind: v.kind as SeenVehicle['kind'] } : {}),
+      ...(typeof v?.make === 'string' ? { colour: line(v.colour, 30), make: line(v.make, 30), model: line(v.model, 30), plate: line(v.plate, 12).toUpperCase() } : {}),
+      ...(typeof v?.recognisable === 'boolean' ? { recognisable: v.recognisable } : {}),
+      ...(typeof v?.subject === 'boolean' ? { subject: v.subject } : {}),
     }))
     .filter((v) => v.description.length >= 3)
     .slice(0, 4);
@@ -197,6 +239,7 @@ export function parseVerdict(text: string): AiVerdict {
     personMarker: json.person_marker === true,
     vehicles,
     ...(json.person_seen === 'ja' || json.person_seen === 'nee' || json.person_seen === 'onduidelijk' ? { personSeen: json.person_seen } : {}),
+    ...(Number.isInteger(json.persons_visible) && (json.persons_visible as number) >= 0 ? { personsVisible: json.persons_visible as number } : {}),
   };
 }
 

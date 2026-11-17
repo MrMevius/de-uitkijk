@@ -3,6 +3,10 @@
 Op hoofdlijnen, nieuwste eerst. Wordt getoond op Beheer → Change log. Elke release krijgt hier een kopje
 `## <versie> — <datum>` met een paar bullets; een test controleert dat de bovenste versie gelijk is aan `VERSION`.
 
+## 0.42.0 — 2026-11-18
+
+- De AI geeft van elk voertuig nu apart door wat hij ziet: soort, kleur, merk, model, kenteken, of het herkenbaar is en of het om dat voertuig draait. Het systeem hoeft dat niet meer uit een zin te halen, zodat een kenteken of merk niet meer gemist wordt omdat de AI het anders opschreef. Vooraf gemeten: even goed als voorheen.
+
 ## 0.41.0 — 2026-11-18
 
 - Nieuw: een evaluatie van de AI met jouw antwoorden als ijkpunt. Voor een aanpassing aan de AI kijkt die opnieuw naar beelden waarvan je al hebt verteld wie of wat het was: ziet hij de persoon, herkent hij de auto, vindt hij een 👍-highlight echt? Zo is vooraf te zien of een verandering beter of slechter uitpakt. Het is een beheercommando; op het scherm verandert niets.

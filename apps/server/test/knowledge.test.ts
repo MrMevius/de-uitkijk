@@ -3,8 +3,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { parseCameraConfig } from '@uitkijk/shared';
 import { buildFactPrompt, parseFact } from '../src/ai/fact-writer.ts';
 import { FactStore } from '../src/ai/facts.ts';
-import { buildPrompt } from '../src/ai/codex.ts';
-import { checkVerdict, saysNobody, knownPlates, looseObjectFact, plateCertainties, plateMatches, promptKnowledge, vagueFact, vehicleKnown, type Register } from '../src/ai/knowledge.ts';
+import { buildPrompt, parseVerdict } from '../src/ai/codex.ts';
+import { checkVerdict, completeVehicle, saysNobody, knownPlates, looseObjectFact, plateCertainties, plateMatches, promptKnowledge, vagueFact, vehicleKnown, type Register } from '../src/ai/knowledge.ts';
 import { AiWorker } from '../src/ai/worker.ts';
 import { HighlightStore } from '../src/highlights/store.ts';
 import { HouseholdStore } from '../src/household/store.ts';
@@ -169,6 +169,27 @@ describe('household knowledge for the AI (0.30.0)', () => {
     }
     // The prompt asks for the name.
     expect(buildPrompt({ cameraName: 'x', time: 't', objects: ['person'], recognized: ['Roel Snippe'] })).toContain('Noem die persoon bij de voornaam (Roel)');
+  });
+
+  it('completes vehicles from the separate fields and checks the person count (0.42.0)', () => {
+    const base = { matches: [], knownPlates: [], vehicles: [], recognized: [], persons: 1 };
+    expect(completeVehicle({ description: 'donkere hatchback', known: false, make: 'Toyota', model: 'Yaris', plate: '', recognisable: true })).toBe('donkere hatchback, Toyota Yaris');
+    expect(completeVehicle({ description: 'grijze Peugeot 108', known: false, make: 'Peugeot', model: '108', plate: 'TV-666-R' })).toBe('grijze Peugeot 108, kenteken TV-666-R');
+    expect(completeVehicle({ description: 'donkere auto links', known: false, make: '', plate: '', recognisable: false })).toBe('donkere auto links, niet herkenbaar');
+    // Older descriptions without the fields stay as they are.
+    expect(completeVehicle({ description: 'witte bestelbus', known: false })).toBe('witte bestelbus');
+    // The event's vehicle follows its completed list entry, or the entry marked as the subject.
+    const v = checkVerdict(
+      { description: 'Een auto rijdt de oprit op.', realEvent: true, vehicle: '', vehicles: [{ description: 'zwarte Tesla Model 3', known: false, make: 'Tesla', model: 'Model 3', plate: 'G-929-VD', subject: true }] },
+      base,
+    );
+    expect(v.vehicle).toBe('zwarte Tesla Model 3, kenteken G-929-VD');
+    // "Ja" while counting nobody contradicts itself: still asked ("onduidelijk").
+    expect(checkVerdict({ description: 'Een schaduw bij de deur.', realEvent: true, personSeen: 'ja', personsVisible: 0 }, base).personSeen).toBe('onduidelijk');
+    expect(parseVerdict('{"description":"x","real_event":true,"persons_visible":2,"vehicles":[{"description":"rode fiets","known":false,"kind":"fiets","colour":"rood","make":"","model":"","plate":"","recognisable":true,"subject":false}]}')).toMatchObject({
+      personsVisible: 2,
+      vehicles: [{ description: 'rode fiets', kind: 'fiets', colour: 'rood', make: '', recognisable: true, subject: false }],
+    });
   });
 
   it('writes no facts about things people carry', () => {
