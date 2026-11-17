@@ -189,6 +189,7 @@ export class AiWorker {
         matches,
         knownPlates: knownPlates(register, facts),
         vehicles: register.vehicles,
+        objects,
       });
       this.store.setAiResult(
         next.id,

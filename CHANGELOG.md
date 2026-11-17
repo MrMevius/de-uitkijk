@@ -3,6 +3,10 @@
 Op hoofdlijnen, nieuwste eerst. Wordt getoond op Beheer → Change log. Elke release krijgt hier een kopje
 `## <versie> — <datum>` met een paar bullets; een test controleert dat de bovenste versie gelijk is aan `VERSION`.
 
+## 0.39.3 — 2026-11-17
+
+- Schrijft de AI zelf dat er niemand te zien is, dan geldt dat nu ook: geen "Wie is dit?" en, als Frigate alleen een persoon meldde, geen highlight. De AI sprak zichzelf soms tegen ("niemand te zien", maar toch "persoon gezien").
+
 ## 0.39.2 — 2026-11-17
 
 - Staat de persoon die Frigate zag klein in beeld, dan krijgt de AI die plek ook uitvergroot te zien. Op het hele beeld kon hij de spullen onder de carport niet van een persoon onderscheiden; op de uitvergroting zag hij dat er niemand stond.

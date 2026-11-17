@@ -4,7 +4,7 @@ import { parseCameraConfig } from '@uitkijk/shared';
 import { buildFactPrompt, parseFact } from '../src/ai/fact-writer.ts';
 import { FactStore } from '../src/ai/facts.ts';
 import { buildPrompt } from '../src/ai/codex.ts';
-import { checkVerdict, knownPlates, looseObjectFact, plateCertainties, plateMatches, promptKnowledge, vagueFact, vehicleKnown, type Register } from '../src/ai/knowledge.ts';
+import { checkVerdict, saysNobody, knownPlates, looseObjectFact, plateCertainties, plateMatches, promptKnowledge, vagueFact, vehicleKnown, type Register } from '../src/ai/knowledge.ts';
 import { AiWorker } from '../src/ai/worker.ts';
 import { HighlightStore } from '../src/highlights/store.ts';
 import { HouseholdStore } from '../src/household/store.ts';
@@ -144,6 +144,29 @@ describe('household knowledge for the AI (0.30.0)', () => {
     const nobody = { description: 'Er staan geparkeerde auto\'s.', realEvent: false, personSeen: 'nee' as const };
     expect(checkVerdict(nobody, { ...base, recognized: ['Jasper Mevius'], persons: 1 })).toMatchObject({ personSeen: 'onduidelijk', realEvent: true });
     expect(checkVerdict(nobody, { ...base, recognized: [], persons: 1 })).toMatchObject({ personSeen: 'nee', realEvent: false });
+    // The description says nobody is there: "nee", whatever the field says (0.39.2; seen 2026-11-17 with gpt-6-luna).
+    const carport = { description: 'Er staan drie auto’s geparkeerd; bij de carport is niemand te zien.', realEvent: true, personSeen: 'ja' as const };
+    expect(checkVerdict(carport, { ...base, recognized: [], persons: 1, objects: ['person'] })).toMatchObject({ personSeen: 'nee', realEvent: false });
+    // With a moving car the event can still be real; a recognised face still wins.
+    expect(checkVerdict(carport, { ...base, recognized: [], persons: 1, objects: ['person', 'car'] })).toMatchObject({ personSeen: 'nee', realEvent: true });
+    expect(checkVerdict(carport, { ...base, recognized: ['Jasper Mevius'], persons: 1 })).toMatchObject({ personSeen: 'onduidelijk', realEvent: true });
+    for (const text of [
+      'Er staan twee afvalcontainers bij de voordeur; er is niemand zichtbaar.',
+      'Er is niemand zichtbaar; er staan auto’s geparkeerd op de oprit.',
+      "Geen persoon zichtbaar; er staan meerdere geparkeerde auto's op de oprit.",
+      "Er zijn alleen geparkeerde auto's zichtbaar; niemand is erbij.",
+      'Er staan enkele auto’s geparkeerd; er is geen persoon of activiteit zichtbaar.',
+    ]) {
+      expect(saysNobody(text), text).toBe(true);
+    }
+    for (const text of [
+      'Johan loopt naar de schuur; verder is niemand te zien.',
+      'Een persoon staat bij de deur, niemand anders.',
+      "Er staan drie auto's geparkeerd; er is geen persoon duidelijk te zien.",
+      'Een persoon loopt over de oprit.',
+    ]) {
+      expect(saysNobody(text), text).toBe(false);
+    }
     // The prompt asks for the name.
     expect(buildPrompt({ cameraName: 'x', time: 't', objects: ['person'], recognized: ['Roel Snippe'] })).toContain('Noem die persoon bij de voornaam (Roel)');
   });
