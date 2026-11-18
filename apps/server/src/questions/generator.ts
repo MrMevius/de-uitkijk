@@ -3,7 +3,7 @@ import type { AiStatus } from '../ai/worker.ts';
 import type { CameraVideoStatus } from '../camera-probe.ts';
 import { markSuspects, REJECTION_WINDOW_S, rejectionsOf, type FaceLibrary } from '../faces/library.ts';
 import { hourInAmsterdam } from '../highlights/importer.ts';
-import { periodOf } from '../highlights/selection.ts';
+import { periodOf, plainLabels } from '../highlights/selection.ts';
 import type { HighlightStore, StoredCandidate } from '../highlights/store.ts';
 import type { FactStore } from '../ai/facts.ts';
 import type { HouseholdStore } from '../household/store.ts';
@@ -39,6 +39,13 @@ export interface GeneratorOptions {
 /** Open questions per kind, so the list stays short and answerable. */
 export const OPEN_LIMITS = { person: 3, vehicle: 3, highlight: 2, noise: 2, household: 3 } as const;
 const NOISE_THRESHOLD = 5;
+/**
+ * A suggestion only while the false alarms go on: at least this many in the last days (since 0.44.0). After the
+ * Oprit street mask of 2026-11-11 Oprit / Pad overdag had at most one a day (2 in 2026-11-16..18).
+ */
+const NOISE_RECENT_DAYS = 3;
+const NOISE_RECENT_MIN = 3;
+const NOISE_EXAMPLES = 3;
 /**
  * Smallest person (box height as a fraction of the frame) worth a "Wie is dit?" question. Low on purpose: the owner
  * named neighbours at 5% of the frame height from their van or walk (2026-11-11).
@@ -277,22 +284,39 @@ export class QuestionGenerator {
       });
     }
 
-    // Recurring false alarms per camera and time of day this week.
+    // Recurring false alarms per camera and time of day this week, only while they still occur (since 0.44.0: the
+    // weekly count of 2026-11-16 still showed 18 for Oprit / Pad overdag, five days after the street mask fixed it).
     const noise = new Map<string, StoredCandidate[]>();
     for (const c of recent.filter((x) => x.startTime > now - 7 * 86400 && x.aiRealEvent === false)) {
       const key = `${c.camera}|${periodOf(hourInAmsterdam(c.startTime))}`;
       noise.set(key, [...(noise.get(key) ?? []), c]);
     }
-    for (const [key, list] of [...noise].sort((a, b) => b[1].length - a[1].length)) {
-      if (list.length < NOISE_THRESHOLD || room('noise') <= 0) continue;
+    const ongoing = (list: StoredCandidate[] = []) =>
+      list.length >= NOISE_THRESHOLD && list.filter((c) => c.startTime > now - NOISE_RECENT_DAYS * 86400).length >= NOISE_RECENT_MIN;
+    const suggestion = (key: string, list: StoredCandidate[]) => {
       const [camera, period] = key.split('|') as [string, keyof typeof PERIOD_NL];
-      add({
-        kind: 'noise',
-        key: `noise:${key}:${isoWeek(now)}`,
+      return {
         title: `Veel valse alarmen bij ${this.name(camera)} ${PERIOD_NL[period]}`,
-        body: `De afgelopen week zag de AI ${list.length} highlights van ${this.name(camera)} ${PERIOD_NL[period]} als ruis. Mogelijke oorzaken: spinnenweb of insecten voor de lens, reflectie van de infraroodverlichting, bewegende takken of koplampen. Overweeg de lens te controleren of de alarmzone in Frigate aan te passen. Deze highlights staan niet op de tv.`,
-        data: { camera, period, count: list.length },
-      });
+        body: noiseBody(list, `${this.name(camera)} ${PERIOD_NL[period]}`, period, now),
+        data: { camera, period, count: list.length, examples: noiseExamples(list) },
+      };
+    };
+    // An open suggestion keeps up: withdrawn once the false alarms stopped, otherwise its numbers are refreshed.
+    for (const q of this.questions.list('open', 1000)) {
+      if (q.kind !== 'noise') continue;
+      const key = `${String(q.data.camera)}|${String(q.data.period)}`;
+      const list = noise.get(key);
+      if (!list || !ongoing(list)) {
+        this.questions.withdraw(q.id, now);
+        continue;
+      }
+      const s = suggestion(key, list);
+      if (JSON.stringify(q.data) !== JSON.stringify(s.data) || q.body !== s.body) this.questions.refresh(q.id, s.title, s.data, s.body);
+      noise.delete(key);
+    }
+    for (const [key, list] of [...noise].sort((a, b) => b[1].length - a[1].length)) {
+      if (!ongoing(list) || room('noise') <= 0) continue;
+      add({ kind: 'noise', key: `noise:${key}:${isoWeek(now)}`, ...suggestion(key, list) });
     }
 
     // System: a camera without a picture for more than an hour.
@@ -370,6 +394,50 @@ export function platesFor(c: Pick<StoredCandidate, 'plates' | 'aiVehicle' | 'aiV
  */
 export function pointable(c: Pick<StoredCandidate, 'aiVehicle' | 'aiVehicles'>, vehicle: string): boolean {
   return vehicle === c.aiVehicle || c.aiVehicles.length <= 1;
+}
+
+const VEHICLE_LABELS = new Set(['car', 'motorcycle', 'bicycle']);
+const PARKED = /geparkeerd|\bstaat\b|\bstil\b/i;
+
+/**
+ * The text of a false-alarm suggestion (since 0.44.0): how many per day, and the likely cause from what the false
+ * alarms were instead of a fixed list. The suggestion of 2026-11-16 for Oprit / Pad overdag named infrared and
+ * headlights; 16 of its 18 were cars without a person, mostly parked.
+ */
+export function noiseBody(list: StoredCandidate[], where: string, period: 'nacht' | 'avond' | 'dag', now: number): string {
+  const days = Array.from({ length: 7 }, (_, i) => now - (6 - i) * 86400).map((t) => {
+    const key = dayKey(t);
+    const weekday = new Date(t * 1000).toLocaleDateString('nl-NL', { weekday: 'short', timeZone: 'Europe/Amsterdam' });
+    return `${weekday} ${list.filter((c) => dayKey(c.startTime) === key).length}`;
+  });
+  const vehicles = list.filter((c) => plainLabels(c.labels).every((l) => VEHICLE_LABELS.has(l)));
+  const ghosts = list.filter((c) => c.labels.some((l) => l.startsWith('person')) && c.aiPersonSeen === 'nee');
+  const parked = vehicles.filter((c) => PARKED.test(c.aiDescription ?? ''));
+  let cause: string;
+  if (vehicles.length * 2 >= list.length) {
+    cause =
+      `${vehicles.length} daarvan waren alleen een voertuig, zonder persoon${parked.length * 2 >= vehicles.length ? ', meestal stilstaand' : ''}. ` +
+      'Een auto die vaker op dezelfde plek staat, telt De Uitkijk vanzelf laag (vaste parkeerplek). Is het verkeer op straat, dan helpt een objectmasker voor auto’s in Frigate over dat stuk straat.';
+  } else if (ghosts.length * 2 >= list.length) {
+    cause =
+      `${ghosts.length} keer zag Frigate een persoon waar de AI niemand ziet: waarschijnlijk een voorwerp, plant of schaduw. ` +
+      'Een objectmasker voor personen op die plek in Frigate helpt, als daar geen echte bezoekers lopen.';
+  } else {
+    cause =
+      period === 'dag'
+        ? 'Mogelijke oorzaken: bewegende takken, schaduwen, zonlicht of vuil op de lens.'
+        : 'Mogelijke oorzaken: spinnenweb of insecten voor de lens, reflectie van de infraroodverlichting of koplampen.';
+  }
+  return `De afgelopen week zag de AI ${list.length} highlights van ${where} als ruis (per dag: ${days.join(', ')}). ${cause} Deze highlights staan niet op de tv.`;
+}
+
+/** The newest false alarms with a picture, to check the AI's verdict on the suggestion itself. */
+function noiseExamples(list: StoredCandidate[]): { id: string; startTime: number; description: string }[] {
+  return list
+    .filter((c) => c.hasThumbnail)
+    .sort((a, b) => b.startTime - a.startTime)
+    .slice(0, NOISE_EXAMPLES)
+    .map((c) => ({ id: c.id, startTime: c.startTime, description: c.aiDescription ?? c.description }));
 }
 
 /** Person size capped at "clearly visible", so big people are sorted by score among themselves. */

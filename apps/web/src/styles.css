@@ -1500,6 +1500,11 @@ body,
   transition: opacity 120ms, border-color 120ms;
 }
 
+/* Examples without a tick box (noise suggestions, since 0.44.0). */
+.ui-visit--plain .ui-visit__item {
+  opacity: 1;
+}
+
 .ui-visit__item--on {
   opacity: 1;
   border-color: #8db3ff;

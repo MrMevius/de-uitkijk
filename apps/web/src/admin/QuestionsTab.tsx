@@ -25,6 +25,8 @@ interface Question {
     make?: string;
     model?: string;
     plate?: string;
+    /** The newest false alarms of a suggestion, to check the AI's verdict (since 0.44.0). */
+    examples?: { id: string; startTime: number; description: string }[];
   };
   status: 'open' | 'answered' | 'dismissed';
   answer: string | null;
@@ -203,19 +205,21 @@ function Media({ highlight }: { highlight: Question['highlight'] }) {
 }
 
 /** Highlights of the same visit, ticked by default: one answer names the person on all of them. */
-function SameVisit({ items, chosen, onToggle }: { items: NonNullable<Question['sameVisit']>; chosen: Set<string>; onToggle: (id: string) => void }) {
+function SameVisit({ items, chosen, onToggle }: { items: NonNullable<Question['sameVisit']>; chosen?: Set<string>; onToggle?: (id: string) => void }) {
   // One clip at a time plays under the list, large enough to judge (since 0.28.2).
   const [playing, setPlaying] = useState<string | null>(null);
   if (!items.length) return null;
   return (
-    <div className="ui-visit">
-      <span className="ui-field__label">Zelfde bezoek: geldt het antwoord ook voor deze highlights?</span>
+    <div className={chosen ? 'ui-visit' : 'ui-visit ui-visit--plain'}>
+      <span className="ui-field__label">{chosen ? 'Zelfde bezoek: geldt het antwoord ook voor deze highlights?' : 'Voorbeelden'}</span>
       <ul>
         {items.map((h) => {
           const id = encodeURIComponent(h.id);
           return (
-            <li key={h.id} className={`ui-visit__item${chosen.has(h.id) ? ' ui-visit__item--on' : ''}${playing === h.id ? ' ui-visit__item--playing' : ''}`}>
-              <input type="checkbox" checked={chosen.has(h.id)} onChange={() => onToggle(h.id)} aria-label={`Ook voor ${highlightTime(h.startTime)}`} />
+            <li key={h.id} className={`ui-visit__item${chosen?.has(h.id) ? ' ui-visit__item--on' : ''}${playing === h.id ? ' ui-visit__item--playing' : ''}`}>
+              {chosen && onToggle && (
+                <input type="checkbox" checked={chosen.has(h.id)} onChange={() => onToggle(h.id)} aria-label={`Ook voor ${highlightTime(h.startTime)}`} />
+              )}
               <button
                 type="button"
                 className="ui-thumb ui-visit__thumb"
@@ -227,7 +231,7 @@ function SameVisit({ items, chosen, onToggle }: { items: NonNullable<Question['s
                   <Icon name="play" size={12} />
                 </span>
               </button>
-              <span className="ui-visit__text" onClick={() => onToggle(h.id)}>
+              <span className="ui-visit__text" onClick={() => onToggle?.(h.id)}>
                 <strong>{highlightTime(h.startTime)}</strong>
                 <span className="ui-muted">{h.description}</span>
               </span>
@@ -460,6 +464,8 @@ function QuestionCard({ q, names, onDone }: { q: Question; names: string[]; onDo
             </div>
           </>
         )}
+
+        {q.kind === 'noise' && <SameVisit items={(q.data.examples ?? []).map((e) => ({ ...e, camera: '' }))} />}
 
         {q.kind === 'household' && <HouseholdAnswer q={q} send={(body) => void send('answer', body)} />}
 

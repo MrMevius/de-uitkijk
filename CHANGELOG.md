@@ -3,6 +3,12 @@
 Op hoofdlijnen, nieuwste eerst. Wordt getoond op Beheer → Change log. Elke release krijgt hier een kopje
 `## <versie> — <datum>` met een paar bullets; een test controleert dat de bovenste versie gelijk is aan `VERSION`.
 
+## 0.44.0 — 2026-11-18
+
+- De suggestie "Veel valse alarmen" komt alleen nog als het nog steeds gebeurt: minstens 3 keer in de laatste 3 dagen. Is het opgelost, dan verdwijnt de kaart vanzelf. De kaart voor Oprit / Pad overdag telde na het straatmasker van 11 november nog oude gevallen mee.
+- De kaart noemt de waarschijnlijke oorzaak uit de valse alarmen zelf, in plaats van altijd spinnenweb, infrarood en koplampen. Bijvoorbeeld: "alleen een voertuig, zonder persoon, meestal stilstaand". Ook staat erbij hoeveel het er per dag waren, zodat je ziet of het afneemt.
+- Onder de kaart staan de drie nieuwste voorbeelden; tik erop om de clip te zien en te controleren of de AI gelijk had.
+
 ## 0.43.1 — 2026-11-18
 
 - "Zijn dit dezelfde?" bij twee voertuigen met elk een kenteken: je kiest nu zelf welk kenteken klopt ("Ja, kenteken V-363-LN"). Eerder koos het systeem, en voor Roels bus koos het het verkeerde.

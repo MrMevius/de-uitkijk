@@ -161,14 +161,46 @@ describe('question generator', () => {
 
   it('suggests a check after recurring false alarms and asks about borderline highlights', () => {
     const t = setup();
-    for (let i = 0; i < 5; i++) t.add({ ai: { real: false }, startTime: Date.UTC(2026, 10, 7 - i, 1, 0) / 1000 });
+    for (let i = 0; i < 5; i++) t.add({ ai: { real: false }, startTime: Date.UTC(2026, 10, 7, 1, i * 10) / 1000 - (i > 2 ? 3 * 86400 : 0) });
     t.add({ score: 2.1 });
     t.generator().runOnce();
     const open = t.questions.list('open');
     const noise = open.find((q) => q.kind === 'noise')!;
     expect(noise.title).toBe("Veel valse alarmen bij Voordeur 's nachts");
     expect(noise.key).toBe("noise:voordeur|nacht:2026-W45");
+    // Neither vehicles nor a person the AI does not see: the general causes for the dark.
+    expect(noise.body).toContain('per dag: ma 0, di 0, wo 2, do 0, vr 0, za 3, zo 0');
+    expect(noise.body).toContain('infraroodverlichting');
+    expect((noise.data.examples as { id: string }[]).map((e) => e.id)).toEqual(['h3', 'h2', 'h1']);
     expect(open.some((q) => q.kind === 'highlight')).toBe(true);
+  });
+
+  it('names parked cars as the cause, and withdraws a suggestion once the false alarms stopped (0.44.0)', () => {
+    const t = setup();
+    const day = (d: number, h: number) => Date.UTC(2026, 10, d, h, 0) / 1000;
+    let clock = day(8, 20);
+    const parked = (start: number) =>
+      t.add({ labels: ['car'], camera: 'oprit', cameras: ['oprit'], startTime: start, ai: { real: false } });
+    for (const s of [day(4, 9), day(5, 10), day(6, 11), day(7, 12), day(8, 13)]) parked(s);
+    for (const id of ['h1', 'h3', 'h5']) t.highlights.setAiResult(id, 'Een witte bestelbus staat geparkeerd op de oprit.', false, clock);
+    t.add({ labels: ['person'], camera: 'oprit', cameras: ['oprit'], startTime: day(8, 14), ai: { real: false, seen: 'nee' } });
+    const g = new QuestionGenerator(t.highlights, t.questions, { cameras, now: () => clock, faces: t.faceStub() });
+    g.runOnce();
+    const [noise] = t.questions.list('open').filter((q) => q.kind === 'noise');
+    expect(noise!.title).toBe('Veel valse alarmen bij Oprit / Pad overdag');
+    expect(noise!.body).toContain('6 highlights');
+    expect(noise!.body).toContain('5 daarvan waren alleen een voertuig, zonder persoon, meestal stilstaand.');
+    expect(noise!.body).not.toContain('infrarood');
+    // A day later they still go on: the per-day numbers are refreshed, nothing is asked twice.
+    clock = day(9, 20);
+    g.runOnce();
+    const again = t.questions.list('open').filter((q) => q.kind === 'noise');
+    expect(again.map((q) => q.id)).toEqual([noise!.id]);
+    expect(again[0]!.body).toContain('per dag: di 0, wo 1, do 1, vr 1, za 1, zo 2, ma 0');
+    // Three quiet days: fewer than three in the last three days, so the suggestion is withdrawn.
+    clock = day(11, 20);
+    g.runOnce();
+    expect(t.questions.list('open').filter((q) => q.kind === 'noise')).toHaveLength(0);
   });
 
   it('asks about a borderline highlight only after the AI looked, and withdraws it when the AI calls it noise (0.34.1)', () => {
@@ -520,7 +552,7 @@ describe('answering questions', () => {
   it('turns a highlight answer into feedback, dismisses suggestions and counts open questions', async () => {
     const t = await api();
     const h = t.add({ score: 2.1 });
-    for (let i = 0; i < 5; i++) t.add({ ai: { real: false }, startTime: Date.UTC(2026, 10, 7 - i, 1, 0) / 1000 });
+    for (let i = 0; i < 5; i++) t.add({ ai: { real: false }, startTime: Date.UTC(2026, 10, 7, 1, i * 10) / 1000 });
     t.generator().runOnce();
     const qs = t.questions.list('open');
     const hq = qs.find((q) => q.kind === 'highlight' && q.highlightId === h)!;
