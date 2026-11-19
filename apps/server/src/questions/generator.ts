@@ -402,7 +402,9 @@ const PARKED = /geparkeerd|\bstaat\b|\bstil\b/i;
 /**
  * The text of a false-alarm suggestion (since 0.44.0): how many per day, and the likely cause from what the false
  * alarms were instead of a fixed list. The suggestion of 2026-11-16 for Oprit / Pad overdag named infrared and
- * headlights; 16 of its 18 were cars without a person, mostly parked.
+ * headlights; 16 of its 18 were cars without a person, mostly parked. The parking-place penalty does not stop those
+ * (Frigate's alert still enlarges the camera on the TV), so the advice for vehicles is a mask in Frigate (0.44.1: on
+ * 2026-11-19 a mask over two night parking spots of Achter het huis 1 removed 412 of its 1030 car events of a week).
  */
 export function noiseBody(list: StoredCandidate[], where: string, period: 'nacht' | 'avond' | 'dag', now: number): string {
   const days = Array.from({ length: 7 }, (_, i) => now - (6 - i) * 86400).map((t) => {
@@ -417,7 +419,7 @@ export function noiseBody(list: StoredCandidate[], where: string, period: 'nacht
   if (vehicles.length * 2 >= list.length) {
     cause =
       `${vehicles.length} daarvan waren alleen een voertuig, zonder persoon${parked.length * 2 >= vehicles.length ? ', meestal stilstaand' : ''}. ` +
-      'Een auto die vaker op dezelfde plek staat, telt De Uitkijk vanzelf laag (vaste parkeerplek). Is het verkeer op straat, dan helpt een objectmasker voor auto’s in Frigate over dat stuk straat.';
+      'Staan ze stil, dan ziet Frigate een geparkeerde auto steeds opnieuw, vooral in het donker, en vergroot de tv de camera telkens. Een automasker in Frigate over die parkeerplek voorkomt dat; een auto die aankomt of wegrijdt blijft zichtbaar zolang hij buiten het masker rijdt. Is het verkeer op straat, dan helpt zo’n masker over dat stuk straat.';
   } else if (ghosts.length * 2 >= list.length) {
     cause =
       `${ghosts.length} keer zag Frigate een persoon waar de AI niemand ziet: waarschijnlijk een voorwerp, plant of schaduw. ` +

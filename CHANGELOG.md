@@ -3,6 +3,10 @@
 Op hoofdlijnen, nieuwste eerst. Wordt getoond op Beheer → Change log. Elke release krijgt hier een kopje
 `## <versie> — <datum>` met een paar bullets; een test controleert dat de bovenste versie gelijk is aan `VERSION`.
 
+## 0.44.1 — 2026-11-19
+
+- De suggestie "Veel valse alarmen" geeft bij geparkeerde auto's nu het juiste advies: een automasker in Frigate over die parkeerplek. De oude tekst zei dat De Uitkijk zo'n auto vanzelf laag telt, maar Frigate liet de tv de camera dan toch steeds vergroten. Voor Achter het huis 1 is zo'n masker op 19 november geplaatst over de hoek bij de heg en de rechterrand; dat scheelt ongeveer 40 % van de auto-meldingen van die camera.
+
 ## 0.44.0 — 2026-11-18
 
 - De suggestie "Veel valse alarmen" komt alleen nog als het nog steeds gebeurt: minstens 3 keer in de laatste 3 dagen. Is het opgelost, dan verdwijnt de kaart vanzelf. De kaart voor Oprit / Pad overdag telde na het straatmasker van 11 november nog oude gevallen mee.
