@@ -167,7 +167,10 @@ export function buildBundlePrompt(people: string[], vehicles: Vehicle[], ownerNa
     '',
     'Voertuigen in het register (nummer: omschrijving):',
     ...(vehicles.length
-      ? vehicles.map((v) => `- ${v.id}: ${[v.kind, v.colour, v.make, v.model].filter(Boolean).join(' ')}${v.plate ? `, kenteken ${v.plate}` : ''}${v.features ? `, ${v.features}` : ''}${v.ownerId ? `, van ${ownerName(v.ownerId)}` : ''}${v.place ? `, staat meestal: ${v.place}` : ''}`)
+      ? vehicles.map((v) => {
+          const locked = v.locked.map((f) => FIELD_LABEL[f === 'ownerId' ? 'owner' : f] ?? f);
+          return `- ${v.id}: ${[v.kind, v.colour, v.make, v.model].filter(Boolean).join(' ')}${v.plate ? `, kenteken ${v.plate}` : ''}${v.features ? `, ${v.features}` : ''}${v.ownerId ? `, van ${ownerName(v.ownerId)}` : ''}${v.place ? `, staat meestal: ${v.place}` : ''}${locked.length ? ` (door een bewoner vastgezet: ${locked.join(', ')})` : ''}`;
+        })
       : ['- (nog geen)']),
     '',
     'Losse feiten (nummer: tekst):',
@@ -180,6 +183,9 @@ export function buildBundlePrompt(people: string[], vehicles: Vehicle[], ownerNa
     '- vehicles: één item per voertuig dat nieuw is of anders moet. target is het nummer van het voertuig in het register, of 0 voor een nieuw voertuig. merge: nummers van andere registervoertuigen die hetzelfde voertuig zijn (die gaan erin op), anders leeg. facts: de nummers van alle feiten waarop het item steunt (verplicht). Voertuigen die al goed in het register staan en waar geen nieuw feit over is: weglaten.',
     '- Velden: kind (soort), make (merk), model, colour (kleur, één woord of samenstelling zoals donkerblauw), plate (kenteken, alleen als het volledig in een feit staat), features (vaste kenmerken zoals een kinderzitje of logo), owner (naam van de eigenaar precies zoals in het feit of bij de bekende personen), place (vaste plek, bijvoorbeeld carport). Onbekend: lege tekst. Gebruik alleen wat in de feiten of het register staat; verzin niets en vul niets aan uit eigen kennis.',
     '- Twee feiten over hetzelfde voertuig (zelfde eigenaar en een omschrijving die bij elkaar past, of hetzelfde kenteken) worden één item. Een vagere omschrijving ("zwarte compacte hatchback") en een preciezere ("donkere Volkswagen up!") van dezelfde eigenaar zijn waarschijnlijk hetzelfde voertuig: voeg ze samen en zet in reason dat het waarschijnlijk is.',
+    // Since 0.45.1: on 2026-11-19 the AI asked again whether Johan's Corolla is a stationwagen or a hatchback, after
+    // the administrator had answered and locked "stationwagen"; an older fact still said hatchback.
+    '- Wat een bewoner heeft vastgezet is beslist: stel daar geen vraag over en stel geen wijziging voor, ook niet als een ouder feit iets anders zegt.',
     '- questions: tegenstrijdigheden of twijfels die een bewoner moet beslissen, als korte Nederlandse vraag, met de nummers van de feiten. Bijvoorbeeld twee verschillende modellen voor dezelfde eigenaar en kleur ("Is de witte Ford van Gideon een Fiesta of een Focus, of heeft hij er twee?"), of een eigenaar die misschien dezelfde is als een bekende persoon ("Is Tini dezelfde als Tineke Mevius?"). Geen vragen over dingen die al duidelijk zijn. Liever een vraag te veel dan een gok: het doel is een volledig en juist register.',
     '- options: 2 tot 4 antwoorden die de bewoner met één klik kan kiezen. label: kort antwoord ("Een Focus", "Twee auto\'s", "Dezelfde auto"). fact: het feit dat dan geldt, als volledige Nederlandse zin met de eigenaar ("Gideon Snippe heeft een witte Ford Focus."). retire: nummers van de feiten uit deze vraag die met dit antwoord onjuist of overbodig worden (vervangen door het nieuwe feit), anders leeg.',
     '- reason: één korte Nederlandse zin waarom.',

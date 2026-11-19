@@ -3,7 +3,7 @@ import { buildApp } from '../src/app.ts';
 import { FactStore } from '../src/ai/facts.ts';
 import { hashPassword } from '../src/auth/passwords.ts';
 import { AuthStore } from '../src/auth/store.ts';
-import { acceptProposal, Bundler, fixedFeatures, namesSupported, parseBundle, personProposals, rejectProposal, supported, vehicleProposals, type PersonAnswer } from '../src/household/bundle.ts';
+import { acceptProposal, buildBundlePrompt, Bundler, fixedFeatures, namesSupported, parseBundle, personProposals, rejectProposal, supported, vehicleProposals, type PersonAnswer } from '../src/household/bundle.ts';
 import { BundleScheduler, parseSchedule, slots } from '../src/household/schedule.ts';
 import { HouseholdStore } from '../src/household/store.ts';
 import { HighlightStore } from '../src/highlights/store.ts';
@@ -194,6 +194,28 @@ describe('household register', () => {
     expect(fixedFeatures('hatchback', 'auto', 'stationwagen')).toBe('');
     expect(fixedFeatures('stationwagen, trekhaak', 'auto', 'stationwagen')).toBe('stationwagen, trekhaak');
     expect(fixedFeatures('bestelbus; open aanhanger met ladders', 'bestelbus', '')).toBe('open aanhanger met ladders');
+  });
+
+  it('makes pending proposals stale when a run does not make them again, also with none to keep (0.45.1)', () => {
+    const store = new HouseholdStore(':memory:');
+    cleanup.push(() => store.close());
+    const run = store.startRun('mark', NOW);
+    const p = { runId: run.id, kind: 'question' as const, action: 'question' as const, targetId: null, mergeIds: [], data: {}, sources: ['feit 1'], reason: '', createdAt: NOW };
+    store.addProposal({ ...p, summary: 'Een?' });
+    store.addProposal({ ...p, summary: 'Twee?' });
+    const [one, two] = store.proposals('pending');
+    store.staleOpenProposals(NOW, [two!.id]);
+    expect(store.proposals('pending').map((x) => x.id)).toEqual([two!.id]);
+    store.staleOpenProposals(NOW);
+    expect(store.proposals('pending')).toHaveLength(0);
+    expect(store.proposals('stale').map((x) => x.id).sort()).toEqual([one!.id, two!.id].sort());
+  });
+
+  it('tells the AI which fields an administrator locked (0.45.1)', () => {
+    const v = { id: 4, kind: 'auto', make: 'Toyota', model: 'Corolla', colour: 'donkerblauw', plate: 'N-890-KP', features: 'stationwagen', ownerId: 9, place: '', sources: [], locked: ['plate', 'features'], createdAt: NOW, updatedAt: NOW } as unknown as Parameters<typeof buildBundlePrompt>[1][number];
+    const prompt = buildBundlePrompt([], [v], () => 'Johan Mevius', [], []);
+    expect(prompt).toContain('- 4: auto donkerblauw Toyota Corolla, kenteken N-890-KP, stationwagen, van Johan Mevius (door een bewoner vastgezet: kenteken, kenmerken)');
+    expect(prompt).toContain('Wat een bewoner heeft vastgezet is beslist');
   });
 
   it('merges vehicles and people, keeping what each knew', () => {

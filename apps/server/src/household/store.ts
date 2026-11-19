@@ -453,9 +453,9 @@ export class HouseholdStore {
   /** A new bundling replaces the suggestions nobody decided on yet. */
   /** Pending proposals become stale, except `keep` (made again by the new run). */
   staleOpenProposals(at: number, keep: number[] = []): void {
-    this.db
-      .prepare(`UPDATE household_proposals SET status = 'stale', decided_at = ? WHERE status = 'pending' AND id NOT IN (${keep.map(() => '?').join(',') || 'NULL'})`)
-      .run(at, ...keep);
+    // Not "NOT IN (NULL)": that matches no row at all (0.45.0 kept every pending proposal that way).
+    const except = keep.length ? ` AND id NOT IN (${keep.map(() => '?').join(',')})` : '';
+    this.db.prepare(`UPDATE household_proposals SET status = 'stale', decided_at = ? WHERE status = 'pending'${except}`).run(at, ...keep);
   }
 
   log(text: string, by: string, at: number): void {

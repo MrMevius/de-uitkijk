@@ -3,6 +3,11 @@
 Op hoofdlijnen, nieuwste eerst. Wordt getoond op Beheer → Change log. Elke release krijgt hier een kopje
 `## <versie> — <datum>` met een paar bullets; een test controleert dat de bovenste versie gelijk is aan `VERSION`.
 
+## 0.45.1 — 2026-11-19
+
+- Huishouden: een voorstel dat een nieuwe bundeling niet meer doet, verdwijnt weer. In 0.45.0 bleef het staan, waardoor de "Fiesta of Focus?"-vraag niet wegging.
+- Huishouden: de AI ziet nu welke gegevens jij hebt vastgezet en stelt daar geen vraag meer over, zoals opnieuw "stationwagen of hatchback?" voor Johans Corolla.
+
 ## 0.45.0 — 2026-11-19
 
 - Huishouden: leest Frigate een kenteken vaak (minstens 3 keer in twee weken) dat niet in het register staat, dan vraagt het systeem van wie die auto is, met de laatste foto erbij. De eerste vraag gaat over 96-NBF-1, dat Frigate vaker las dan welk kenteken uit het register ook.
