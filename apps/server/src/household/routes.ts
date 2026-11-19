@@ -3,6 +3,7 @@ import type { FactStore } from '../ai/facts.ts';
 import type { FaceLibrary } from '../faces/library.ts';
 import type { KnownPlatesStatus } from '../frigate/known-plates.ts';
 import type { HighlightStore } from '../highlights/store.ts';
+import { factInRegister } from '../ai/knowledge.ts';
 import { acceptProposal, rejectProposal, type Bundler } from './bundle.ts';
 import { parseSchedule, type BundleScheduler } from './schedule.ts';
 import {
@@ -88,7 +89,6 @@ export function registerHousehold(app: FastifyInstance, { store, bundler, facts,
     };
     if (faces) await faces.refresh().catch(() => undefined);
     const library = faces?.ready ? faces.libraryImages() : [];
-    const used = new Set(people.flatMap((p) => p.sources).concat(vehicles.flatMap((v) => v.sources)));
     return {
       ai: bundler.aiEnabled,
       busy: bundler.busy,
@@ -112,7 +112,8 @@ export function registerHousehold(app: FastifyInstance, { store, bundler, facts,
       })),
       proposals: store.proposals('pending'),
       history: store.history(30),
-      facts: (facts?.list() ?? []).map((f) => ({ ...f, processed: used.has(`feit ${f.id}`) })),
+      // The same rule as the description prompt (since 0.45.0): answers to register questions and redundant facts count too.
+      facts: (facts?.list() ?? []).map((f) => ({ ...f, processed: factInRegister(f, { people, vehicles }) })),
     };
   });
 

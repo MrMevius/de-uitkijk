@@ -1,10 +1,15 @@
 import type { CodexImageCall } from '../ai/codex.ts';
 import type { Fact } from '../ai/facts.ts';
+import { stable } from '../ai/knowledge.ts';
+
+export { supported };
 import {
   cleanText,
   findPerson,
   PERSON_ROLES,
   plateKey,
+  supported,
+  tokens,
   VEHICLE_KINDS,
   vehicleLabel,
   type HouseholdStore,
@@ -198,26 +203,35 @@ interface RawVehicle {
   reason: string;
 }
 
-/** Dutch adjective forms and spelling variants compare equal: "rode"/"rood", "witte"/"wit", "grijze"/"grijs". */
-const stem = (word: string): string =>
-  word
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/e$/, '')
-    .replace(/z$/, 's')
-    .replace(/(.)\1+/g, '$1');
-const tokens = (text: string): string[] =>
-  text
-    .split(/[^\p{L}\p{N}]+/u)
-    .filter((t) => t.length >= 2)
-    .map(stem);
+/**
+ * Whether every name in a doubt (a capitalised word after the first of a sentence: a make, model or person) occurs in
+ * its cited facts or the register (since 0.45.0). Gideon's "Fiesta of Focus?" came back on 2026-11-18, a week after the
+ * administrator answered "Een Fiesta" and the Focus fact was gone: the AI took it from a rejected proposal.
+ */
+export function namesSupported(question: string, source: string): boolean {
+  for (const sentence of question.split(/(?<=[.?!])\s+/)) {
+    for (const word of sentence.split(/\s+/).slice(1)) {
+      const bare = word.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}!]+$/gu, '');
+      if (!/^\p{Lu}/u.test(bare) || !tokens(bare).length) continue;
+      if (!supported(bare, source) && !supported(bare.replace(/[’']?s$/, ''), source)) return false;
+    }
+  }
+  return true;
+}
 
-/** True when every word of `value` occurs in `source` (so the AI cannot add a make, plate or owner of its own). */
-export function supported(value: string, source: string): boolean {
-  const have = new Set(tokens(source));
-  const want = tokens(value);
-  return want.length > 0 && want.every((t) => have.has(t));
+const BODY_TYPE = /^(hatchback|stationwagen|stationcar|sedan|suv|cabrio|coup[eé]|mpv)$/i;
+
+/**
+ * The fixed features in an AI's features field (since 0.45.0): no moments ("grotendeels verborgen"), not the kind
+ * itself ("bestelbus" for a van) and no body type that contradicts another or the register's: Johan's Corolla got
+ * "stationwagen; hatchback" after the administrator had answered that it is a stationwagen.
+ */
+export function fixedFeatures(value: string, kind: string, current: string): string {
+  const parts = stable(value.replace(/;\s*/g, ', ')).split(/,\s*/).filter(Boolean);
+  const bodies = new Set(parts.filter((x) => BODY_TYPE.test(x)).map((x) => x.toLowerCase()));
+  const had = current.split(/[,;]\s*/).find((x) => BODY_TYPE.test(x))?.toLowerCase();
+  const bodyOk = bodies.size === 1 && (!had || bodies.has(had));
+  return parts.filter((x) => (BODY_TYPE.test(x) ? bodyOk : x.toLowerCase() !== kind && x.toLowerCase() !== 'auto')).join(', ');
 }
 
 const ints = (v: unknown): number[] => (Array.isArray(v) ? v.filter((n): n is number => Number.isInteger(n)) : []);
@@ -288,7 +302,8 @@ export function vehicleProposals(
     ].join(' \n ');
     const data: Record<string, string> = {};
     for (const f of FIELDS) {
-      const value = r[f];
+      // A place is only a fixed one ("onder de carport"), not where it stood in one picture ("links in beeld").
+      const value = f === 'features' ? fixedFeatures(r.features, r.kind, target?.features ?? '') : f === 'place' ? stable(r.place) : r[f];
       if (!value) continue;
       if (f === 'plate' ? !plateKey(source).includes(plateKey(value)) || plateKey(value).length < 5 : !supported(value, source)) continue;
       if (target && (target.locked.includes(f) || target[f] === value)) continue;
@@ -311,9 +326,15 @@ export function vehicleProposals(
       : `Nieuw voertuig: ${label}${owner ? ` van ${owner}` : ''}${merges.length ? `; samenvoegen met ${merges.map((id) => vehicleLabel(vehicleById.get(id)!)).join(', ')}` : ''}`;
     out.push({ kind: 'vehicle', action: target ? 'update' : 'add', targetId: target?.id ?? null, mergeIds: merges, data, sources, summary, reason: r.reason });
   }
+  const registerText = [
+    ...ctx.vehicles.map((v) => `${v.kind} ${v.make} ${v.model} ${v.colour} ${v.plate} ${ownerName(v.ownerId)}`),
+    ...ctx.people.flatMap((p) => [p.name, ...p.aliases]),
+    ...ctx.extraNames,
+  ].join(' \n ');
   for (const q of raw.questions) {
     const cited = q.facts.filter((id) => factById.has(id));
     if (!cited.length) continue;
+    if (!namesSupported(q.text, `${cited.map((id) => factById.get(id)!.text).join(' \n ')} \n ${registerText}`)) continue;
     // Only the question's own facts can be retired by an answer.
     const options = q.options.map((o) => ({ ...o, retire: o.retire.filter((id) => cited.includes(id)) }));
     out.push({
@@ -408,8 +429,13 @@ export class Bundler {
         proposals.push(...vehicleProposals(raw, { facts: input.facts, vehicles, people, extraNames }));
       }
       const fresh = proposals.filter((p) => !rejectedKeys.has(proposalKey(p)));
-      this.store.staleOpenProposals(now());
-      for (const p of fresh) this.store.addProposal({ ...p, runId, createdAt: now() });
+      // A proposal this run makes again stays as it is (since 0.45.0): before, every run replaced it, so the same
+      // four feature updates went stale 4-5 times in a row on 2026-11-17/18. Only the others go stale.
+      const keys = new Set(fresh.map(proposalKey));
+      const pending = this.store.proposals('pending', 1000);
+      this.store.staleOpenProposals(now(), pending.filter((p) => keys.has(proposalKey(p))).map((p) => p.id));
+      const kept = new Set(pending.filter((p) => keys.has(proposalKey(p))).map(proposalKey));
+      for (const p of fresh) if (!kept.has(proposalKey(p))) this.store.addProposal({ ...p, runId, createdAt: now() });
       this.store.finishRun(runId, { proposals: fresh.length }, now());
       return fresh.length;
     } catch (err) {

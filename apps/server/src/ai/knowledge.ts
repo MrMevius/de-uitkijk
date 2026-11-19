@@ -1,6 +1,6 @@
 import type { Fact } from './facts.ts';
 import type { AiVerdict, SeenVehicle } from './codex.ts';
-import { plateKey, vehicleLabel, type Person, type Vehicle } from '../household/store.ts';
+import { plateKey, supported, tokens, vehicleLabel, type Person, type Vehicle } from '../household/store.ts';
 import { DISTINCT_BODY, makeModel, normalizeVehicle, platesClose, platesIn, realPlates, vehicleNoun } from '../questions/vehicles.ts';
 
 /** What the AI may rely on: the household register plus raw facts the register does not hold yet (since 0.30.0). */
@@ -56,13 +56,16 @@ export function promptKnowledge(register: Register, facts: Fact[]): string[] {
     const who = v.ownerId !== null ? owner.get(v.ownerId) : undefined;
     lines.push(`${parts.join(', ')}${who ? ` is van ${who}` : ', eigenaar onbekend'}.`);
   }
-  const used = new Set([...register.people, ...register.vehicles].flatMap((e) => e.sources));
-  for (const f of facts) if (!inRegister(f, used) && !vagueFact(f.text)) lines.push(f.text);
+  for (const f of facts) if (!factInRegister(f, register) && !vagueFact(f.text)) lines.push(f.text);
   return [...new Set(lines)];
 }
 
-/** How the moment looked, not the vehicle: "grotendeels verborgen", "links in beeld", "motorkap open". */
-const MOMENT = /verborgen|in beeld|zichtbaar|links|rechts|voorgrond|achtergrond|\bopen\b|geopend/i;
+/**
+ * How the moment looked, not the vehicle: "grotendeels verborgen", "links in beeld", "motorkap open". Only an open
+ * door, bonnet or boot is a moment (0.45.0): "open aanhanger met ladders" of Roel's van was dropped as one.
+ */
+const MOMENT =
+  /verborgen|in beeld|zichtbaar|links|rechts|voorgrond|achtergrond|geopend|(?:motorkap|deur|portier|kofferbak|achterklep|klep|raam)\S*\s+(?:staat\s+)?open|\bopen\s+(?:motorkap|deur|portier|kofferbak|achterklep|klep|raam)/i;
 
 /** The parts of a register field that are stable ("kinderzitje, grotendeels verborgen" → "kinderzitje"). */
 export const stable = (text: string) =>
@@ -80,6 +83,36 @@ function inRegister(f: Fact, used: Set<string>): boolean {
   if (used.has(`feit ${f.id}`)) return true;
   const question = /\(vraag (\d+)\)$/.exec(f.createdBy)?.[1];
   return !f.createdBy.startsWith('AI') && question !== undefined && used.has(`vraag ${question}`);
+}
+
+/** Words that link the parts of a fact and say nothing themselves. */
+const FILLER = new Set(tokens('is van de het een heeft hebben kenteken rijdt in met en zijn haar ook die dat'));
+const ROLE_WORDS: Record<string, string> = { buren: 'buur buren', bewoner: 'bewoner', familie: 'familie', bezoeker: 'bezoeker', 'vaste hulp': 'vaste hulp', 'bezorger of dienstverlener': 'bezorger dienstverlener' };
+
+/**
+ * A raw fact that says nothing one register entry does not (since 0.45.0): every word of it is in that vehicle with
+ * its owner and the owner's role, or in that person. "Bert Hemmer (buur) rijdt in een witte Mercedes-Benz Sprinter"
+ * and "Gideon Snippe heeft een witte Ford Fiesta hatchback" were given to the AI next to the register lines saying the same.
+ */
+export function redundantFact(text: string, register: Register): boolean {
+  const words = tokens(text).filter((t) => !FILLER.has(t));
+  if (!words.length) return false;
+  const value = words.join(' ');
+  const person = (id: number | null) => register.people.find((p) => p.id === id);
+  const entries = [
+    ...register.vehicles.map((v) => {
+      const p = person(v.ownerId);
+      return `${v.kind} ${v.colour} ${v.make} ${v.model} ${v.plate} ${v.features} ${v.place} ${p?.name ?? ''} ${ROLE_WORDS[p?.role ?? ''] ?? ''}`;
+    }),
+    ...register.people.map((p) => `${p.name} ${p.aliases.join(' ')} ${ROLE_WORDS[p.role] ?? ''}`),
+  ];
+  return entries.some((e) => supported(value, e));
+}
+
+/** A raw fact the AI does not need next to the register: cited by it, written by an answer to it, or redundant. */
+export function factInRegister(f: Fact, register: Register): boolean {
+  const used = new Set([...register.people, ...register.vehicles].flatMap((e) => e.sources));
+  return inRegister(f, used) || redundantFact(f.text, register);
 }
 
 /** Register vehicles whose plate Frigate read in this event (one misread character allowed). */

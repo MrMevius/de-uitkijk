@@ -2,7 +2,8 @@ import type { FactStore } from '../ai/facts.ts';
 import type { DoubtOption } from '../household/bundle.ts';
 import { cleanText, findPerson, PERSON_ROLES, plateKey, vehicleLabel, type HouseholdStore, type PersonRole, type Vehicle } from '../household/store.ts';
 import { stable } from '../ai/knowledge.ts';
-import { makeModel, platesClose, vehicleParts } from './vehicles.ts';
+import type { StoredCandidate } from '../highlights/store.ts';
+import { makeModel, platesClose, platesIn, realPlates, vehicleParts } from './vehicles.ts';
 import type { Question, QuestionStore } from './store.ts';
 
 /**
@@ -12,7 +13,9 @@ import type { Question, QuestionStore } from './store.ts';
  *   replaces) or an own answer;
  * - vehicle: make and model of a vague vehicle ("zwarte hatchback van Noëlle"), or the plate of a known one;
  * - role: who a person without a role is;
- * - same: whether two entries are one vehicle (same plate, or same owner, make and model; since 0.32.0).
+ * - same: whether two entries are one vehicle (same plate, or same owner, make and model; since 0.32.0);
+ * - plate: whose car it is when Frigate keeps reading a plate the register does not have (since 0.45.0);
+ * - gone: whether a vehicle still exists after an answer took away every fact it rested on (since 0.45.0).
  *
  * Every answer goes into the register at once and becomes a fact for the AI; "Overslaan" means "weet ik niet" and
  * is not asked again (each question has a key that is used once).
@@ -21,10 +24,14 @@ export type HouseholdQuestionData =
   | { type: 'doubt'; summary: string; options: DoubtOption[]; facts: { id: number; text: string }[] }
   | { type: 'vehicle'; vehicleId: number; fields: ('make' | 'model' | 'plate')[]; make: string; model: string; plate: string }
   | { type: 'role'; personId: number }
-  | { type: 'same'; vehicleIds: [number, number]; labels: [string, string]; plates?: [string, string] };
+  | { type: 'same'; vehicleIds: [number, number]; labels: [string, string]; plates?: [string, string] }
+  | { type: 'plate'; plate: string; reads: number; vehicle: string; facts: { id: number; text: string }[] }
+  | { type: 'gone'; vehicleId: number; label: string; owner: string };
 
 interface NewQuestion {
   key: string;
+  /** The newest sighting, shown with the question (plate questions). */
+  highlightId?: string;
   title: string;
   body: string;
   data: HouseholdQuestionData;
@@ -66,8 +73,38 @@ export function sameVehicles(vehicles: Vehicle[]): [Vehicle, Vehicle][] {
   return pairs;
 }
 
-/** Candidate questions, most useful first: doubts, then vague vehicles, people without a role, missing plates. */
-export function householdQuestions(register: Register, facts: Pick<FactStore, 'list'> | undefined): NewQuestion[] {
+/** Frigate read a plate in at least this many events of two weeks: worth asking whose it is (since 0.45.0). */
+export const PLATE_READS = 3;
+
+/**
+ * Plates Frigate keeps reading that are not (one character from) a register plate, with their reads; plates one
+ * character apart count as one (the most read spelling). 96-NBF-1 was read in 9 events of 2026-11-05..19, more than
+ * any register plate, while its proposal had been rejected on 2026-11-11 and could never come back.
+ */
+export function unknownPlates(candidates: Pick<StoredCandidate, 'id' | 'startTime' | 'plates' | 'hasThumbnail'>[], register: Register) {
+  const known = register.vehicles().filter((v) => v.plate).map((v) => plateKey(v.plate));
+  const reads = new Map<string, Pick<StoredCandidate, 'id' | 'startTime' | 'hasThumbnail'>[]>();
+  for (const c of candidates) for (const p of realPlates(c.plates)) reads.set(p, [...(reads.get(p) ?? []), c]);
+  const groups: { plate: string; events: Pick<StoredCandidate, 'id' | 'startTime' | 'hasThumbnail'>[] }[] = [];
+  for (const [plate, events] of [...reads].sort((a, b) => b[1].length - a[1].length)) {
+    if (known.some((k) => platesClose(k, plate))) continue;
+    const group = groups.find((g) => platesClose(g.plate, plate));
+    if (group) group.events.push(...events.filter((e) => !group.events.includes(e)));
+    else groups.push({ plate, events: [...events] });
+  }
+  return groups.filter((g) => g.events.length >= PLATE_READS).map((g) => ({ ...g, events: g.events.sort((a, b) => b.startTime - a.startTime) }));
+}
+
+/** The plate as an answer wrote it ("96-NBF-1"), else as Frigate read it. */
+const dashed = (plate: string, texts: string[]) =>
+  texts.flatMap((t) => t.match(/\b[A-Z0-9]{1,3}-[A-Z0-9]{1,3}-[A-Z0-9]{1,3}\b/gi) ?? []).find((p) => platesClose(plateKey(p), plate))?.toUpperCase() ?? plate;
+
+/** A vehicle all of whose sources were facts that no longer exist (an answer retired them; since 0.45.0). */
+const sourceless = (v: Vehicle, factIds: Set<number>) =>
+  v.sources.length > 0 && v.sources.every((s) => /^feit \d+$/.test(s) && !factIds.has(Number(s.slice(5))));
+
+/** Candidate questions, most useful first: doubts, unknown plates, vehicles without facts, vague vehicles, people without a role, missing plates. */
+export function householdQuestions(register: Register, facts: Pick<FactStore, 'list'> | undefined, candidates: StoredCandidate[] = []): NewQuestion[] {
   const factText = new Map((facts?.list() ?? []).map((f) => [f.id, f.text]));
   const out: NewQuestion[] = [];
   for (const p of register.proposals('pending').filter((x) => x.kind === 'question')) {
@@ -86,6 +123,28 @@ export function householdQuestions(register: Register, facts: Pick<FactStore, 'l
     });
   }
   const vehicles = register.vehicles();
+  for (const g of unknownPlates(candidates, register)) {
+    // An earlier answer that names the plate is shown, not taken for granted: the owner no longer knew (2026-11-19).
+    const cited = [...factText].filter(([, text]) => platesIn(text).some((p) => platesClose(p, g.plate)));
+    const plate = dashed(g.plate, cited.map(([, text]) => text));
+    const vehicle = cited.length ? stable(cited[0]![1].replace(/,?\s*(?:met\s+)?kenteken\s+\S+/i, '').replace(/\s+is van .*$/i, '').trim()) : '';
+    out.push({
+      key: `household:plate:${g.plate}`,
+      ...(g.events.find((e) => e.hasThumbnail) ? { highlightId: g.events.find((e) => e.hasThumbnail)!.id } : {}),
+      title: `Van wie is de auto met kenteken ${plate}?`,
+      body: `Frigate las dit kenteken de afgelopen twee weken bij ${g.events.length} gebeurtenissen, maar het staat niet in het register. Met de eigenaar erbij herkent het systeem deze auto voortaan zeker. Weet je het niet, kies dan Weet ik niet.`,
+      data: { type: 'plate', plate, reads: g.events.length, vehicle, facts: cited.map(([id, text]) => ({ id, text })) },
+    });
+  }
+  for (const v of vehicles.filter((x) => sourceless(x, new Set(factText.keys())))) {
+    const owner = ownerOf(register, v);
+    out.push({
+      key: `household:gone:${v.id}`,
+      title: `Klopt ${the(v, owner)} nog?`,
+      body: 'Een eerder antwoord heeft alle feiten weggehaald waarop dit voertuig in het register steunt. Nee: het voertuig gaat uit het register (en uit de bekende kentekens van Frigate).',
+      data: { type: 'gone', vehicleId: v.id, label: vehicleLabel(v), owner },
+    });
+  }
   for (const [a, b] of sameVehicles(vehicles)) {
     const owner = ownerOf(register, a) || ownerOf(register, b);
     out.push({
@@ -134,6 +193,11 @@ export function householdQuestionApplies(q: Question, register: Register): boole
   if (d.type === 'doubt') return register.proposals('pending').some((p) => p.kind === 'question' && p.summary === d.summary);
   if (d.type === 'role') return register.people().some((p) => p.id === d.personId && !p.role);
   if (d.type === 'same') return d.vehicleIds.every((id) => register.vehicles().some((v) => v.id === id));
+  if (d.type === 'plate') {
+    const key = plateKey(d.plate);
+    return !register.vehicles().some((v) => v.plate && platesClose(plateKey(v.plate), key));
+  }
+  if (d.type === 'gone') return register.vehicles().some((v) => v.id === d.vehicleId && v.sources.every((s) => /^feit \d+$/.test(s)));
   const v = register.vehicles().find((x) => x.id === d.vehicleId);
   if (!v) return false;
   return d.fields.includes('make') ? !(v.make && v.model) : !v.plate;
@@ -206,6 +270,35 @@ export function answerHousehold(q: Question, body: Record<string, unknown>, ctx:
     register.updateVehicle(merged.id, {}, { sources: [`vraag ${q.id}`], at: now });
     register.log(`Samengevoegd: ${vehicleLabel(other)} in ${vehicleLabel(merged)} (vraag ${q.id})`, by, now);
     return { answer: `Ja, samengevoegd tot ${vehicleLabel(merged)}`, fact: null };
+  }
+
+  if (d.type === 'plate') {
+    const owner = cleanText(body.owner, 60);
+    if (owner.length < 2) return { error: 'Vul in van wie de auto is' };
+    const vehicle = cleanText(body.vehicle, 80);
+    const description = `${vehicle || 'auto'}, kenteken ${d.plate}`;
+    // The fact store keeps one fact per plate: an earlier answer about this plate is replaced in place.
+    const fact = facts?.add(`${description.charAt(0).toUpperCase()}${description.slice(1)} is van ${owner}.`, `${by} (vraag ${q.id})`, now) ?? null;
+    const done = registerVehicleAnswer(register, description, owner, { questionId: q.id, factId: fact?.id ?? null, by, now });
+    if (!done) return { error: 'Dit kenteken staat al bij iemand anders in het register' };
+    for (const f of d.facts) {
+      if (f.id !== fact?.id && facts?.remove(f.id, now)) register.log(`Feit ${f.id} vervallen door vraag ${q.id}: ${f.text}`, by, now);
+    }
+    return { answer: `${vehicle ? `${vehicle} ` : ''}van ${owner}`, fact: fact?.text ?? null };
+  }
+
+  if (d.type === 'gone') {
+    const v = register.vehicle(d.vehicleId);
+    if (!v) return { error: 'Dit voertuig staat niet meer in het register' };
+    if (body.keep !== true && body.keep !== false) return { error: 'Kies ja of nee' };
+    if (body.keep) {
+      register.updateVehicle(v.id, {}, { sources: [`vraag ${q.id}`], at: now });
+      register.log(`Voertuig klopt nog: ${vehicleLabel(v)} (vraag ${q.id})`, by, now);
+      return { answer: 'Ja, klopt nog', fact: null };
+    }
+    register.removeVehicle(v.id, now);
+    register.log(`Voertuig verwijderd: ${vehicleLabel(v)}${d.owner ? ` van ${d.owner}` : ''} (vraag ${q.id})`, by, now);
+    return { answer: 'Nee, verwijderd', fact: null };
   }
 
   const v = register.vehicles().find((x) => x.id === d.vehicleId);

@@ -14,7 +14,11 @@ interface Question {
     faces?: string[];
     guess?: string;
     /** Household questions (since 0.29.0). */
-    type?: 'doubt' | 'vehicle' | 'role' | 'same';
+    type?: 'doubt' | 'vehicle' | 'role' | 'same' | 'plate' | 'gone';
+    /** Unknown plate (since 0.45.0): events in two weeks; vehicle without facts: its label and owner. */
+    reads?: number;
+    label?: string;
+    owner?: string;
     /** Two register entries that may be one vehicle (since 0.32.0). */
     labels?: [string, string];
     plates?: [string, string];
@@ -84,6 +88,50 @@ function HouseholdAnswer({ q, send }: { q: Question; send: (body: object) => voi
   const [make, setMake] = useState(q.data.make ?? '');
   const [model, setModel] = useState(q.data.model ?? '');
   const [plate, setPlate] = useState(q.data.plate ?? '');
+  const [owner, setOwner] = useState('');
+  const [vehicle, setVehicle] = useState(q.data.type === 'plate' ? (q.data.vehicle ?? '') : '');
+  if (q.data.type === 'plate') {
+    return (
+      <>
+        {(q.data.facts?.length ?? 0) > 0 && (
+          <ul className="ui-facts">
+            {q.data.facts!.map((f) => (
+              <li key={f.id}>
+                <span className="ui-muted">Eerder antwoord (feit {f.id}):</span> {f.text}
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="ui-form-grid">
+          <label className="ui-field">
+            <span className="ui-field__label">Auto (optioneel)</span>
+            <input placeholder="bijv. grijze Hyundai i10" maxLength={80} value={vehicle} onChange={(e) => setVehicle(e.target.value)} />
+          </label>
+          <label className="ui-field">
+            <span className="ui-field__label">Van wie?</span>
+            <input placeholder="bijv. Noëlle Snippe" maxLength={60} list="known-faces" value={owner} onChange={(e) => setOwner(e.target.value)} />
+          </label>
+        </div>
+        <div className="ui-actions">
+          <button className="ui-btn ui-btn--primary" disabled={owner.trim().length < 2} onClick={() => send({ owner, vehicle })}>
+            Opslaan in het register
+          </button>
+        </div>
+      </>
+    );
+  }
+  if (q.data.type === 'gone') {
+    return (
+      <div className="ui-segment" role="group" aria-label="Klopt het nog?">
+        <button className="ui-btn" onClick={() => send({ keep: true })}>
+          Ja, klopt nog
+        </button>
+        <button className="ui-btn" onClick={() => send({ keep: false })}>
+          Nee, verwijderen
+        </button>
+      </div>
+    );
+  }
   if (q.data.type === 'doubt') {
     return (
       <>

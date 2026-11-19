@@ -3,6 +3,14 @@
 Op hoofdlijnen, nieuwste eerst. Wordt getoond op Beheer → Change log. Elke release krijgt hier een kopje
 `## <versie> — <datum>` met een paar bullets; een test controleert dat de bovenste versie gelijk is aan `VERSION`.
 
+## 0.45.0 — 2026-11-19
+
+- Huishouden: leest Frigate een kenteken vaak (minstens 3 keer in twee weken) dat niet in het register staat, dan vraagt het systeem van wie die auto is, met de laatste foto erbij. De eerste vraag gaat over 96-NBF-1, dat Frigate vaker las dan welk kenteken uit het register ook.
+- Huishouden: haalt een antwoord alle feiten weg waar een voertuig op steunt, dan vraagt het systeem of dat voertuig nog klopt. Bij nee gaat het uit het register en uit de bekende kentekens van Frigate.
+- Huishouden: een twijfel over een merk of model dat nergens meer in de feiten of het register staat, wordt niet meer gesteld. Zo kwam "Fiesta of Focus?" voor Gideon terug nadat je het al had beantwoord.
+- Huishouden: voorstellen nemen alleen nog vaste kenmerken over, dus niet meer "grotendeels verborgen", "links in beeld" of zowel "stationwagen" als "hatchback". Een voorstel dat bij een nieuwe bundeling gelijk blijft, blijft gewoon staan in plaats van steeds opnieuw te verschijnen.
+- De AI krijgt geen losse feiten meer die alleen herhalen wat al in het register staat. Roels bus krijgt nu wel "open aanhanger met ladders" mee; dat viel eerder weg.
+
 ## 0.44.1 — 2026-11-19
 
 - De suggestie "Veel valse alarmen" geeft bij geparkeerde auto's nu het juiste advies: een automasker in Frigate over die parkeerplek. De oude tekst zei dat De Uitkijk zo'n auto vanzelf laag telt, maar Frigate liet de tv de camera dan toch steeds vergroten. Voor Achter het huis 1 is zo'n masker op 19 november geplaatst over de hoek bij de heg en de rechterrand; dat scheelt ongeveer 40 % van de auto-meldingen van die camera.

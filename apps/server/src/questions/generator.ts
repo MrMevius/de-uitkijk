@@ -244,13 +244,14 @@ export class QuestionGenerator {
       });
     }
 
-    // The household register: doubts of the bundling and gaps (make and model, plate, role). Answers fill it directly.
+    // The household register: doubts of the bundling and gaps (unknown plates, make and model, plate, role). Answers fill it directly.
     const household = this.opts.household;
     if (household) {
       for (const q of this.questions.list('open', 1000)) {
         if (q.kind === 'household' && !householdQuestionApplies(q, household)) this.questions.withdraw(q.id, now);
       }
-      for (const q of householdQuestions(household, this.opts.facts)) {
+      // Plates Frigate read in the last two weeks (`recent`) that the register does not have (since 0.45.0).
+      for (const q of householdQuestions(household, this.opts.facts, recent)) {
         // An open question keeps up with the register: a doubt asked while a bundling was still running gets its
         // answer options when that bundling is done.
         const existing = this.questions.getByKey(q.key);

@@ -2,7 +2,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { FactStore } from '../src/ai/facts.ts';
 import { personProposals } from '../src/household/bundle.ts';
 import { HouseholdStore } from '../src/household/store.ts';
-import { answerHousehold, householdQuestions, registerVehicleAnswer, sameVehicles } from '../src/questions/household.ts';
+import { redundantFact } from '../src/ai/knowledge.ts';
+import type { StoredCandidate } from '../src/highlights/store.ts';
+import { answerHousehold, householdQuestionApplies, householdQuestions, registerVehicleAnswer, sameVehicles } from '../src/questions/household.ts';
 import { QuestionStore, type Question } from '../src/questions/store.ts';
 import { vehicleParts } from '../src/questions/vehicles.ts';
 
@@ -138,5 +140,71 @@ describe('roles from answers (0.32.0)', () => {
     // A tie goes to the newest.
     const tie = personProposals([], { facts: [], answers: [answers[0]!, answers[3]!], faceNames: [] });
     expect(tie[0]!.data.role).toBe('bezoeker');
+  });
+});
+
+describe('register upkeep (0.45.0)', () => {
+  const sighting = (id: string, plates: string[], startTime = NOW - 3600) => ({ id, startTime, plates, hasThumbnail: true }) as unknown as StoredCandidate;
+
+  it('asks whose car a plate is that Frigate keeps reading, and puts the answer in the register', () => {
+    const { store, noelle } = register();
+    store.addVehicle({ make: 'Tesla', model: 'Model 3', plate: 'Z-034-LV' }, ['vraag 1'], [], NOW);
+    const facts = new FactStore(':memory:');
+    const questions = new QuestionStore(':memory:');
+    cleanup.push(() => questions.close(), () => facts.close());
+    const old = facts.add('Grijze Hyundai i10, kenteken 96-NBF-1 is van Noëlle Snippe', 'mark (vraag 86)', NOW);
+    // Three reads, one of them one character off; a register plate read wrongly and a plate read twice are not asked.
+    const seen = [
+      sighting('a', ['96NBF1'], NOW - 300), sighting('b', ['96NBF1', 'Z034LY']), sighting('c', ['96NBFI1']),
+      sighting('d', ['Z034LY']), sighting('e', ['Z034LV']), sighting('f', ['KBN97Z']), sighting('g', ['KBN97Z']),
+    ];
+    const asked = householdQuestions(store, facts, seen).filter((q) => q.data.type === 'plate');
+    expect(asked.map((q) => q.title)).toEqual(['Van wie is de auto met kenteken 96-NBF-1?']);
+    expect(asked[0]).toMatchObject({ highlightId: 'a', data: { reads: 3, vehicle: 'Grijze Hyundai i10', facts: [{ id: old.id }] } });
+    const q = { id: 70, kind: 'household', data: asked[0]!.data } as unknown as Question;
+    const answerCtx = { register: store, facts, questions, by: 'mevius', now: NOW };
+    expect(answerHousehold(q, { owner: '' }, answerCtx)).toEqual({ error: 'Vul in van wie de auto is' });
+    expect(answerHousehold(q, { owner: 'Noëlle', vehicle: 'grijze Hyundai i10' }, answerCtx)).toMatchObject({ answer: 'grijze Hyundai i10 van Noëlle' });
+    expect(store.vehicles().find((v) => v.plate === '96-NBF-1')).toMatchObject({ make: 'Hyundai', model: 'i10', ownerId: noelle.id });
+    // The old answer about this plate is replaced in place, not kept next to the new one.
+    expect(facts.list().map((f) => f.text)).toEqual(['Grijze Hyundai i10, kenteken 96-NBF-1 is van Noëlle.']);
+    expect(householdQuestions(store, facts, seen).some((x) => x.data.type === 'plate')).toBe(false);
+    expect(householdQuestionApplies({ ...q, data: asked[0]!.data } as unknown as Question, store)).toBe(false);
+  });
+
+  it('asks whether a vehicle still exists when no fact it rested on is left', () => {
+    const { store, johan } = register();
+    const transit = store.addVehicle({ kind: 'bestelbus', make: 'Ford', model: 'Transit', plate: '20-WLJ-7', ownerId: johan.id }, ['feit 34'], [], NOW);
+    store.addVehicle({ make: 'Toyota', model: 'Corolla', plate: 'N-890-KP', ownerId: johan.id }, ['feit 6'], [], NOW);
+    const facts = new FactStore(':memory:');
+    const questions = new QuestionStore(':memory:');
+    cleanup.push(() => questions.close(), () => facts.close());
+    // Only fact 1 exists: both vehicles rest on removed facts, the Corolla too.
+    facts.add('Donkerblauwe stationwagen Toyota Corolla is van Johan Mevius', 'mark (vraag 25)', NOW);
+    const asked = householdQuestions(store, facts).filter((q) => q.data.type === 'gone');
+    expect(asked.map((q) => q.title)).toEqual(['Klopt de Ford Transit, kenteken 20-WLJ-7 van Johan Mevius nog?', 'Klopt de Toyota Corolla, kenteken N-890-KP van Johan Mevius nog?']);
+    const answerCtx = { register: store, facts, questions, by: 'mevius', now: NOW };
+    const [gone, corolla] = asked.map((a, i) => ({ id: 80 + i, kind: 'household', data: a.data }) as unknown as Question);
+    answerHousehold(corolla!, { keep: true }, answerCtx);
+    expect(householdQuestionApplies(corolla!, store)).toBe(false);
+    answerHousehold(gone!, { keep: false }, answerCtx);
+    expect(store.vehicle(transit.id)).toBeUndefined();
+    expect(store.history(5).map((h) => h.text)).toContain('Voertuig verwijderd: Ford Transit, kenteken 20-WLJ-7 van Johan Mevius (vraag 80)');
+  });
+
+  it('gives the AI no raw fact that says nothing the register does not', () => {
+    const { store } = register();
+    const bert = store.addPerson({ name: 'Bert Hemmer', role: 'buren' }, [], [], NOW);
+    const gideon = store.addPerson({ name: 'Gideon Snippe', role: 'buren' }, [], [], NOW);
+    store.addVehicle({ kind: 'bestelbus', make: 'Mercedes-Benz', model: 'Sprinter', colour: 'wit', plate: 'KBP-02-B', ownerId: bert.id }, [], [], NOW);
+    store.addVehicle({ make: 'Ford', model: 'Fiesta', colour: 'wit', plate: 'L-146-FK', features: 'hatchback', ownerId: gideon.id }, [], [], NOW);
+    const reg = { people: store.people(), vehicles: store.vehicles() };
+    expect(redundantFact('Bert Hemmer (buur) rijdt in een witte Mercedes-Benz Sprinter.', reg)).toBe(true);
+    expect(redundantFact('Gideon Snippe heeft een witte Ford Fiesta hatchback.', reg)).toBe(true);
+    expect(redundantFact('Johan Mevius is een bewoner.', reg)).toBe(true);
+    // Something new: another car, a feature, another owner.
+    expect(redundantFact('Grijze Peugeot 108, kenteken TV-666-R is van Noëlle Snippe', reg)).toBe(false);
+    expect(redundantFact('De witte Ford Fiesta van Gideon Snippe heeft een trekhaak.', reg)).toBe(false);
+    expect(redundantFact('Witte Mercedes-Benz Sprinter is van Gideon Snippe', reg)).toBe(false);
   });
 });

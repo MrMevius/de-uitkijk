@@ -3,7 +3,7 @@ import { buildApp } from '../src/app.ts';
 import { FactStore } from '../src/ai/facts.ts';
 import { hashPassword } from '../src/auth/passwords.ts';
 import { AuthStore } from '../src/auth/store.ts';
-import { acceptProposal, Bundler, parseBundle, personProposals, rejectProposal, supported, vehicleProposals, type PersonAnswer } from '../src/household/bundle.ts';
+import { acceptProposal, Bundler, fixedFeatures, namesSupported, parseBundle, personProposals, rejectProposal, supported, vehicleProposals, type PersonAnswer } from '../src/household/bundle.ts';
 import { BundleScheduler, parseSchedule, slots } from '../src/household/schedule.ts';
 import { HouseholdStore } from '../src/household/store.ts';
 import { HighlightStore } from '../src/highlights/store.ts';
@@ -160,13 +160,40 @@ describe('household register', () => {
     expect(store.people().find((p) => p.name === 'Tini')).toMatchObject({ role: '' });
     expect(store.history().map((h) => h.text)).toContain('Voorstel afgewezen: Nieuw voertuig: wit Mercedes-Benz Sprinter van Bert Hemmer');
 
-    // A second run replaces undecided proposals and does not suggest the rejected van or the seen question again.
+    // A second run keeps the undecided proposals it makes again (0.45.0; before, each run replaced them) and does not
+    // suggest the rejected van or the seen question again.
+    const undecided = store.proposals('pending').map((p) => p.id);
     await bundler.runOnce('mark');
-    expect(store.proposals('stale').length).toBeGreaterThan(0);
+    expect(store.proposals('stale')).toHaveLength(0);
+    expect(store.proposals('pending').map((p) => p.id)).toEqual(expect.arrayContaining(undecided));
     const again = store.proposals('pending').map((p) => p.summary);
     expect(again.some((s) => s.includes('Sprinter'))).toBe(false);
     expect(again).not.toContain(question.summary);
     expect(prompts[1]).toContain('Nieuw voertuig: wit Mercedes-Benz Sprinter van Bert Hemmer');
+  });
+
+  it('drops a doubt about a name its facts and the register do not have (0.45.0)', () => {
+    // Gideon's Focus fact was gone; the AI asked about it again from a rejected proposal (2026-11-18).
+    const facts = 'Witte Ford Fiesta hatchback is van Gideon Snippe \n Gideon Snippe heeft een witte Ford Fiesta hatchback.';
+    expect(namesSupported('Heeft Gideon Snippe naast zijn witte Ford Fiesta ook een witte Ford Focus, of gaat het om één auto?', facts)).toBe(false);
+    expect(namesSupported('Is de witte Ford van Gideon Snippe een Fiesta hatchback?', facts)).toBe(true);
+    // Possessives, models with digits and the first word of a sentence are fine.
+    expect(namesSupported("Welk kenteken hoort bij Roels witte Hyundai H-1?", 'Witte Hyundai H-1 bestelbus is van Roel Snippe')).toBe(true);
+    expect(namesSupported('Is Tini dezelfde als Tineke Mevius? Heeft Tini een auto?', 'Tini \n Tineke Mevius')).toBe(true);
+    const out = vehicleProposals(
+      { vehicles: [], questions: [{ text: 'Heeft Gideon een Fiesta of een Focus?', facts: [8], options: [] }, { text: 'Is de Fiesta van Gideon wit?', facts: [8], options: [] }] },
+      { facts: [{ id: 8, text: 'Witte Ford Fiesta hatchback is van Gideon Snippe', createdBy: 'mark', createdAt: NOW }], vehicles: [], people: [], extraNames: [] },
+    );
+    expect(out.map((p) => p.summary)).toEqual(['Is de Fiesta van Gideon wit?']);
+  });
+
+  it('keeps only fixed features: no moments, not the kind, no contradicting body type (0.45.0)', () => {
+    expect(fixedFeatures('grotendeels verborgen', 'auto', '')).toBe('');
+    expect(fixedFeatures('kinderzitje, grotendeels verborgen', 'auto', '')).toBe('kinderzitje');
+    expect(fixedFeatures('stationwagen; hatchback', 'auto', '')).toBe('');
+    expect(fixedFeatures('hatchback', 'auto', 'stationwagen')).toBe('');
+    expect(fixedFeatures('stationwagen, trekhaak', 'auto', 'stationwagen')).toBe('stationwagen, trekhaak');
+    expect(fixedFeatures('bestelbus; open aanhanger met ladders', 'bestelbus', '')).toBe('open aanhanger met ladders');
   });
 
   it('merges vehicles and people, keeping what each knew', () => {
@@ -416,7 +443,7 @@ describe('questions from the household register (0.29.0)', () => {
     for (const p of t.store.proposals('pending')) if (p.kind === 'question') t.store.decide(p.id, 'accepted', 'mark', NOW);
     const noelle = t.store.addPerson({ name: 'Noëlle Snippe', role: 'buren' }, [], [], NOW);
     const vague = t.store.addVehicle({ kind: 'auto', colour: 'zwart', model: 'hatchback', ownerId: noelle.id }, ['feit 7'], [], NOW);
-    const peugeot = t.store.addVehicle({ kind: 'auto', colour: 'grijs', make: 'Peugeot', model: '108', ownerId: noelle.id }, ['feit 16'], [], NOW);
+    const peugeot = t.store.addVehicle({ kind: 'auto', colour: 'grijs', make: 'Peugeot', model: '108', ownerId: noelle.id }, ['feit 8'], [], NOW);
     const vera = t.store.addPerson({ name: 'Vera Snippe' }, [], [], NOW);
     t.generator.runOnce();
     const open = t.open();

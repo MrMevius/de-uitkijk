@@ -141,6 +141,28 @@ const proposalFrom = (r: Row): Proposal => ({
 });
 
 /** One plain line, so nothing can break out of its place in a prompt. */
+/** Dutch adjective forms and spelling variants compare equal: "rode"/"rood", "witte"/"wit", "grijze"/"grijs". */
+const stem = (word: string): string =>
+  word
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/e$/, '')
+    .replace(/z$/, 's')
+    .replace(/(.)\1+/g, '$1');
+export const tokens = (text: string): string[] =>
+  text
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((t) => t.length >= 2)
+    .map(stem);
+
+/** True when every word of `value` occurs in `source` (so the AI cannot add a make, plate or owner of its own). */
+export function supported(value: string, source: string): boolean {
+  const have = new Set(tokens(source));
+  const want = tokens(value);
+  return want.length > 0 && want.every((t) => have.has(t));
+}
+
 export const cleanText = (v: unknown, max: number): string =>
   typeof v === 'string' ? v.replace(/<[^>]*>/g, ' ').replace(/[\r\n\t<>]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max) : '';
 
@@ -429,8 +451,11 @@ export class HouseholdStore {
   }
 
   /** A new bundling replaces the suggestions nobody decided on yet. */
-  staleOpenProposals(at: number): void {
-    this.db.prepare("UPDATE household_proposals SET status = 'stale', decided_at = ? WHERE status = 'pending'").run(at);
+  /** Pending proposals become stale, except `keep` (made again by the new run). */
+  staleOpenProposals(at: number, keep: number[] = []): void {
+    this.db
+      .prepare(`UPDATE household_proposals SET status = 'stale', decided_at = ? WHERE status = 'pending' AND id NOT IN (${keep.map(() => '?').join(',') || 'NULL'})`)
+      .run(at, ...keep);
   }
 
   log(text: string, by: string, at: number): void {
